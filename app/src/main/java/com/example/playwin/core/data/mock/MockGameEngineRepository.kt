@@ -25,6 +25,7 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
             is GameSnapshot.ConnectFour -> resolveConnectFour(snapshot)
             is GameSnapshot.TwentyFortyEight -> resolveTwentyFortyEight(snapshot)
             is GameSnapshot.EightBall -> resolveEightBall(snapshot)
+            is GameSnapshot.Carrom -> resolveCarrom(snapshot)
         }
     }
 
@@ -74,6 +75,15 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
             GameOutcome.WIN
         } else {
             GameOutcome.LOSE
+        }
+    }
+
+    private fun resolveCarrom(snapshot: GameSnapshot.Carrom): GameOutcome {
+        if (!snapshot.boardCleared) return GameOutcome.IN_PROGRESS
+        return when {
+            snapshot.shooterScore > snapshot.opponentScore -> GameOutcome.WIN
+            snapshot.shooterScore < snapshot.opponentScore -> GameOutcome.LOSE
+            else -> GameOutcome.DRAW
         }
     }
 }

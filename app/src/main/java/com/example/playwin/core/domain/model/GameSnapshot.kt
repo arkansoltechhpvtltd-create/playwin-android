@@ -44,4 +44,17 @@ sealed interface GameSnapshot {
         val eightBallPocketed: Boolean,
         val scratched: Boolean
     ) : GameSnapshot
+
+    /**
+     * A completed carrom shot, from the shooter's point of view.
+     *
+     * @param boardCleared true once every coin and the queen have been pocketed.
+     * @param shooterScore the shooter's cumulative score, including this shot.
+     * @param opponentScore the opponent's cumulative score.
+     */
+    data class Carrom(
+        val boardCleared: Boolean,
+        val shooterScore: Int,
+        val opponentScore: Int
+    ) : GameSnapshot
 }

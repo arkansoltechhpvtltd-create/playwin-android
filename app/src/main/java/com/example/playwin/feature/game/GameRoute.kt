@@ -3,15 +3,17 @@ package com.example.playwin.feature.game
 import androidx.compose.runtime.Composable
 import com.example.playwin.core.domain.model.GameIconKey
 import com.example.playwin.core.domain.model.GameId
+import com.example.playwin.feature.game.carrom.CarromRoute
 import com.example.playwin.feature.game.comingsoon.ComingSoonRoute
 import com.example.playwin.feature.game.connectfour.Connect4Route
 import com.example.playwin.feature.game.eightball.EightBallRoute
 import com.example.playwin.feature.game.twenty48.Twenty48Route
 
 /**
- * Dispatches to the right game screen for a [GameId]. Connect 4, 2048, and
- * 8-Ball are fully playable; every other title falls back to a "coming soon"
- * scaffold so navigation and the reward wiring stay consistent for future games.
+ * Dispatches to the right game screen for a [GameId]. Connect 4, 2048,
+ * 8-Ball, and Carrom are fully playable; every other title falls back to a
+ * "coming soon" scaffold so navigation and the reward wiring stay consistent
+ * for future games.
  */
 @Composable
 fun GameRoute(
@@ -23,6 +25,7 @@ fun GameRoute(
         GameId.CONNECT_FOUR -> Connect4Route(onBack = onBack, onWin = onWin)
         GameId.TWENTY_FORTY_EIGHT -> Twenty48Route(onBack = onBack, onWin = onWin)
         GameId.EIGHT_BALL -> EightBallRoute(onBack = onBack, onWin = onWin)
+        GameId.CARROM -> CarromRoute(onBack = onBack, onWin = onWin)
         else -> {
             val (title, icon) = gameId.displayInfo()
             ComingSoonRoute(title = title, icon = icon, onBack = onBack)
