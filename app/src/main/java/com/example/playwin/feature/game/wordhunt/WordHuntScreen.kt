@@ -164,7 +164,7 @@ private fun LetterGrid(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.primary)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(4.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {

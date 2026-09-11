@@ -2,6 +2,7 @@ package com.example.playwin.core.designsystem.component
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -24,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -44,8 +46,8 @@ fun GameTileCard(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.95f else 1f,
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = 400f),
+        targetValue = if (isPressed) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = 0.85f, stiffness = 380f),
         label = "gameTileScale"
     )
 
@@ -56,14 +58,21 @@ fun GameTileCard(
             .aspectRatio(0.95f)
             .graphicsLayer { scaleX = scale; scaleY = scale },
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 0.dp)
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp, pressedElevation = 1.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.surface,
+                            MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    )
+                )
                 .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -71,7 +80,7 @@ fun GameTileCard(
                 modifier = Modifier
                     .size(48.dp)
                     .background(
-                        color = accentColor.copy(alpha = 0.16f),
+                        color = accentColor.copy(alpha = 0.18f),
                         shape = CircleShape
                     ),
                 contentAlignment = Alignment.Center

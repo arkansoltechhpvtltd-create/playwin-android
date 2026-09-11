@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 
@@ -25,11 +26,18 @@ fun PwTopBar(
     title: String,
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
+    titleColor: Color = Color.Unspecified,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     CenterAlignedTopAppBar(
         modifier = modifier,
-        title = { Text(text = title, style = MaterialTheme.typography.titleLarge) },
+        title = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                color = titleColor
+            )
+        },
         navigationIcon = {
             if (onBack != null) {
                 IconButton(onClick = onBack) {

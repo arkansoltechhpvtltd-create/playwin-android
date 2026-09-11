@@ -15,101 +15,111 @@ private val fontProvider = GoogleFont.Provider(
     certificates = R.array.com_google_android_gms_fonts_certs
 )
 
-private val nunito = GoogleFont("Nunito")
+private val playfairDisplay = GoogleFont("Playfair Display")
+private val manrope = GoogleFont("Manrope")
 
 /**
- * PlayWin's display font — a friendly, rounded sans that keeps the reward
- * loop feeling upbeat rather than corporate. Falls back to the platform
- * default automatically if the Google Fonts provider is unavailable.
+ * The lounge's signature: an elegant serif for the PlayWin wordmark, titles
+ * and headlines - it's what makes the app feel like a premium room rather
+ * than a generic game list. Falls back to the platform default automatically
+ * if the Google Fonts provider is unavailable.
  */
-val PwFontFamily = FontFamily(
-    Font(googleFont = nunito, fontProvider = fontProvider, weight = FontWeight.Normal),
-    Font(googleFont = nunito, fontProvider = fontProvider, weight = FontWeight.Medium),
-    Font(googleFont = nunito, fontProvider = fontProvider, weight = FontWeight.SemiBold),
-    Font(googleFont = nunito, fontProvider = fontProvider, weight = FontWeight.Bold),
-    Font(googleFont = nunito, fontProvider = fontProvider, weight = FontWeight.ExtraBold)
+val PwDisplayFontFamily = FontFamily(
+    Font(googleFont = playfairDisplay, fontProvider = fontProvider, weight = FontWeight.Medium),
+    Font(googleFont = playfairDisplay, fontProvider = fontProvider, weight = FontWeight.SemiBold),
+    Font(googleFont = playfairDisplay, fontProvider = fontProvider, weight = FontWeight.Bold),
+    Font(googleFont = playfairDisplay, fontProvider = fontProvider, weight = FontWeight.Black)
+)
+
+/** A clean, highly readable sans for body copy, labels and dense UI text. */
+val PwBodyFontFamily = FontFamily(
+    Font(googleFont = manrope, fontProvider = fontProvider, weight = FontWeight.Normal),
+    Font(googleFont = manrope, fontProvider = fontProvider, weight = FontWeight.Medium),
+    Font(googleFont = manrope, fontProvider = fontProvider, weight = FontWeight.SemiBold),
+    Font(googleFont = manrope, fontProvider = fontProvider, weight = FontWeight.Bold),
+    Font(googleFont = manrope, fontProvider = fontProvider, weight = FontWeight.ExtraBold)
 )
 
 val PwTypography = Typography(
     displaySmall = TextStyle(
-        fontFamily = PwFontFamily,
-        fontWeight = FontWeight.ExtraBold,
-        fontSize = 34.sp,
-        lineHeight = 40.sp,
-        letterSpacing = (-0.25).sp
+        fontFamily = PwDisplayFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 36.sp,
+        lineHeight = 42.sp,
+        letterSpacing = 0.sp
     ),
     headlineMedium = TextStyle(
-        fontFamily = PwFontFamily,
+        fontFamily = PwDisplayFontFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 26.sp,
-        lineHeight = 32.sp,
+        fontSize = 27.sp,
+        lineHeight = 33.sp,
         letterSpacing = 0.sp
     ),
     headlineSmall = TextStyle(
-        fontFamily = PwFontFamily,
-        fontWeight = FontWeight.Bold,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
+        fontFamily = PwDisplayFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 23.sp,
+        lineHeight = 29.sp,
         letterSpacing = 0.sp
     ),
     titleLarge = TextStyle(
-        fontFamily = PwFontFamily,
-        fontWeight = FontWeight.Bold,
-        fontSize = 20.sp,
-        lineHeight = 26.sp,
+        fontFamily = PwDisplayFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 21.sp,
+        lineHeight = 27.sp,
         letterSpacing = 0.sp
     ),
     titleMedium = TextStyle(
-        fontFamily = PwFontFamily,
+        fontFamily = PwDisplayFontFamily,
         fontWeight = FontWeight.SemiBold,
-        fontSize = 17.sp,
-        lineHeight = 23.sp,
+        fontSize = 18.sp,
+        lineHeight = 24.sp,
         letterSpacing = 0.sp
     ),
     titleSmall = TextStyle(
-        fontFamily = PwFontFamily,
+        fontFamily = PwBodyFontFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 14.sp,
         lineHeight = 20.sp,
         letterSpacing = 0.1.sp
     ),
     bodyLarge = TextStyle(
-        fontFamily = PwFontFamily,
+        fontFamily = PwBodyFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 24.sp,
         letterSpacing = 0.15.sp
     ),
     bodyMedium = TextStyle(
-        fontFamily = PwFontFamily,
+        fontFamily = PwBodyFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp,
         letterSpacing = 0.15.sp
     ),
     bodySmall = TextStyle(
-        fontFamily = PwFontFamily,
+        fontFamily = PwBodyFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
         lineHeight = 16.sp,
         letterSpacing = 0.2.sp
     ),
     labelLarge = TextStyle(
-        fontFamily = PwFontFamily,
+        fontFamily = PwBodyFontFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 14.sp,
         lineHeight = 20.sp,
         letterSpacing = 0.1.sp
     ),
     labelMedium = TextStyle(
-        fontFamily = PwFontFamily,
+        fontFamily = PwBodyFontFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 12.sp,
         lineHeight = 16.sp,
         letterSpacing = 0.3.sp
     ),
     labelSmall = TextStyle(
-        fontFamily = PwFontFamily,
+        fontFamily = PwBodyFontFamily,
         fontWeight = FontWeight.Medium,
         fontSize = 11.sp,
         lineHeight = 16.sp,

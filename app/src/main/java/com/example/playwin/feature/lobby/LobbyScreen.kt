@@ -49,7 +49,7 @@ fun LobbyScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { PwTopBar(title = "PlayWin") }
+        topBar = { PwTopBar(title = "PlayWin", titleColor = MaterialTheme.colorScheme.primary) }
     ) { innerPadding ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),

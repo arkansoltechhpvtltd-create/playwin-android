@@ -1,5 +1,6 @@
 package com.example.playwin.core.designsystem.component
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ConfirmationNumber
@@ -45,7 +46,7 @@ fun CouponBalanceChip(
             disabledLabelColor = MaterialTheme.colorScheme.onTertiaryContainer,
             disabledLeadingIconContentColor = MaterialTheme.colorScheme.onTertiaryContainer
         ),
-        border = null
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
     )
 }
 

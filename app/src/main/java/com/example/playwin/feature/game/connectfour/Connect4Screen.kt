@@ -147,7 +147,7 @@ private fun Board(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.primary)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(6.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {

@@ -43,8 +43,8 @@ fun PrimaryButton(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.96f else 1f,
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = 400f),
+        targetValue = if (isPressed) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 380f),
         label = "primaryButtonScale"
     )
 
@@ -57,6 +57,11 @@ fun PrimaryButton(
         colors = ButtonDefaults.buttonColors(
             containerColor = containerColor,
             contentColor = contentColor
+        ),
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 3.dp,
+            pressedElevation = 1.dp,
+            disabledElevation = 0.dp
         ),
         contentPadding = contentPadding
     ) {

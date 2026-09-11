@@ -181,7 +181,7 @@ private fun BingoCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.primary)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .padding(6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -193,7 +193,7 @@ private fun BingoCard(
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimary
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
