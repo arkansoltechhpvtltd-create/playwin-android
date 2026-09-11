@@ -1,9 +1,17 @@
 package com.example.playwin.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,6 +30,8 @@ import com.example.playwin.feature.lobby.LobbyRoute
 import com.example.playwin.feature.profile.ProfileRoute
 import com.example.playwin.feature.wallet.CouponsRoute
 
+private const val TRANSITION_MILLIS = 220
+
 @Composable
 fun PlayWinNavHost(
     navController: NavHostController = rememberNavController()
@@ -33,7 +43,10 @@ fun PlayWinNavHost(
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = NavigationBarDefaults.Elevation
+                ) {
                     topLevelDestinations.forEach { destination ->
                         NavigationBarItem(
                             selected = currentRoute == destination.route,
@@ -47,7 +60,12 @@ fun PlayWinNavHost(
                                 }
                             },
                             icon = { Icon(destination.icon, contentDescription = destination.label) },
-                            label = { Text(destination.label) }
+                            label = { Text(destination.label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedTextColor = MaterialTheme.colorScheme.primary
+                            )
                         )
                     }
                 }
@@ -57,7 +75,15 @@ fun PlayWinNavHost(
         NavHost(
             navController = navController,
             startDestination = TopLevelDestination.Lobby.route,
-            modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
+            modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding()),
+            enterTransition = {
+                fadeIn(tween(TRANSITION_MILLIS)) + slideInHorizontally(tween(TRANSITION_MILLIS)) { it / 8 }
+            },
+            exitTransition = { fadeOut(tween(TRANSITION_MILLIS)) },
+            popEnterTransition = { fadeIn(tween(TRANSITION_MILLIS)) },
+            popExitTransition = {
+                fadeOut(tween(TRANSITION_MILLIS)) + slideOutHorizontally(tween(TRANSITION_MILLIS)) { it / 8 }
+            }
         ) {
             composable(TopLevelDestination.Lobby.route) {
                 LobbyRoute(

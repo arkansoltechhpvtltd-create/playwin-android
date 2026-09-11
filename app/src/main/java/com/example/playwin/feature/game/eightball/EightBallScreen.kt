@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.core.designsystem.component.PrimaryButton
+import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import kotlinx.coroutines.isActive
 
@@ -95,16 +97,7 @@ fun EightBallScreen(
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = { Text("8-Ball") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            )
-        }
+        topBar = { PwTopBar(title = "8-Ball", onBack = onBack) }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -133,9 +126,7 @@ fun EightBallScreen(
             GroupLegend(uiState = uiState, modifier = Modifier.padding(top = 12.dp))
 
             if (uiState.winner != null) {
-                Button(onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp)) {
-                    Text("Play again")
-                }
+                PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
             }
         }
     }

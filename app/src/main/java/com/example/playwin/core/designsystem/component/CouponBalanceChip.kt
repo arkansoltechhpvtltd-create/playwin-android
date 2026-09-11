@@ -36,6 +36,7 @@ fun CouponBalanceChip(
                 style = MaterialTheme.typography.labelLarge
             )
         },
+        shape = MaterialTheme.shapes.extraLarge,
         colors = AssistChipDefaults.assistChipColors(
             containerColor = MaterialTheme.colorScheme.tertiaryContainer,
             labelColor = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -43,7 +44,8 @@ fun CouponBalanceChip(
             disabledContainerColor = MaterialTheme.colorScheme.tertiaryContainer,
             disabledLabelColor = MaterialTheme.colorScheme.onTertiaryContainer,
             disabledLeadingIconContentColor = MaterialTheme.colorScheme.onTertiaryContainer
-        )
+        ),
+        border = null
     )
 }
 

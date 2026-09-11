@@ -10,7 +10,17 @@ import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.ViewModule
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.example.playwin.core.designsystem.theme.PwGameBilliards
+import com.example.playwin.core.designsystem.theme.PwGameBingo
+import com.example.playwin.core.designsystem.theme.PwGameCards
+import com.example.playwin.core.designsystem.theme.PwGameCarrom
+import com.example.playwin.core.designsystem.theme.PwGameChess
+import com.example.playwin.core.designsystem.theme.PwGameFourInARow
+import com.example.playwin.core.designsystem.theme.PwGameGrid
+import com.example.playwin.core.designsystem.theme.PwGameLudo
+import com.example.playwin.core.designsystem.theme.PwGameWordHunt
 import com.example.playwin.core.domain.model.GameIconKey
 
 /**
@@ -28,4 +38,17 @@ fun GameIconKey.toImageVector(): ImageVector = when (this) {
     GameIconKey.CHESS -> Icons.Filled.Extension
     GameIconKey.LUDO -> Icons.Filled.EmojiEvents
     GameIconKey.CARDS -> Icons.Filled.Style
+}
+
+/** A distinct accent colour per game so the lobby grid reads as a set of games, not one template. */
+fun GameIconKey.toAccentColor(): Color = when (this) {
+    GameIconKey.GRID -> PwGameGrid
+    GameIconKey.BILLIARDS -> PwGameBilliards
+    GameIconKey.CARROM -> PwGameCarrom
+    GameIconKey.FOUR_IN_A_ROW -> PwGameFourInARow
+    GameIconKey.BINGO -> PwGameBingo
+    GameIconKey.WORD_HUNT -> PwGameWordHunt
+    GameIconKey.CHESS -> PwGameChess
+    GameIconKey.LUDO -> PwGameLudo
+    GameIconKey.CARDS -> PwGameCards
 }

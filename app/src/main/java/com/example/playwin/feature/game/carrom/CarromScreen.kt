@@ -40,6 +40,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.core.designsystem.component.PrimaryButton
+import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import kotlinx.coroutines.isActive
 
@@ -90,16 +92,7 @@ fun CarromScreen(
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = { Text("Carrom") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            )
-        }
+        topBar = { PwTopBar(title = "Carrom", onBack = onBack) }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -125,9 +118,7 @@ fun CarromScreen(
             ScoreLegend(uiState = uiState, modifier = Modifier.padding(top = 12.dp))
 
             if (uiState.winner != null || uiState.isDraw) {
-                Button(onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp)) {
-                    Text("Play again")
-                }
+                PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
             }
         }
     }

@@ -1,9 +1,13 @@
 package com.example.playwin.core.data.mock
 
+import com.example.playwin.core.domain.chess.ChessEngine
+import com.example.playwin.core.domain.chess.GameStatus
+import com.example.playwin.core.domain.ludo.LudoEngine
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
 import com.example.playwin.core.domain.repository.GameEngineRepository
+import com.example.playwin.core.domain.rummy.RummyValidator
 import kotlinx.coroutines.delay
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,6 +30,11 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
             is GameSnapshot.TwentyFortyEight -> resolveTwentyFortyEight(snapshot)
             is GameSnapshot.EightBall -> resolveEightBall(snapshot)
             is GameSnapshot.Carrom -> resolveCarrom(snapshot)
+            is GameSnapshot.Bingo -> resolveBingo(snapshot)
+            is GameSnapshot.WordHunt -> resolveWordHunt(snapshot)
+            is GameSnapshot.Chess -> resolveChess(snapshot)
+            is GameSnapshot.Ludo -> resolveLudo(snapshot)
+            is GameSnapshot.Rummy -> resolveRummy(snapshot)
         }
     }
 
@@ -86,4 +95,42 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
             else -> GameOutcome.DRAW
         }
     }
+
+    private fun resolveBingo(snapshot: GameSnapshot.Bingo): GameOutcome {
+        val grid = snapshot.daubed
+        val size = grid.size
+
+        val rowWin = grid.any { row -> row.all { it } }
+        val colWin = (0 until size).any { c -> (0 until size).all { r -> grid[r][c] } }
+        val diagWin = (0 until size).all { i -> grid[i][i] } || (0 until size).all { i -> grid[i][size - 1 - i] }
+
+        return if (rowWin || colWin || diagWin) GameOutcome.WIN else GameOutcome.IN_PROGRESS
+    }
+
+    private fun resolveWordHunt(snapshot: GameSnapshot.WordHunt): GameOutcome {
+        if (snapshot.allWordsFound) return GameOutcome.WIN
+        if (snapshot.timeExpired) return GameOutcome.LOSE
+        return GameOutcome.IN_PROGRESS
+    }
+
+    private fun resolveChess(snapshot: GameSnapshot.Chess): GameOutcome {
+        // Checkmate/stalemate are re-derived here from the full rules engine,
+        // never trusted from the client - the mover wins on checkmate.
+        return when (ChessEngine.gameStatus(snapshot.position)) {
+            GameStatus.CHECKMATE -> GameOutcome.WIN
+            GameStatus.STALEMATE -> GameOutcome.DRAW
+            GameStatus.IN_PROGRESS -> GameOutcome.IN_PROGRESS
+        }
+    }
+
+    private fun resolveLudo(snapshot: GameSnapshot.Ludo): GameOutcome =
+        if (LudoEngine.hasAllTokensHome(snapshot.moverTokenPositions)) GameOutcome.WIN else GameOutcome.IN_PROGRESS
+
+    private fun resolveRummy(snapshot: GameSnapshot.Rummy): GameOutcome =
+        // An invalid declaration is a losing move in real rummy, not a free retry.
+        if (RummyValidator.isValidDeclaration(snapshot.declaredHand, snapshot.wildRank)) {
+            GameOutcome.WIN
+        } else {
+            GameOutcome.LOSE
+        }
 }

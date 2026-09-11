@@ -1,5 +1,9 @@
 package com.example.playwin.core.domain.model
 
+import com.example.playwin.core.domain.chess.ChessPosition
+import com.example.playwin.core.domain.rummy.Card
+import com.example.playwin.core.domain.rummy.Rank
+
 /**
  * A serializable snapshot of a game's board state at the moment a player
  * believes the round is over. The UI/ViewModel never decides who won by
@@ -56,5 +60,50 @@ sealed interface GameSnapshot {
         val boardCleared: Boolean,
         val shooterScore: Int,
         val opponentScore: Int
+    ) : GameSnapshot
+
+    /**
+     * @param daubed 5 rows x 5 columns, true where the player has daubed that
+     * square (the free center square is always true).
+     */
+    data class Bingo(
+        val daubed: List<List<Boolean>>
+    ) : GameSnapshot
+
+    /**
+     * @param allWordsFound true once every hidden word has been located.
+     * @param timeExpired true if the countdown reached zero before that happened.
+     */
+    data class WordHunt(
+        val allWordsFound: Boolean,
+        val timeExpired: Boolean
+    ) : GameSnapshot
+
+    /**
+     * The full board position after a move, handed to
+     * [com.example.playwin.core.domain.chess.ChessEngine.gameStatus] to
+     * authoritatively confirm checkmate/stalemate - never decided by the UI.
+     */
+    data class Chess(
+        val position: ChessPosition
+    ) : GameSnapshot
+
+    /**
+     * @param moverTokenPositions the 4 local positions of the mover's tokens
+     * after this move; the mover wins once all 4 equal the finish position.
+     */
+    data class Ludo(
+        val moverTokenPositions: List<Int>
+    ) : GameSnapshot
+
+    /**
+     * A declared 13-card hand, handed to
+     * [com.example.playwin.core.domain.rummy.RummyValidator] to authoritatively
+     * confirm it forms valid groups with at least one pure sequence - never
+     * decided by the UI.
+     */
+    data class Rummy(
+        val declaredHand: List<Card>,
+        val wildRank: Rank
     ) : GameSnapshot
 }

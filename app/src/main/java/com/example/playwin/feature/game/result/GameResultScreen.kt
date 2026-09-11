@@ -4,24 +4,23 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.core.designsystem.component.CouponCard
+import com.example.playwin.core.designsystem.component.PrimaryButton
+import com.example.playwin.core.designsystem.component.WinCelebration
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
+import com.example.playwin.core.designsystem.theme.PwSpacing
 import com.example.playwin.core.domain.model.Coupon
 import com.example.playwin.core.domain.model.CouponStatus
 
@@ -45,27 +44,21 @@ fun GameResultScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(24.dp),
+                .padding(horizontal = PwSpacing.lg),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(
-                imageVector = Icons.Filled.EmojiEvents,
-                contentDescription = null,
-                modifier = Modifier
-                    .padding(top = 24.dp)
-                    .size(72.dp),
-                tint = MaterialTheme.colorScheme.tertiary
-            )
+            WinCelebration(modifier = Modifier.fillMaxWidth())
+
             Text(
                 text = "You won!",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(top = 16.dp)
+                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
+                modifier = Modifier.padding(top = PwSpacing.sm)
             )
             Text(
-                text = "Here's your coupon - it's already in your wallet.",
+                text = "Here's your coupon — it's already in your wallet.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp, bottom = 24.dp)
+                modifier = Modifier.padding(top = 4.dp, bottom = PwSpacing.lg)
             )
 
             if (coupon != null) {
@@ -76,12 +69,11 @@ fun GameResultScreen(
                 )
             }
 
-            Button(
+            PrimaryButton(
+                text = "Back to games",
                 onClick = onBackToGames,
-                modifier = Modifier.padding(top = 32.dp)
-            ) {
-                Text("Back to games")
-            }
+                modifier = Modifier.padding(top = PwSpacing.xl, bottom = PwSpacing.lg)
+            )
         }
     }
 }

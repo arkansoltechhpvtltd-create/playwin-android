@@ -1,0 +1,44 @@
+package com.example.playwin.core.domain.chess
+
+/** Pure data model for a chess game - no Android or Compose dependencies. */
+enum class PieceType { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING }
+
+enum class PieceColor {
+    WHITE, BLACK;
+
+    fun opposite(): PieceColor = if (this == WHITE) BLACK else WHITE
+}
+
+data class ChessPiece(val type: PieceType, val color: PieceColor)
+
+/** A board square; row 0 = rank 1 (White's home rank), col 0 = the a-file. */
+data class Square(val row: Int, val col: Int) {
+    val isOnBoard: Boolean get() = row in 0..7 && col in 0..7
+}
+
+/**
+ * A single move. [promotion] is always [PieceType.QUEEN] when a pawn reaches
+ * the last rank - this engine only supports auto-queen promotion.
+ */
+data class ChessMove(
+    val from: Square,
+    val to: Square,
+    val promotion: PieceType? = null,
+    val isCastle: Boolean = false,
+    val isEnPassant: Boolean = false
+)
+
+enum class GameStatus { IN_PROGRESS, CHECKMATE, STALEMATE }
+
+/** An immutable snapshot of a game: the board plus everything needed to generate legal moves. */
+data class ChessPosition(
+    val board: List<List<ChessPiece?>>,
+    val sideToMove: PieceColor,
+    val whiteCanCastleKingSide: Boolean = true,
+    val whiteCanCastleQueenSide: Boolean = true,
+    val blackCanCastleKingSide: Boolean = true,
+    val blackCanCastleQueenSide: Boolean = true,
+    val enPassantTarget: Square? = null
+) {
+    fun pieceAt(square: Square): ChessPiece? = board[square.row][square.col]
+}

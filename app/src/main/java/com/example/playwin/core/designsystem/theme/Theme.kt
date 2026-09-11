@@ -13,26 +13,46 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 private val LightColorScheme = lightColorScheme(
-    primary = PwIndigo40,
+    primary = PwViolet40,
     onPrimary = Color.White,
+    primaryContainer = PwViolet80,
+    onPrimaryContainer = PwViolet20,
     secondary = PwTeal40,
-    tertiary = PwAmber40,
+    onSecondary = Color.White,
+    secondaryContainer = PwTeal80,
+    onSecondaryContainer = PwTeal20,
+    tertiary = PwGold40,
+    onTertiary = Color.White,
+    tertiaryContainer = PwGold80,
+    onTertiaryContainer = PwGold20,
     background = PwNeutral99,
     surface = PwNeutral99,
     surfaceVariant = PwNeutral95,
+    onSurfaceVariant = PwNeutral30,
+    outline = PwNeutral90,
     onBackground = PwNeutral10,
     onSurface = PwNeutral10,
     error = PwError40
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary = PwIndigo80,
-    onPrimary = PwIndigo20,
+    primary = PwViolet80,
+    onPrimary = PwViolet20,
+    primaryContainer = PwViolet40,
+    onPrimaryContainer = PwViolet80,
     secondary = PwTeal80,
-    tertiary = PwAmber80,
+    onSecondary = PwTeal20,
+    secondaryContainer = PwTeal40,
+    onSecondaryContainer = PwTeal80,
+    tertiary = PwGold80,
+    onTertiary = PwGold20,
+    tertiaryContainer = PwGold40,
+    onTertiaryContainer = PwGold80,
     background = PwNeutral10,
     surface = PwNeutral10,
     surfaceVariant = PwNeutral20,
+    onSurfaceVariant = PwNeutral90,
+    outline = PwNeutral30,
     onBackground = PwNeutral95,
     onSurface = PwNeutral95,
     error = PwError80
@@ -57,6 +77,7 @@ fun PlayWinTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = PwTypography,
+        shapes = PwShapes,
         content = content
     )
 }

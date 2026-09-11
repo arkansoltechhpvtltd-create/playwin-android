@@ -4,8 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.example.playwin.core.designsystem.theme.PlayWinTheme
-import com.example.playwin.navigation.PlayWinNavHost
+import com.example.playwin.navigation.PlayWinApp
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -14,9 +13,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            PlayWinTheme {
-                PlayWinNavHost()
-            }
+            PlayWinApp()
         }
     }
 }

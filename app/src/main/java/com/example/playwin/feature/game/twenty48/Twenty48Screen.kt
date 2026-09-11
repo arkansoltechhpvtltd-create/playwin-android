@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.core.designsystem.component.PrimaryButton
+import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import kotlin.math.abs
 
@@ -69,13 +71,9 @@ fun Twenty48Screen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
-                title = { Text("2048") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
+            PwTopBar(
+                title = "2048",
+                onBack = onBack,
                 actions = {
                     Text(
                         text = formatElapsed(uiState.elapsedSeconds),
@@ -108,9 +106,7 @@ fun Twenty48Screen(
             )
 
             if (uiState.isGameOver) {
-                Button(onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp)) {
-                    Text("Play again")
-                }
+                PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
             }
         }
     }

@@ -1,15 +1,17 @@
 package com.example.playwin.core.data.di
 
+import com.example.playwin.core.data.mock.MockAuthRepository
 import com.example.playwin.core.data.mock.MockCouponsRepository
 import com.example.playwin.core.data.mock.MockGameEngineRepository
 import com.example.playwin.core.data.mock.MockGamesRepository
-import com.example.playwin.core.data.mock.MockProfileRepository
 import com.example.playwin.core.data.mock.MockRewardsRepository
+import com.example.playwin.core.data.mock.MockSettingsRepository
+import com.example.playwin.core.domain.repository.AuthRepository
 import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.GamesRepository
-import com.example.playwin.core.domain.repository.ProfileRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
+import com.example.playwin.core.domain.repository.SettingsRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -43,5 +45,9 @@ abstract class DataModule {
 
     @Binds
     @Singleton
-    abstract fun bindProfileRepository(impl: MockProfileRepository): ProfileRepository
+    abstract fun bindAuthRepository(impl: MockAuthRepository): AuthRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindSettingsRepository(impl: MockSettingsRepository): SettingsRepository
 }
