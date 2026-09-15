@@ -8,3 +8,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Ad-hoc QA screenshots taken at the repo root
+/*.png
