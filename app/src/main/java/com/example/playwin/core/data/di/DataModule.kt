@@ -1,11 +1,11 @@
 package com.example.playwin.core.data.di
 
-import com.example.playwin.core.data.mock.MockAuthRepository
 import com.example.playwin.core.data.mock.MockCouponsRepository
 import com.example.playwin.core.data.mock.MockGameEngineRepository
 import com.example.playwin.core.data.mock.MockGamesRepository
 import com.example.playwin.core.data.mock.MockRewardsRepository
 import com.example.playwin.core.data.mock.MockSettingsRepository
+import com.example.playwin.core.data.remote.SupabaseAuthRepository
 import com.example.playwin.core.domain.repository.AuthRepository
 import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
@@ -19,9 +19,10 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
 /**
- * Binds the domain repository interfaces to their mock in-memory
- * implementations. This is the only place that needs to change to swap
- * mocks for real network-backed repositories later.
+ * Binds each domain repository interface to its implementation. This is the
+ * only place that needs to change to swap a mock for a real network-backed
+ * repository - [AuthRepository] is already live on Supabase; the rest are
+ * still in-memory mocks.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -45,7 +46,7 @@ abstract class DataModule {
 
     @Binds
     @Singleton
-    abstract fun bindAuthRepository(impl: MockAuthRepository): AuthRepository
+    abstract fun bindAuthRepository(impl: SupabaseAuthRepository): AuthRepository
 
     @Binds
     @Singleton
