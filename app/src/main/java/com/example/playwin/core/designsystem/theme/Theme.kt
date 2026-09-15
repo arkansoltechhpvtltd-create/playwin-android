@@ -9,8 +9,18 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+
+/**
+ * A handful of "hero" components (the featured banner, game tiles) need a
+ * genuinely different treatment per theme rather than just swapping tokens -
+ * this exposes which theme is active so they can branch explicitly instead
+ * of guessing from colour luminance.
+ */
+val LocalPwIsDarkTheme = staticCompositionLocalOf { false }
 
 private val LightColorScheme = lightColorScheme(
     primary = PwGoldLight,
@@ -80,10 +90,12 @@ fun PlayWinTheme(
         else -> LightColorScheme
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = PwTypography,
-        shapes = PwShapes,
-        content = content
-    )
+    CompositionLocalProvider(LocalPwIsDarkTheme provides darkTheme) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = PwTypography,
+            shapes = PwShapes,
+            content = content
+        )
+    }
 }
