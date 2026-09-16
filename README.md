@@ -41,6 +41,68 @@ The single authority on "who won" — the client never decides a game's outcome 
 Issues rewards for a confirmed win — deliberately separate from `GameEngineRepository`: that decides *whether* a round was won, this decides *what the player gets*.
 - `claimReward(gameId: GameId): Coupon` — called only after `GameEngineRepository.resolve` has returned `WIN`. Should be server-authoritative (idempotent per round, rate-limited) so a client can't claim rewards for rounds it didn't win or claim the same win twice.
 
+### Server-side win resolution: Supabase Edge Function contract
+
+`GameEngineRepository.resolve` and `RewardsRepository.claimReward` are still
+mocked (`core/data/mock/MockGameEngineRepository.kt`,
+`core/data/mock/MockRewardsRepository.kt`) — deliberately, so this is a clean,
+already-isolated seam for a backend developer to fill in without touching any
+ViewModel, screen, or the other four repositories already live on Supabase.
+
+This should ship as **one** Supabase Edge Function, not two separate
+endpoints — the client must never be able to call "claim reward" without the
+function having just verified a win itself, and the coupon must never be
+written by the client. Today `SupabaseCouponsRepository.addCoupon` does insert
+directly from the client; once this function exists it should replace that
+path for real wins, with the client only ever displaying what the function
+returns. (Not changed in this pass — noted here as the follow-up this
+unlocks, including tightening the `coupons` table's RLS to drop client
+`insert` once the function is the only writer.)
+
+**What the function must do:**
+1. Authenticate the caller from the Supabase JWT (`auth.uid()`), never from a
+   field in the request body.
+2. Re-derive the outcome itself from the submitted `snapshot`, per `gameId` —
+   reusing the exact rules in `MockGameEngineRepository` (Connect Four
+   win-line scan, 2048 tile-reached/no-moves-left, 8-ball
+   group-cleared-and-no-scratch, Carrom score comparison once cleared, Bingo
+   row/column/diagonal, Word Hunt all-found/timeout, Chess checkmate/stalemate
+   via a full rules engine, Ludo all-tokens-home, Rummy valid-declaration
+   check). Never trust a client-reported "I won" flag.
+3. Only if the outcome is `WIN`, pick/generate a coupon and `insert` it into
+   the `coupons` table using the **service role key**, bypassing RLS.
+4. Make the claim idempotent per round (e.g. a dedupe key from `user_id` +
+   `gameId` + a hash of the snapshot, or a server-issued round id) so retried
+   or replayed requests can't mint duplicate coupons, and rate-limit per user.
+5. Return the outcome and, if any, the new coupon — nothing else the client
+   sent should be echoed back or trusted for a second write.
+
+**Request** (`POST`, `Authorization: Bearer <user JWT>`):
+```json
+{
+  "gameId": "CONNECT_FOUR",
+  "snapshot": { "type": "ConnectFour", "board": [[0,0,0,0,0,0,0]], "lastPlayer": 1, "isBoardFull": false }
+}
+```
+`gameId` is one of the nine `GameId` enum names; `snapshot.type` is one of
+`GameSnapshot`'s nine sealed subtypes (`ConnectFour`, `TwentyFortyEight`,
+`EightBall`, `Carrom`, `Bingo`, `WordHunt`, `Chess`, `Ludo`, `Rummy`), and the
+remaining fields match that subtype's constructor 1:1 — see
+`core/domain/model/GameSnapshot.kt`.
+
+**Response:**
+```json
+{
+  "outcome": "WIN",
+  "coupon": {
+    "id": "...", "partnerName": "...", "discountText": "...",
+    "source": "Won in Connect 4", "expiry": "...", "code": "...", "status": "WON"
+  }
+}
+```
+`outcome` is one of `GameOutcome`'s four values (`WIN`/`LOSE`/`DRAW`/`IN_PROGRESS`);
+`coupon` is `null` unless `outcome == "WIN"`.
+
 ### `CouponsRepository`
 The player's coupon wallet.
 - `observeCoupons(): Flow<List<Coupon>>` — the player's full coupon list (won, locked, redeemed).
