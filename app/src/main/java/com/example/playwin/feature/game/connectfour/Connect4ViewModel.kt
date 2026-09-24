@@ -2,6 +2,7 @@ package com.example.playwin.feature.game.connectfour
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.playwin.core.domain.connectfour.Connect4Logic
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
@@ -44,16 +45,13 @@ class Connect4ViewModel @Inject constructor(
         val state = _uiState.value
         if (state.winner != null || state.isDraw || state.isResolving) return
 
-        val row = lowestEmptyRow(state.board, col) ?: return
-
-        val newBoard = state.board.map { it.toMutableList() }
-        newBoard[row][col] = state.currentPlayer
+        val newBoard = Connect4Logic.placePiece(state.board, col, state.currentPlayer) ?: return
 
         timerJob?.cancel()
         _uiState.update { it.copy(board = newBoard, lastTurnTimedOut = false, isResolving = true) }
 
         viewModelScope.launch {
-            val isBoardFull = newBoard.all { r -> r.all { it != 0 } }
+            val isBoardFull = Connect4Logic.isBoardFull(newBoard)
             val outcome = gameEngineRepository.resolve(
                 GameId.CONNECT_FOUR,
                 GameSnapshot.ConnectFour(
@@ -93,13 +91,6 @@ class Connect4ViewModel @Inject constructor(
         timerJob?.cancel()
         _uiState.value = Connect4UiState()
         startTimer()
-    }
-
-    private fun lowestEmptyRow(board: List<List<Int>>, col: Int): Int? {
-        for (row in CONNECT4_ROWS - 1 downTo 0) {
-            if (board[row][col] == 0) return row
-        }
-        return null
     }
 
     private fun startTimer() {

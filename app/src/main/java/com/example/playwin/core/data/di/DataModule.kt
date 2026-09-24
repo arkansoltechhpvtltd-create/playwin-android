@@ -5,12 +5,14 @@ import com.example.playwin.core.data.mock.MockRewardsRepository
 import com.example.playwin.core.data.remote.SupabaseAuthRepository
 import com.example.playwin.core.data.remote.SupabaseCouponsRepository
 import com.example.playwin.core.data.remote.SupabaseGamesRepository
+import com.example.playwin.core.data.remote.SupabaseRoomRepository
 import com.example.playwin.core.data.remote.SupabaseSettingsRepository
 import com.example.playwin.core.domain.repository.AuthRepository
 import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.GamesRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
+import com.example.playwin.core.domain.repository.RoomRepository
 import com.example.playwin.core.domain.repository.SettingsRepository
 import dagger.Binds
 import dagger.Module
@@ -52,4 +54,8 @@ abstract class DataModule {
     @Binds
     @Singleton
     abstract fun bindSettingsRepository(impl: SupabaseSettingsRepository): SettingsRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindRoomRepository(impl: SupabaseRoomRepository): RoomRepository
 }

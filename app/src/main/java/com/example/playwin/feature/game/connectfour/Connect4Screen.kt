@@ -27,19 +27,69 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
+import com.example.playwin.feature.game.connectfour.online.Connect4OnlineRoute
 
+private enum class Connect4Mode { LOCAL, ONLINE }
+
+/** Entry point for Connect 4: lets the player choose local pass-and-play or an online room. */
 @Composable
 fun Connect4Route(
+    onBack: () -> Unit,
+    onWin: (couponId: String) -> Unit
+) {
+    var mode by remember { mutableStateOf<Connect4Mode?>(null) }
+    when (mode) {
+        null -> Connect4ModeSelectScreen(
+            onBack = onBack,
+            onSelectLocal = { mode = Connect4Mode.LOCAL },
+            onSelectOnline = { mode = Connect4Mode.ONLINE }
+        )
+        Connect4Mode.LOCAL -> Connect4LocalRoute(onBack = { mode = null }, onWin = onWin)
+        Connect4Mode.ONLINE -> Connect4OnlineRoute(onBack = { mode = null }, onWin = onWin)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun Connect4ModeSelectScreen(
+    onBack: () -> Unit,
+    onSelectLocal: () -> Unit,
+    onSelectOnline: () -> Unit
+) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = { PwTopBar(title = "Connect 4", onBack = onBack) }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(text = "How do you want to play?", style = MaterialTheme.typography.titleLarge)
+            PrimaryButton(text = "Local · pass & play", onClick = onSelectLocal, modifier = Modifier.padding(top = 24.dp))
+            PrimaryButton(text = "Play online", onClick = onSelectOnline, modifier = Modifier.padding(top = 12.dp))
+        }
+    }
+}
+
+@Composable
+private fun Connect4LocalRoute(
     onBack: () -> Unit,
     onWin: (couponId: String) -> Unit,
     viewModel: Connect4ViewModel = hiltViewModel()
@@ -84,7 +134,7 @@ fun Connect4Screen(
                 else -> TurnBanner(uiState)
             }
 
-            Board(
+            Connect4Board(
                 board = uiState.board,
                 enabled = uiState.winner == null && !uiState.isDraw && !uiState.isResolving,
                 onColumnClick = onColumnClick,
@@ -135,8 +185,9 @@ private fun StatusBanner(text: String, modifier: Modifier = Modifier) {
     Text(text = text, style = MaterialTheme.typography.titleMedium, modifier = modifier.fillMaxWidth())
 }
 
+/** Shared by both local and online Connect 4 screens. */
 @Composable
-private fun Board(
+fun Connect4Board(
     board: List<List<Int>>,
     enabled: Boolean,
     onColumnClick: (Int) -> Unit,
