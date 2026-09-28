@@ -27,6 +27,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,12 +41,33 @@ import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import com.example.playwin.core.domain.chess.ChessPiece
+import com.example.playwin.core.domain.chess.ChessPosition
+import com.example.playwin.feature.game.chess.online.ChessOnlineRoute
+import com.example.playwin.feature.game.online.GameModeSelectScreen
+import com.example.playwin.feature.game.online.PlayMode
 import com.example.playwin.core.domain.chess.PieceColor
 import com.example.playwin.core.domain.chess.PieceType
 import com.example.playwin.core.domain.chess.Square
 
 @Composable
 fun ChessRoute(
+    onBack: () -> Unit,
+    onWin: (couponId: String) -> Unit
+) {
+    var mode by remember { mutableStateOf<PlayMode?>(null) }
+    when (mode) {
+        null -> GameModeSelectScreen(title = "Chess", onBack = onBack, onSelectMode = { mode = it })
+        PlayMode.COMPUTER -> ChessComputerRoute(onBack = { mode = null }, onWin = onWin)
+        PlayMode.ONLINE -> ChessOnlineRoute(
+            onBack = { mode = null },
+            onWin = onWin,
+            onPlayComputer = { mode = PlayMode.COMPUTER }
+        )
+    }
+}
+
+@Composable
+private fun ChessComputerRoute(
     onBack: () -> Unit,
     onWin: (couponId: String) -> Unit,
     viewModel: ChessViewModel = hiltViewModel()
@@ -73,7 +97,7 @@ fun ChessScreen(
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { PwTopBar(title = "Chess", onBack = onBack) }
+        topBar = { PwTopBar(title = "Chess · vs Computer", onBack = onBack) }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -85,25 +109,26 @@ fun ChessScreen(
             when {
                 uiState.isDraw -> StatusBanner(text = "Stalemate - it's a draw!")
                 uiState.winner != null -> StatusBanner(
-                    text = "${uiState.winner.toPlayerLabel()} wins by checkmate! Claiming your coupon…"
+                    text = if (uiState.winner == 1) "Checkmate - you win! Claiming your coupon…" else "Checkmate - the computer wins"
                 )
                 else -> TurnBanner(uiState)
             }
 
-            ChessBoardView(
-                uiState = uiState,
+            ChessBoard(
+                position = uiState.position,
+                selectedSquare = uiState.selectedSquare,
+                legalTargets = uiState.legalTargets,
+                enabled = !uiState.isGameOver && !uiState.isResolving && uiState.isHumanTurn && !uiState.isComputerThinking,
                 onSquareTap = onSquareTap,
                 modifier = Modifier.padding(top = 16.dp)
             )
 
-            if (uiState.winner != null || uiState.isDraw) {
+            if (uiState.isDraw || uiState.winner == 2) {
                 PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
             }
         }
     }
 }
-
-private fun Int.toPlayerLabel(): String = if (this == 1) "White" else "Black"
 
 @Composable
 private fun TurnBanner(uiState: ChessUiState, modifier: Modifier = Modifier) {
@@ -112,12 +137,12 @@ private fun TurnBanner(uiState: ChessUiState, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = "${uiState.currentPlayer.toPlayerLabel()}'s turn" + if (uiState.isInCheck) " - check!" else "",
+            text = (if (uiState.isHumanTurn) "Your move (White)" else "Computer is thinking…") + if (uiState.isInCheck) " - check!" else "",
             style = MaterialTheme.typography.titleMedium,
             color = if (uiState.isInCheck) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f)
         )
-        if (uiState.isResolving) {
+        if (uiState.isResolving || uiState.isComputerThinking) {
             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
         }
     }
@@ -141,23 +166,29 @@ private val WhitePieceOutline = Color(0xFF2B2B2B)
 private val BlackPieceFill = Color(0xFF2B2B2B)
 private val BlackPieceOutline = Color(0xFFFAFAF2)
 
+/**
+ * The board, from White's side by default; [flipped] shows it from Black's
+ * side (Black's pieces at the bottom), for the Black player online.
+ */
 @Composable
-private fun ChessBoardView(
-    uiState: ChessUiState,
+fun ChessBoard(
+    position: ChessPosition,
+    selectedSquare: Square?,
+    legalTargets: List<Square>,
+    enabled: Boolean,
     onSquareTap: (Square) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    flipped: Boolean = false
 ) {
-    val enabled = uiState.winner == null && !uiState.isDraw && !uiState.isResolving
-
     Column(modifier = modifier.fillMaxWidth().aspectRatio(1f)) {
-        for (row in 7 downTo 0) {
+        for (row in if (flipped) 0..7 else 7 downTo 0) {
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                for (col in 0..7) {
+                for (col in if (flipped) 7 downTo 0 else 0..7) {
                     val square = Square(row, col)
-                    val piece = uiState.position.pieceAt(square)
+                    val piece = position.pieceAt(square)
                     val isDark = (row + col) % 2 == 0
-                    val isSelected = uiState.selectedSquare == square
-                    val isTarget = square in uiState.legalTargets
+                    val isSelected = selectedSquare == square
+                    val isTarget = square in legalTargets
 
                     Box(
                         modifier = Modifier
