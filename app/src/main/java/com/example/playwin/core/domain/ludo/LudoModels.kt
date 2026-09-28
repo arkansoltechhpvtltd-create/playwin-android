@@ -18,6 +18,10 @@ sealed interface BoardCell {
 data class LudoState(
     val tokens: List<Token>,
     val currentPlayerIndex: Int,
+    /** Colors in play, in turn order; [currentPlayerIndex] indexes into this. A 1v1 game uses [LudoEngine.TWO_PLAYER]. */
+    val players: List<LudoColor> = LudoEngine.PLAYER_ORDER,
     val diceValue: Int? = null,
     val hasRolled: Boolean = false
 )
+
+val LudoState.currentColor: LudoColor get() = players[currentPlayerIndex]

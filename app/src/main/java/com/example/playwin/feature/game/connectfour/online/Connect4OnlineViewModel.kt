@@ -8,261 +8,57 @@ import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
 import com.example.playwin.core.domain.model.Room
 import com.example.playwin.core.domain.model.RoomStatus
-import com.example.playwin.core.domain.repository.AuthRepository
-import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
-import com.example.playwin.core.domain.repository.RewardsRepository
-import com.example.playwin.core.domain.repository.RoomConnection
-import com.example.playwin.core.domain.repository.RoomRepository
+import com.example.playwin.feature.game.online.OnlineMatchController
+import com.example.playwin.feature.game.online.OnlineMatchState
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.encodeToJsonElement
 import javax.inject.Inject
 
-private const val POLL_EVERY_SECONDS = 2
-private const val MAX_CONSECUTIVE_POLL_FAILURES = 3
+/** Connect 4's board as stored in the room row: 6 rows of 7 cells, 0 = empty, 1 = host, 2 = guest. */
+fun Room.connect4Board(): List<List<Int>> =
+    runCatching { Json.decodeFromJsonElement<List<List<Int>>>(state) }
+        .getOrNull()
+        ?.takeIf { it.size == Connect4Logic.ROWS }
+        ?: Connect4Logic.emptyBoard()
 
 /**
- * Online multiplayer Connect 4 via random matchmaking only: the player can
- * search for *a* random opponent but never choose *which* one, so two people
- * who know each other can't arrange to play each other. The server pairs
- * queued players into a [Room] (see `supabase/migrations/0002_matchmaking.sql`);
- * this ViewModel then mirrors that room's live state.
- *
- * The room row is the source of truth for whose turn it is - [onColumnClick]
- * optimistically checks locally so the UI feels responsive, but the actual
- * move is only ever accepted by the backend if it's really this player's turn
- * (see `rooms_guard`); a rejected write surfaces as
- * [Connect4OnlineUiState.errorMessage] and the board snaps back to whatever
- * the row says on the next update.
+ * Online Connect 4. Matchmaking, presence and rewards are the shared
+ * [OnlineMatchController]'s job; this ViewModel only turns a column tap into
+ * a new board and asks [GameEngineRepository.resolve] whether it ended the
+ * game. The host is player 1 and moves first.
  */
 @HiltViewModel
 class Connect4OnlineViewModel @Inject constructor(
-    private val roomRepository: RoomRepository,
-    private val authRepository: AuthRepository,
-    private val gameEngineRepository: GameEngineRepository,
-    private val rewardsRepository: RewardsRepository,
-    private val couponsRepository: CouponsRepository
+    controllerFactory: OnlineMatchController.Factory,
+    private val gameEngineRepository: GameEngineRepository
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(Connect4OnlineUiState())
-    val uiState: StateFlow<Connect4OnlineUiState> = _uiState.asStateFlow()
-
-    private val eligibleUserId = CompletableDeferred<String?>()
-    private var searchJob: Job? = null
-    private var connection: RoomConnection? = null
-    private var observeJob: Job? = null
-    private var disconnectJob: Job? = null
-
-    // Cleanup must survive viewModelScope's cancellation, which fires as onCleared() starts.
-    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    init {
-        viewModelScope.launch {
-            val user = authRepository.observeCurrentUser().first()
-            val eligibleId = user?.takeIf { !it.isGuest }?.id
-            _uiState.update { it.copy(canPlayOnline = eligibleId != null, myId = eligibleId) }
-            eligibleUserId.complete(eligibleId)
-        }
-    }
-
-    /** Joins the matchmaking queue and polls until paired, the search times out, or it's cancelled. */
-    fun findRandomPlayer() {
-        val phase = _uiState.value.phase
-        if (phase == Connect4OnlinePhase.SEARCHING || phase == Connect4OnlinePhase.ROOM) return
-
-        _uiState.update { it.copy(phase = Connect4OnlinePhase.SEARCHING, searchSecondsElapsed = 0, errorMessage = null) }
-        searchJob = viewModelScope.launch {
-            val myId = eligibleUserId.await()
-            if (myId == null) {
-                _uiState.update { it.copy(phase = Connect4OnlinePhase.IDLE) }
-                return@launch
-            }
-
-            var consecutiveFailures = 0
-            for (second in 0..MATCHMAKING_TIMEOUT_SECONDS) {
-                _uiState.update { it.copy(searchSecondsElapsed = second) }
-                if (second % POLL_EVERY_SECONDS == 0) {
-                    val result = roomRepository.matchmake(GameId.CONNECT_FOUR)
-                    val room = result.getOrNull()
-                    if (room != null) {
-                        attach(room, myId)
-                        return@launch
-                    }
-                    consecutiveFailures = if (result.isFailure) consecutiveFailures + 1 else 0
-                    if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
-                        roomRepository.cancelMatchmaking(GameId.CONNECT_FOUR)
-                        _uiState.update {
-                            it.copy(
-                                phase = Connect4OnlinePhase.IDLE,
-                                errorMessage = result.exceptionOrNull()?.message ?: "Matchmaking failed"
-                            )
-                        }
-                        return@launch
-                    }
-                }
-                delay(1000)
-            }
-
-            // Timed out. If someone paired with us in this last instant, the
-            // server marks that room abandoned so they aren't left hanging.
-            roomRepository.cancelMatchmaking(GameId.CONNECT_FOUR)
-            _uiState.update { it.copy(phase = Connect4OnlinePhase.NO_OPPONENT_FOUND) }
-        }
-    }
-
-    /** Stops searching and leaves the server-side queue. */
-    fun cancelSearch() {
-        if (_uiState.value.phase != Connect4OnlinePhase.SEARCHING) return
-        val job = searchJob
-        searchJob = null
-        _uiState.update { it.copy(phase = Connect4OnlinePhase.IDLE, searchSecondsElapsed = 0) }
-        cleanupScope.launch {
-            job?.cancelAndJoin()
-            roomRepository.cancelMatchmaking(GameId.CONNECT_FOUR)
-        }
-    }
-
-    /** Leaving the online screen entirely: cancels any search and forfeits any in-progress room. */
-    fun exit() {
-        when (_uiState.value.phase) {
-            Connect4OnlinePhase.SEARCHING -> cancelSearch()
-            Connect4OnlinePhase.ROOM -> leaveRoom()
-            else -> Unit
-        }
-    }
+    val controller = controllerFactory.create(GameId.CONNECT_FOUR, viewModelScope)
+    val uiState: StateFlow<OnlineMatchState> = controller.state
 
     fun onColumnClick(col: Int) {
-        val state = _uiState.value
+        val state = uiState.value
         val room = state.room ?: return
-        val myId = state.myId ?: return
-        val myPlayerNumber = state.myPlayerNumber ?: return
-        if (!state.isMyTurn || state.isResolving) return
+        val me = state.myPlayerNumber ?: return
+        val newBoard = Connect4Logic.placePiece(room.connect4Board(), col, me) ?: return
 
-        val newBoard = Connect4Logic.placePiece(room.board, col, myPlayerNumber) ?: return
-        _uiState.update { it.copy(isResolving = true) }
-
-        viewModelScope.launch {
-            val isBoardFull = Connect4Logic.isBoardFull(newBoard)
+        controller.runMove {
             val outcome = gameEngineRepository.resolve(
                 GameId.CONNECT_FOUR,
-                GameSnapshot.ConnectFour(board = newBoard, lastPlayer = myPlayerNumber, isBoardFull = isBoardFull)
+                GameSnapshot.ConnectFour(board = newBoard, lastPlayer = me, isBoardFull = Connect4Logic.isBoardFull(newBoard))
             )
-            val opponentId = state.opponentId
-            val (nextStatus, nextTurn, winnerId) = when (outcome) {
-                GameOutcome.WIN -> Triple(RoomStatus.FINISHED, null, myId)
-                GameOutcome.DRAW -> Triple(RoomStatus.FINISHED, null, null)
-                GameOutcome.LOSE, GameOutcome.IN_PROGRESS -> Triple(RoomStatus.ACTIVE, opponentId, null)
-            }
-
-            connection?.submitMove(newBoard, nextTurn, nextStatus, winnerId)?.onFailure { e ->
-                _uiState.update { it.copy(errorMessage = e.message ?: "That move wasn't accepted - it may not be your turn") }
-            }
-            _uiState.update { it.copy(isResolving = false) }
-        }
-    }
-
-    /** Deliberate exit from a room: forfeits it if still in progress, then returns to the idle state. */
-    fun leaveRoom() {
-        val room = _uiState.value.room
-        val conn = connection
-        connection = null
-        observeJob?.cancel()
-        disconnectJob?.cancel()
-        disconnectJob = null
-        resetToIdle()
-        cleanupScope.launch {
-            if (room?.status == RoomStatus.ACTIVE) conn?.markAbandoned()
-            conn?.close()
-        }
-    }
-
-    fun dismissError() = _uiState.update { it.copy(errorMessage = null) }
-
-    private fun resetToIdle() {
-        val current = _uiState.value
-        _uiState.value = Connect4OnlineUiState(canPlayOnline = current.canPlayOnline, myId = current.myId)
-    }
-
-    private suspend fun attach(room: Room, myId: String) {
-        connection?.close()
-        val conn = roomRepository.connect(room, myId)
-        connection = conn
-        _uiState.update {
-            it.copy(phase = Connect4OnlinePhase.ROOM, room = room, opponentOnline = false, opponentEverSeen = false)
-        }
-
-        observeJob?.cancel()
-        observeJob = viewModelScope.launch {
-            combine(conn.roomUpdates, conn.presentUserIds) { updatedRoom, present ->
-                updatedRoom to present
-            }.collect { (updatedRoom, present) ->
-                val opponentId = if (updatedRoom.hostId == myId) updatedRoom.guestId else updatedRoom.hostId
-                val opponentOnline = opponentId != null && opponentId in present
-                val alreadyClaimed = _uiState.value.wonCouponId != null
-                _uiState.update {
-                    it.copy(
-                        room = updatedRoom,
-                        opponentOnline = opponentOnline,
-                        opponentEverSeen = it.opponentEverSeen || opponentOnline
-                    )
-                }
-                trackOpponentPresence(conn, updatedRoom, opponentOnline)
-                if (updatedRoom.status == RoomStatus.FINISHED && updatedRoom.winnerId == myId && !alreadyClaimed) {
-                    claimReward()
-                }
+            val encoded = Json.encodeToJsonElement(newBoard)
+            when (outcome) {
+                GameOutcome.WIN -> controller.submitMove(encoded, null, RoomStatus.FINISHED, winnerPlayer = me)
+                GameOutcome.DRAW -> controller.submitMove(encoded, null, RoomStatus.FINISHED)
+                GameOutcome.LOSE, GameOutcome.IN_PROGRESS -> controller.submitMove(encoded, nextTurnPlayer = 3 - me)
             }
         }
     }
 
-    /**
-     * While the game is active and the opponent is absent (never connected, or
-     * dropped), counts down [OPPONENT_DISCONNECT_GRACE_SECONDS]; if they don't
-     * come back in time the room is marked abandoned. Nobody is awarded a win
-     * for a disconnect - that would reward pulling the plug on a losing game.
-     */
-    private fun trackOpponentPresence(conn: RoomConnection, room: Room, opponentOnline: Boolean) {
-        if (room.status != RoomStatus.ACTIVE || opponentOnline) {
-            disconnectJob?.cancel()
-            disconnectJob = null
-            _uiState.update { it.copy(disconnectSecondsLeft = null) }
-            return
-        }
-        if (disconnectJob != null) return
-        disconnectJob = viewModelScope.launch {
-            for (secondsLeft in OPPONENT_DISCONNECT_GRACE_SECONDS downTo 1) {
-                _uiState.update { it.copy(disconnectSecondsLeft = secondsLeft) }
-                delay(1000)
-            }
-            _uiState.update { it.copy(disconnectSecondsLeft = 0) }
-            conn.markAbandoned()
-        }
-    }
-
-    private suspend fun claimReward() {
-        val coupon = rewardsRepository.claimReward(GameId.CONNECT_FOUR)
-        couponsRepository.addCoupon(coupon)
-        _uiState.update { it.copy(wonCouponId = coupon.id) }
-    }
-
-    override fun onCleared() {
-        val conn = connection
-        val wasSearching = _uiState.value.phase == Connect4OnlinePhase.SEARCHING
-        cleanupScope.launch {
-            if (wasSearching) roomRepository.cancelMatchmaking(GameId.CONNECT_FOUR)
-            conn?.close()
-        }
-    }
+    override fun onCleared() = controller.onCleared()
 }

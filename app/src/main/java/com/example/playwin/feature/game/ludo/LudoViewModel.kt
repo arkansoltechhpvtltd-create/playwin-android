@@ -2,8 +2,11 @@ package com.example.playwin.feature.game.ludo
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.playwin.core.domain.ludo.LudoBot
 import com.example.playwin.core.domain.ludo.LudoEngine
+import com.example.playwin.core.domain.ludo.LudoState
 import com.example.playwin.core.domain.ludo.Token
+import com.example.playwin.core.domain.ludo.currentColor
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
@@ -20,13 +23,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+private const val COMPUTER_STEP_MILLIS = 700L
+
 /**
- * Four-player hotseat Ludo. Dice rolls, token movement, captures, and the
- * 6-again rule are all delegated to the pure [LudoEngine] - this ViewModel
- * only tracks whose turn it is and the per-turn timer. The *verdict* on
- * whether a move actually won the game is still confirmed by
- * [GameEngineRepository.resolve], never decided directly here, exactly like
- * every other game.
+ * 1v1 Ludo against the computer: the human is [LUDO_HUMAN] (Red, moves
+ * first), [LudoBot] plays [LUDO_COMPUTER] (Yellow). Dice rolls, token
+ * movement, captures, and the 6-again rule are all delegated to the pure
+ * [LudoEngine]; the *verdict* on whether a move won the game is still
+ * confirmed by [GameEngineRepository.resolve], never decided directly here.
+ * Only a human win claims a reward.
  */
 @HiltViewModel
 class LudoViewModel @Inject constructor(
@@ -39,6 +44,7 @@ class LudoViewModel @Inject constructor(
     val uiState: StateFlow<LudoUiState> = _uiState.asStateFlow()
 
     private var timerJob: Job? = null
+    private var computerJob: Job? = null
 
     init {
         startTimer()
@@ -47,9 +53,27 @@ class LudoViewModel @Inject constructor(
     fun onRollDice() {
         val state = _uiState.value
         if (!state.canRoll) return
-
         timerJob?.cancel()
-        val rolled = LudoEngine.rollDice(state.game)
+        roll(state.game)
+    }
+
+    fun onTokenTap(token: Token) {
+        val state = _uiState.value
+        if (state.winner != null || state.isResolving || state.game.currentColor != LUDO_HUMAN) return
+        if (state.movableTokens.none { it.color == token.color && it.index == token.index }) return
+        timerJob?.cancel()
+        move(state.game, token)
+    }
+
+    fun onPlayAgain() {
+        timerJob?.cancel()
+        computerJob?.cancel()
+        _uiState.value = LudoUiState()
+        startTimer()
+    }
+
+    private fun roll(game: LudoState) {
+        val rolled = LudoEngine.rollDice(game)
         val movable = LudoEngine.movableTokens(rolled)
 
         if (movable.isEmpty()) {
@@ -57,31 +81,23 @@ class LudoViewModel @Inject constructor(
             viewModelScope.launch {
                 delay(400) // let the rolled value render briefly before the turn moves on
                 val passed = LudoEngine.passTurn(rolled)
-                _uiState.update {
-                    it.copy(
-                        game = passed,
-                        movableTokens = emptyList(),
-                        isResolving = false,
-                        secondsLeft = LUDO_TURN_SECONDS,
-                        lastTurnTimedOut = false
-                    )
-                }
-                startTimer()
+                _uiState.update { it.copy(game = passed, isResolving = false, lastTurnTimedOut = false) }
+                startTurn(passed)
             }
-        } else {
+        } else if (rolled.currentColor == LUDO_HUMAN) {
             _uiState.update { it.copy(game = rolled, movableTokens = movable) }
+        } else {
+            _uiState.update { it.copy(game = rolled, movableTokens = emptyList()) }
+            computerJob = viewModelScope.launch {
+                delay(COMPUTER_STEP_MILLIS)
+                LudoBot.chooseToken(rolled)?.let { move(rolled, it) }
+            }
         }
     }
 
-    fun onTokenTap(token: Token) {
-        val state = _uiState.value
-        if (state.winner != null || state.isResolving) return
-        if (state.movableTokens.none { it.color == token.color && it.index == token.index }) return
-
-        timerJob?.cancel()
+    private fun move(game: LudoState, token: Token) {
         val mover = token.color
-        val newGame = LudoEngine.applyMove(state.game, token.color, token.index)
-
+        val newGame = LudoEngine.applyMove(game, token.color, token.index)
         _uiState.update { it.copy(game = newGame, movableTokens = emptyList(), isResolving = true) }
 
         viewModelScope.launch {
@@ -91,25 +107,33 @@ class LudoViewModel @Inject constructor(
             when (outcome) {
                 GameOutcome.WIN -> {
                     _uiState.update { it.copy(winner = mover, isResolving = false) }
-                    val coupon = rewardsRepository.claimReward(GameId.LUDO)
-                    couponsRepository.addCoupon(coupon)
-                    _uiState.update { it.copy(wonCouponId = coupon.id) }
+                    if (mover == LUDO_HUMAN) {
+                        val coupon = rewardsRepository.claimReward(GameId.LUDO)
+                        couponsRepository.addCoupon(coupon)
+                        _uiState.update { it.copy(wonCouponId = coupon.id) }
+                    }
                 }
 
                 GameOutcome.LOSE, GameOutcome.DRAW, GameOutcome.IN_PROGRESS -> {
-                    _uiState.update {
-                        it.copy(isResolving = false, secondsLeft = LUDO_TURN_SECONDS, lastTurnTimedOut = false)
-                    }
-                    startTimer()
+                    _uiState.update { it.copy(isResolving = false, lastTurnTimedOut = false) }
+                    startTurn(newGame)
                 }
             }
         }
     }
 
-    fun onPlayAgain() {
-        timerJob?.cancel()
-        _uiState.value = LudoUiState()
-        startTimer()
+    /** Hands the next turn to whoever [game] says is up: the human gets a timer, the computer just plays. */
+    private fun startTurn(game: LudoState) {
+        if (game.currentColor == LUDO_HUMAN) {
+            startTimer()
+        } else {
+            timerJob?.cancel()
+            computerJob?.cancel()
+            computerJob = viewModelScope.launch {
+                delay(COMPUTER_STEP_MILLIS)
+                roll(game)
+            }
+        }
     }
 
     private fun startTimer() {
@@ -119,21 +143,17 @@ class LudoViewModel @Inject constructor(
                 _uiState.update { it.copy(secondsLeft = secondsLeft) }
                 delay(1000)
             }
-            // Timed out: force the turn to the next player without a roll or move.
+            // Timed out: the human's turn passes to the computer without a roll or move.
             val forced = LudoEngine.forcePassTurn(_uiState.value.game)
             _uiState.update {
-                it.copy(
-                    game = forced,
-                    movableTokens = emptyList(),
-                    secondsLeft = LUDO_TURN_SECONDS,
-                    lastTurnTimedOut = true
-                )
+                it.copy(game = forced, movableTokens = emptyList(), secondsLeft = LUDO_TURN_SECONDS, lastTurnTimedOut = true)
             }
-            startTimer()
+            startTurn(forced)
         }
     }
 
     override fun onCleared() {
         timerJob?.cancel()
+        computerJob?.cancel()
     }
 }

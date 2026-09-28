@@ -32,6 +32,8 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
 import javax.inject.Inject
@@ -48,7 +50,7 @@ private data class MatchmakeParams(@SerialName("p_game_id") val gameId: String)
 
 @Serializable
 private data class RoomMoveUpdate(
-    @SerialName("board_state") val boardState: List<List<Int>>,
+    @SerialName("board_state") val boardState: JsonElement,
     @SerialName("current_turn") val currentTurn: String?,
     val status: String,
     @SerialName("winner_id") val winnerId: String?
@@ -64,7 +66,7 @@ private data class RoomRow(
     @SerialName("guest_id") val guestId: String? = null,
     val status: String,
     @SerialName("current_turn") val currentTurn: String? = null,
-    @SerialName("board_state") val boardState: List<List<Int>> = emptyList(),
+    @SerialName("board_state") val boardState: JsonElement = JsonObject(emptyMap()),
     @SerialName("winner_id") val winnerId: String? = null
 ) {
     fun toDomain(): Room = Room(
@@ -73,7 +75,7 @@ private data class RoomRow(
         guestId = guestId,
         status = runCatching { RoomStatus.valueOf(status.uppercase()) }.getOrDefault(RoomStatus.ABANDONED),
         currentTurn = currentTurn,
-        board = boardState,
+        state = boardState,
         winnerId = winnerId
     )
 }
@@ -170,14 +172,14 @@ private class SupabaseRoomConnectionImpl(
     }
 
     override suspend fun submitMove(
-        board: List<List<Int>>,
+        state: JsonElement,
         nextTurn: String?,
         status: RoomStatus,
         winnerId: String?
     ): Result<Unit> = try {
         supabaseClient.from(TABLE).update(
             RoomMoveUpdate(
-                boardState = board,
+                boardState = state,
                 currentTurn = nextTurn,
                 status = status.name.lowercase(),
                 winnerId = winnerId

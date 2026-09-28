@@ -4,13 +4,14 @@ import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.Room
 import com.example.playwin.core.domain.model.RoomStatus
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.json.JsonElement
 
 /**
  * Random matchmaking into online-multiplayer rooms. There is deliberately no
  * way to create a room or name an opponent: the server pairs whoever is
  * waiting, so two players who know each other can't choose to play each
- * other. Today only Connect 4 uses this, but nothing here is Connect-4-specific
- * beyond [Room.board]'s shape - a second online game can reuse it.
+ * other. Nothing here is game-specific - each game stores its own board
+ * shape in [Room.state].
  *
  * Today [com.example.playwin.core.data.remote.SupabaseRoomRepository] is the
  * only implementation, and it requires a real (non-guest) signed-in user,
@@ -47,7 +48,7 @@ interface RoomConnection {
      * this player's turn, which is the point: the row decides, not the client.
      */
     suspend fun submitMove(
-        board: List<List<Int>>,
+        state: JsonElement,
         nextTurn: String?,
         status: RoomStatus,
         winnerId: String?

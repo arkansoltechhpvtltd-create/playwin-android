@@ -39,10 +39,34 @@ import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import com.example.playwin.core.domain.ludo.LudoColor
 import com.example.playwin.core.domain.ludo.LudoEngine
+import com.example.playwin.core.domain.ludo.LudoState
+import com.example.playwin.feature.game.ludo.online.LudoOnlineRoute
+import com.example.playwin.feature.game.online.GameModeSelectScreen
+import com.example.playwin.feature.game.online.PlayMode
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.example.playwin.core.domain.ludo.Token
 
 @Composable
 fun LudoRoute(
+    onBack: () -> Unit,
+    onWin: (couponId: String) -> Unit
+) {
+    var mode by remember { mutableStateOf<PlayMode?>(null) }
+    when (mode) {
+        null -> GameModeSelectScreen(title = "Ludo", onBack = onBack, onSelectMode = { mode = it })
+        PlayMode.COMPUTER -> LudoComputerRoute(onBack = { mode = null }, onWin = onWin)
+        PlayMode.ONLINE -> LudoOnlineRoute(
+            onBack = { mode = null },
+            onWin = onWin,
+            onPlayComputer = { mode = PlayMode.COMPUTER }
+        )
+    }
+}
+
+@Composable
+private fun LudoComputerRoute(
     onBack: () -> Unit,
     onWin: (couponId: String) -> Unit,
     viewModel: LudoViewModel = hiltViewModel()
@@ -74,7 +98,7 @@ fun LudoScreen(
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { PwTopBar(title = "Ludo", onBack = onBack) }
+        topBar = { PwTopBar(title = "Ludo · vs Computer", onBack = onBack) }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -85,7 +109,7 @@ fun LudoScreen(
         ) {
             if (uiState.winner != null) {
                 Text(
-                    text = "${uiState.winner.label()} wins! Claiming your coupon…",
+                    text = if (uiState.winner == LUDO_HUMAN) "You win! Claiming your coupon…" else "The computer wins this round",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -93,8 +117,9 @@ fun LudoScreen(
                 TurnBanner(uiState)
             }
 
-            LudoBoardView(
-                uiState = uiState,
+            LudoBoard(
+                game = uiState.game,
+                movableTokens = uiState.movableTokens,
                 onTokenTap = onTokenTap,
                 modifier = Modifier.padding(top = 16.dp)
             )
@@ -116,21 +141,21 @@ fun LudoScreen(
                 }
             }
 
-            if (uiState.winner != null) {
+            if (uiState.winner == LUDO_COMPUTER) {
                 PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 12.dp))
             }
         }
     }
 }
 
-private fun LudoColor.label(): String = when (this) {
+internal fun LudoColor.label(): String = when (this) {
     LudoColor.RED -> "Red"
     LudoColor.GREEN -> "Green"
     LudoColor.YELLOW -> "Yellow"
     LudoColor.BLUE -> "Blue"
 }
 
-private fun colorFor(color: LudoColor): Color = when (color) {
+internal fun colorFor(color: LudoColor): Color = when (color) {
     LudoColor.RED -> Color(0xFFE53935)
     LudoColor.GREEN -> Color(0xFF43A047)
     LudoColor.YELLOW -> Color(0xFFFDD835)
@@ -141,7 +166,7 @@ private fun colorFor(color: LudoColor): Color = when (color) {
 private fun TurnBanner(uiState: LudoUiState, modifier: Modifier = Modifier) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(
-            text = "${uiState.currentColor.label()}'s turn" + if (uiState.lastTurnTimedOut) " (previous turn timed out)" else "",
+            text = (if (uiState.isHumanTurn) "Your turn (Red)" else "Computer's turn (Yellow)") + if (uiState.lastTurnTimedOut) " (previous turn timed out)" else "",
             style = MaterialTheme.typography.titleMedium,
             color = colorFor(uiState.currentColor),
             modifier = Modifier.weight(1f)
@@ -194,8 +219,9 @@ private fun cellFor(token: Token): Pair<Int, Int> = when {
 }
 
 @Composable
-private fun LudoBoardView(
-    uiState: LudoUiState,
+fun LudoBoard(
+    game: LudoState,
+    movableTokens: List<Token>,
     onTokenTap: (Token) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -203,10 +229,10 @@ private fun LudoBoardView(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .pointerInput(uiState.movableTokens) {
+            .pointerInput(movableTokens) {
                 detectTapGestures { offset ->
                     val cell = size.width / GRID.toFloat()
-                    val hit = uiState.movableTokens.minByOrNull { token ->
+                    val hit = movableTokens.minByOrNull { token ->
                         val (row, col) = cellFor(token)
                         val center = Offset((col + 0.5f) * cell, (row + 0.5f) * cell)
                         (center - offset).getDistance()
@@ -250,9 +276,9 @@ private fun LudoBoardView(
             }
         }
 
-        for (token in uiState.game.tokens) {
+        for (token in game.tokens) {
             val (row, col) = cellFor(token)
-            val isMovable = uiState.movableTokens.any { it.color == token.color && it.index == token.index }
+            val isMovable = movableTokens.any { it.color == token.color && it.index == token.index }
             drawCircle(color = colorFor(token.color), radius = cell * 0.32f, center = centerOf(row, col))
             drawCircle(
                 color = Color.Black.copy(alpha = 0.35f),

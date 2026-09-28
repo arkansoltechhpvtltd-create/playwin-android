@@ -1,5 +1,7 @@
 package com.example.playwin.core.domain.model
 
+import kotlinx.serialization.json.JsonElement
+
 /** Lifecycle of an online-multiplayer room row. */
 enum class RoomStatus {
     /** Legacy state from the old code-sharing flow; matchmaking only ever creates [ACTIVE] rooms. */
@@ -29,6 +31,7 @@ data class Room(
     val guestId: String?,
     val status: RoomStatus,
     val currentTurn: String?,
-    val board: List<List<Int>>,
+    /** The game-specific board state, exactly as stored in `rooms.board_state`; each game decodes its own shape. */
+    val state: JsonElement,
     val winnerId: String?
 )

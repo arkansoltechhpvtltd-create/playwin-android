@@ -41,8 +41,8 @@ import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import com.example.playwin.feature.game.connectfour.online.Connect4OnlineRoute
-
-private enum class Connect4Mode { COMPUTER, ONLINE }
+import com.example.playwin.feature.game.online.GameModeSelectScreen
+import com.example.playwin.feature.game.online.PlayMode
 
 /** Entry point for Connect 4: play the computer, or get paired with a random online player. */
 @Composable
@@ -50,45 +50,15 @@ fun Connect4Route(
     onBack: () -> Unit,
     onWin: (couponId: String) -> Unit
 ) {
-    var mode by remember { mutableStateOf<Connect4Mode?>(null) }
+    var mode by remember { mutableStateOf<PlayMode?>(null) }
     when (mode) {
-        null -> Connect4ModeSelectScreen(
-            onBack = onBack,
-            onSelectComputer = { mode = Connect4Mode.COMPUTER },
-            onSelectOnline = { mode = Connect4Mode.ONLINE }
-        )
-        Connect4Mode.COMPUTER -> Connect4ComputerRoute(onBack = { mode = null }, onWin = onWin)
-        Connect4Mode.ONLINE -> Connect4OnlineRoute(
+        null -> GameModeSelectScreen(title = "Connect 4", onBack = onBack, onSelectMode = { mode = it })
+        PlayMode.COMPUTER -> Connect4ComputerRoute(onBack = { mode = null }, onWin = onWin)
+        PlayMode.ONLINE -> Connect4OnlineRoute(
             onBack = { mode = null },
             onWin = onWin,
-            onPlayComputer = { mode = Connect4Mode.COMPUTER }
+            onPlayComputer = { mode = PlayMode.COMPUTER }
         )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun Connect4ModeSelectScreen(
-    onBack: () -> Unit,
-    onSelectComputer: () -> Unit,
-    onSelectOnline: () -> Unit
-) {
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = { PwTopBar(title = "Connect 4", onBack = onBack) }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(text = "How do you want to play?", style = MaterialTheme.typography.titleLarge)
-            PrimaryButton(text = "Play vs Computer", onClick = onSelectComputer, modifier = Modifier.padding(top = 24.dp))
-            PrimaryButton(text = "Find a random player", onClick = onSelectOnline, modifier = Modifier.padding(top = 12.dp))
-        }
     }
 }
 

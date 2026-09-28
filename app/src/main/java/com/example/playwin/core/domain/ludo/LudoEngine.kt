@@ -16,6 +16,9 @@ object LudoEngine {
 
     val PLAYER_ORDER = listOf(LudoColor.RED, LudoColor.GREEN, LudoColor.YELLOW, LudoColor.BLUE)
 
+    /** The classic 1v1 setup: opposite corners, Red moves first. Used by vs-Computer and online play. */
+    val TWO_PLAYER = listOf(LudoColor.RED, LudoColor.YELLOW)
+
     /** The 4 entry squares plus the 4 "star" squares 8 cells after each entry - the classic 8 safe cells. */
     val SAFE_GLOBAL_INDICES: Set<Int> = PLAYER_ORDER.flatMap { color ->
         val start = startIndexFor(color)
@@ -36,9 +39,10 @@ object LudoEngine {
             BoardCell.HomeColumn(color, localPosition - PLAYER_PATH_LENGTH)
         }
 
-    fun initialState(): LudoState = LudoState(
-        tokens = PLAYER_ORDER.flatMap { color -> (0 until TOKENS_PER_COLOR).map { Token(color, it, IN_BASE) } },
-        currentPlayerIndex = 0
+    fun initialState(players: List<LudoColor> = PLAYER_ORDER): LudoState = LudoState(
+        tokens = players.flatMap { color -> (0 until TOKENS_PER_COLOR).map { Token(color, it, IN_BASE) } },
+        currentPlayerIndex = 0,
+        players = players
     )
 
     fun rollDice(state: LudoState): LudoState = state.copy(diceValue = (1..6).random(), hasRolled = true)
@@ -50,7 +54,7 @@ object LudoEngine {
 
     fun movableTokens(state: LudoState): List<Token> {
         val dice = state.diceValue ?: return emptyList()
-        val color = PLAYER_ORDER[state.currentPlayerIndex]
+        val color = state.currentColor
         return state.tokens.filter { it.color == color && canMove(it, dice) }
     }
 
@@ -76,13 +80,13 @@ object LudoEngine {
             }
         }
 
-        val nextPlayerIndex = if (dice == 6) state.currentPlayerIndex else (state.currentPlayerIndex + 1) % PLAYER_ORDER.size
+        val nextPlayerIndex = if (dice == 6) state.currentPlayerIndex else (state.currentPlayerIndex + 1) % state.players.size
         return state.copy(tokens = newTokens, diceValue = null, hasRolled = false, currentPlayerIndex = nextPlayerIndex)
     }
 
     /** Called when a roll leaves the current player with no legal move at all. */
     fun passTurn(state: LudoState): LudoState {
-        val nextPlayerIndex = if (state.diceValue == 6) state.currentPlayerIndex else (state.currentPlayerIndex + 1) % PLAYER_ORDER.size
+        val nextPlayerIndex = if (state.diceValue == 6) state.currentPlayerIndex else (state.currentPlayerIndex + 1) % state.players.size
         return state.copy(diceValue = null, hasRolled = false, currentPlayerIndex = nextPlayerIndex)
     }
 
@@ -90,7 +94,7 @@ object LudoEngine {
     fun forcePassTurn(state: LudoState): LudoState = state.copy(
         diceValue = null,
         hasRolled = false,
-        currentPlayerIndex = (state.currentPlayerIndex + 1) % PLAYER_ORDER.size
+        currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.size
     )
 
     fun hasAllTokensHome(positions: List<Int>): Boolean =
