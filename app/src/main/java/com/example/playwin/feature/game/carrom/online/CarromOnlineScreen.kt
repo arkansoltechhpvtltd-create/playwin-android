@@ -8,7 +8,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.feature.game.carrom.CarromBoardView
-import com.example.playwin.feature.game.carrom.PhysicsFrameClock
+import com.example.playwin.feature.game.PhysicsFrameClock
 import com.example.playwin.feature.game.carrom.ScoreLegend
 import com.example.playwin.feature.game.carrom.TurnBanner
 import com.example.playwin.feature.game.online.OnlineMatchEffects

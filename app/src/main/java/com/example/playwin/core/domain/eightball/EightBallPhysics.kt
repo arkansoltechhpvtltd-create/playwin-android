@@ -1,4 +1,4 @@
-package com.example.playwin.feature.game.eightball
+package com.example.playwin.core.domain.eightball
 
 import kotlin.math.ceil
 import kotlin.math.max
@@ -60,6 +60,29 @@ object EightBallPhysics {
     private const val BALL_RESTITUTION = 0.98f
     private const val SUBSTEP_DT = 1f / 240f
     const val MAX_SHOT_SPEED = 1400f
+
+    /** How long [simulate] lets a shot run before calling it settled, as a guard against a never-quite-stopping table. */
+    private const val MAX_SIMULATED_SECONDS = 12f
+    private const val SIMULATION_FRAME = 1f / 60f
+
+    /**
+     * Runs a shot to completion off-screen in fixed 1/60s frames and returns
+     * where every ball came to rest plus every ball pocketed along the way.
+     * Used by [EightBallBot] to try shots before committing to one.
+     */
+    fun simulate(balls: List<Ball>): PhysicsStepResult {
+        var current = balls
+        val pocketed = mutableListOf<Int>()
+        var elapsed = 0f
+        while (elapsed < MAX_SIMULATED_SECONDS) {
+            val result = step(current, SIMULATION_FRAME)
+            current = result.balls
+            pocketed += result.newlyPocketed
+            elapsed += SIMULATION_FRAME
+            if (!result.anyMoving) return PhysicsStepResult(current, pocketed, anyMoving = false)
+        }
+        return PhysicsStepResult(current.map { if (it.pocketed) it else it.copy(velocity = Vec2.Zero) }, pocketed, anyMoving = false)
+    }
 
     fun step(balls: List<Ball>, dtSeconds: Float): PhysicsStepResult {
         val clampedDt = min(dtSeconds, 1f / 30f).coerceAtLeast(0f)

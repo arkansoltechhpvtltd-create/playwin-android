@@ -10,25 +10,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -48,10 +41,37 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
-import kotlinx.coroutines.isActive
+import com.example.playwin.core.domain.eightball.Ball
+import com.example.playwin.core.domain.eightball.BallGroup
+import com.example.playwin.core.domain.eightball.CUE_BALL_ID
+import com.example.playwin.core.domain.eightball.EightBallTable
+import com.example.playwin.core.domain.eightball.Vec2
+import com.example.playwin.core.domain.eightball.ballGroupOf
+import com.example.playwin.feature.game.PhysicsFrameClock
+import com.example.playwin.feature.game.eightball.online.EightBallOnlineRoute
+import com.example.playwin.feature.game.online.GameModeSelectScreen
+import com.example.playwin.feature.game.online.PlayMode
 
+/** Entry point for 8-Ball: play the computer, or get paired with a random online player. */
 @Composable
 fun EightBallRoute(
+    onBack: () -> Unit,
+    onWin: (couponId: String) -> Unit
+) {
+    var mode by remember { mutableStateOf<PlayMode?>(null) }
+    when (mode) {
+        null -> GameModeSelectScreen(title = "8-Ball", onBack = onBack, onSelectMode = { mode = it })
+        PlayMode.COMPUTER -> EightBallComputerRoute(onBack = { mode = null }, onWin = onWin)
+        PlayMode.ONLINE -> EightBallOnlineRoute(
+            onBack = { mode = null },
+            onWin = onWin,
+            onPlayComputer = { mode = PlayMode.COMPUTER }
+        )
+    }
+}
+
+@Composable
+private fun EightBallComputerRoute(
     onBack: () -> Unit,
     onWin: (couponId: String) -> Unit,
     viewModel: EightBallViewModel = hiltViewModel()
@@ -62,21 +82,7 @@ fun EightBallRoute(
         uiState.wonCouponId?.let(onWin)
     }
 
-    // Drives the physics simulation from the screen's own frame clock, independent
-    // of the 20s turn timer (which lives in the ViewModel and simply pauses
-    // while isBallsMoving is true).
-    LaunchedEffect(Unit) {
-        var lastFrameTimeNanos = 0L
-        while (isActive) {
-            withFrameNanos { frameTimeNanos ->
-                if (lastFrameTimeNanos != 0L) {
-                    val dtSeconds = (frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000f
-                    viewModel.onPhysicsTick(dtSeconds)
-                }
-                lastFrameTimeNanos = frameTimeNanos
-            }
-        }
-    }
+    PhysicsFrameClock(onTick = viewModel::onPhysicsTick)
 
     EightBallScreen(
         uiState = uiState,
@@ -97,7 +103,7 @@ fun EightBallScreen(
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { PwTopBar(title = "8-Ball", onBack = onBack) }
+        topBar = { PwTopBar(title = "8-Ball · vs Computer", onBack = onBack) }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -106,26 +112,34 @@ fun EightBallScreen(
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            when {
-                uiState.winner != null -> StatusBanner(
-                    text = if (uiState.fouled) {
-                        "Player ${uiState.winner} wins on a foul! Claiming your coupon…"
-                    } else {
-                        "Player ${uiState.winner} wins! Claiming your coupon…"
-                    }
+            val foul = if (uiState.endedOnFoul) " on a foul" else ""
+            when (uiState.winner) {
+                EIGHT_BALL_HUMAN -> StatusBanner(text = "You win$foul! Claiming your coupon…")
+                EIGHT_BALL_COMPUTER -> StatusBanner(text = "The computer wins$foul")
+                else -> TurnBanner(
+                    text = when {
+                        uiState.isComputerThinking -> "Computer is lining up a shot…"
+                        uiState.currentPlayer == EIGHT_BALL_HUMAN -> "Your shot - drag back from the cue ball"
+                        else -> "Computer's shot"
+                    } + buildString {
+                        if (uiState.lastTurnTimedOut) append(" (previous turn timed out)")
+                        if (uiState.fouled) append(" (scratch on previous shot)")
+                    },
+                    secondsLeft = uiState.secondsLeft.takeIf { uiState.currentPlayer == EIGHT_BALL_HUMAN },
+                    isBusy = uiState.isBallsMoving || uiState.isResolving || uiState.isComputerThinking
                 )
-                else -> TurnBanner(uiState)
             }
 
             PoolTable(
-                uiState = uiState,
+                balls = uiState.balls,
+                canAim = uiState.canAim,
                 onShoot = onShoot,
                 modifier = Modifier.padding(top = 16.dp)
             )
 
-            GroupLegend(uiState = uiState, modifier = Modifier.padding(top = 12.dp))
+            GroupLegend(myGroup = uiState.playerGroups[EIGHT_BALL_HUMAN], modifier = Modifier.padding(top = 12.dp))
 
-            if (uiState.winner != null) {
+            if (uiState.winner == EIGHT_BALL_COMPUTER) {
                 PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
             }
         }
@@ -133,33 +147,25 @@ fun EightBallScreen(
 }
 
 @Composable
-private fun TurnBanner(uiState: EightBallUiState, modifier: Modifier = Modifier) {
+fun TurnBanner(text: String, secondsLeft: Int?, isBusy: Boolean, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        val group = uiState.playerGroups[uiState.currentPlayer]
-        val groupLabel = when (group) {
-            BallGroup.SOLIDS -> " (solids)"
-            BallGroup.STRIPES -> " (stripes)"
-            null -> ""
-        }
-        Text(
-            text = "Player ${uiState.currentPlayer}'s turn$groupLabel" +
-                if (uiState.lastTurnTimedOut) " (previous turn timed out)" else "",
-            style = MaterialTheme.typography.titleMedium
-        )
+        Text(text = text, style = MaterialTheme.typography.titleMedium)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            LinearProgressIndicator(
-                progress = { uiState.secondsLeft / EIGHT_BALL_TURN_SECONDS.toFloat() },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 8.dp)
-            )
-            Text(text = "${uiState.secondsLeft}s", style = MaterialTheme.typography.labelLarge)
-            if (uiState.isBallsMoving || uiState.isResolving) {
+            if (secondsLeft != null) {
+                LinearProgressIndicator(
+                    progress = { secondsLeft / EIGHT_BALL_TURN_SECONDS.toFloat() },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
+                )
+                Text(text = "${secondsLeft}s", style = MaterialTheme.typography.labelLarge)
+            }
+            if (isBusy) {
                 CircularProgressIndicator(
                     modifier = Modifier
                         .padding(start = 8.dp)
@@ -177,13 +183,11 @@ private fun StatusBanner(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun GroupLegend(uiState: EightBallUiState, modifier: Modifier = Modifier) {
+fun GroupLegend(myGroup: BallGroup?, modifier: Modifier = Modifier) {
     Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-        val p1Group = uiState.playerGroups[1]
-        val p2Group = uiState.playerGroups[2]
-        val text = when {
-            p1Group == null -> "Table open - first pot picks your group"
-            else -> "Player 1: ${p1Group.name.lowercase()} · Player 2: ${p2Group?.name?.lowercase()}"
+        val text = when (myGroup) {
+            null -> "Table open - first pot picks your group"
+            else -> "You: ${myGroup.name.lowercase()} · then sink the 8"
         }
         Text(text = text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -207,9 +211,11 @@ private val ballColors = mapOf(
 
 private fun colorForBall(id: Int): Color = ballColors[id] ?: ballColors.getValue(id - 8)
 
+/** The table. Drag back from the cue ball to aim; release to shoot. */
 @Composable
-private fun PoolTable(
-    uiState: EightBallUiState,
+fun PoolTable(
+    balls: List<Ball>,
+    canAim: Boolean,
     onShoot: (Vec2, Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -217,7 +223,7 @@ private fun PoolTable(
     var dragCurrent by remember { mutableStateOf<Offset?>(null) }
 
     val scale = if (canvasSize.width > 0) canvasSize.width / EightBallTable.WIDTH else 0f
-    val cueBall = uiState.balls.firstOrNull { it.id == 0 && !it.pocketed }
+    val cueBall = balls.firstOrNull { it.id == CUE_BALL_ID && !it.pocketed }
     val cueScreenPos = cueBall?.let { Offset(it.position.x * scale, it.position.y * scale) }
 
     val maxDragPx = canvasSize.width * 0.4f
@@ -228,8 +234,8 @@ private fun PoolTable(
             .fillMaxWidth()
             .aspectRatio(2f)
             .onSizeChanged { canvasSize = it }
-            .pointerInput(uiState.canAim) {
-                if (!uiState.canAim) return@pointerInput
+            .pointerInput(canAim, cueScreenPos) {
+                if (!canAim) return@pointerInput
                 detectDragGestures(
                     onDragStart = { offset -> dragCurrent = offset },
                     onDrag = { change, _ -> dragCurrent = change.position },
@@ -261,13 +267,13 @@ private fun PoolTable(
             drawCircle(color = PocketBlack, radius = pocketRadius, center = toScreen(corner))
         }
 
-        uiState.balls.filterNot { it.pocketed }.forEach { ball ->
+        balls.filterNot { it.pocketed }.forEach { ball ->
             drawBall(ball, toScreen(ball.position), EightBallTable.BALL_RADIUS * s)
         }
 
         val start = cueScreenPos
         val end = dragCurrent
-        if (start != null && end != null && uiState.canAim) {
+        if (start != null && end != null && canAim) {
             val pullDistance = (end - start).getDistance()
             val power = if (maxDragPx > 0f) (pullDistance / maxDragPx).coerceIn(0f, 1f) else 0f
             val direction = Vec2(start.x - end.x, start.y - end.y).normalizedOrZero()

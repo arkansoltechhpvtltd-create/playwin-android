@@ -2,6 +2,12 @@ package com.example.playwin.feature.game.eightball
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.playwin.core.domain.eightball.CUE_BALL_ID
+import com.example.playwin.core.domain.eightball.EightBallBot
+import com.example.playwin.core.domain.eightball.EightBallPhysics
+import com.example.playwin.core.domain.eightball.EightBallRules
+import com.example.playwin.core.domain.eightball.EightBallShotOutcome
+import com.example.playwin.core.domain.eightball.Vec2
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
@@ -9,6 +15,7 @@ import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,14 +23,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
+private const val COMPUTER_MIN_THINK_MILLIS = 700L
+
 /**
- * Two-player hotseat 8-ball. This ViewModel owns table *mechanics* - ball
- * physics, whose turn it is, group assignment, the per-turn timer - but the
- * *verdict* on whether pocketing the 8-ball actually won or lost the round
- * always comes from [GameEngineRepository.resolve], never decided locally
- * in the UI, exactly like Connect 4 and 2048.
+ * 8-ball against the computer: the human is [EIGHT_BALL_HUMAN] and breaks,
+ * [EightBallBot] plays [EIGHT_BALL_COMPUTER]. Ball physics runs frame by
+ * frame from the screen's clock; groups and turn order come from
+ * [EightBallRules]; the *verdict* on whether sinking the 8 won or lost
+ * always comes from [GameEngineRepository.resolve], never decided locally.
+ * Only a human win claims a reward.
  */
 @HiltViewModel
 class EightBallViewModel @Inject constructor(
@@ -36,6 +47,7 @@ class EightBallViewModel @Inject constructor(
     val uiState: StateFlow<EightBallUiState> = _uiState.asStateFlow()
 
     private var timerJob: Job? = null
+    private var computerJob: Job? = null
 
     // Accumulated across every physics tick of the current shot, since a ball
     // can be pocketed on any frame while the balls are rolling.
@@ -46,20 +58,8 @@ class EightBallViewModel @Inject constructor(
     }
 
     fun onShoot(direction: Vec2, power: Float) {
-        val state = _uiState.value
-        if (!state.canAim) return
-        if (state.balls.none { it.id == 0 && !it.pocketed }) return
-
-        timerJob?.cancel()
-        pocketedThisShot.clear()
-
-        val speed = EightBallPhysics.MAX_SHOT_SPEED * power.coerceIn(0f, 1f)
-        val aimedBalls = state.balls.map {
-            if (it.id == 0) it.copy(velocity = direction.normalizedOrZero() * speed) else it
-        }
-        _uiState.update {
-            it.copy(balls = aimedBalls, isBallsMoving = true, fouled = false, lastTurnTimedOut = false)
-        }
+        if (!_uiState.value.canAim) return
+        shoot(direction, power)
     }
 
     /** Advances the table by one rendered frame; called from the screen's own frame clock. */
@@ -74,115 +74,88 @@ class EightBallViewModel @Inject constructor(
             _uiState.update { it.copy(balls = result.balls) }
         } else {
             _uiState.update { it.copy(balls = result.balls, isBallsMoving = false, isResolving = true) }
-            resolveShot(result.balls)
+            resolveShot(EightBallRules.resolveShot(state.match, result.balls, pocketedThisShot.toList()))
         }
-    }
-
-    private fun resolveShot(balls: List<Ball>) {
-        val state = _uiState.value
-        val potted = pocketedThisShot.toList()
-        val scratched = potted.contains(0)
-
-        var groups = state.playerGroups
-        if (groups.isEmpty()) {
-            val firstGroupBall = potted.firstOrNull { it != 0 && it != 8 }
-            val group = firstGroupBall?.let(::ballGroupOf)
-            if (group != null) {
-                val opponent = if (state.currentPlayer == 1) 2 else 1
-                groups = mapOf(state.currentPlayer to group, opponent to group.other())
-            }
-        }
-
-        val shooterGroup = groups[state.currentPlayer]
-        val eightBallPocketed = potted.contains(8)
-        val shooterClearedGroup = shooterGroup != null &&
-            balls.filter { ballGroupOf(it.id) == shooterGroup }.all { it.pocketed }
-
-        // A scratched cue ball is respotted for the next shot.
-        val settledBalls = if (scratched) {
-            balls.map {
-                if (it.id == 0) {
-                    it.copy(position = Vec2(EightBallTable.CUE_START_X, EightBallTable.CENTER_Y), velocity = Vec2.Zero, pocketed = false)
-                } else {
-                    it
-                }
-            }
-        } else {
-            balls
-        }
-
-        viewModelScope.launch {
-            val outcome = gameEngineRepository.resolve(
-                GameId.EIGHT_BALL,
-                GameSnapshot.EightBall(
-                    shooterClearedGroup = shooterClearedGroup,
-                    eightBallPocketed = eightBallPocketed,
-                    scratched = scratched
-                )
-            )
-
-            when (outcome) {
-                GameOutcome.WIN -> {
-                    _uiState.update {
-                        it.copy(
-                            balls = settledBalls,
-                            playerGroups = groups,
-                            winner = state.currentPlayer,
-                            isResolving = false
-                        )
-                    }
-                    awardCoupon()
-                }
-
-                GameOutcome.LOSE -> {
-                    val winner = if (state.currentPlayer == 1) 2 else 1
-                    _uiState.update {
-                        it.copy(
-                            balls = settledBalls,
-                            playerGroups = groups,
-                            winner = winner,
-                            fouled = true,
-                            isResolving = false
-                        )
-                    }
-                    awardCoupon()
-                }
-
-                GameOutcome.DRAW, GameOutcome.IN_PROGRESS -> {
-                    val pottedOwnBall = shooterGroup != null && potted.any { ballGroupOf(it) == shooterGroup }
-                    val nextPlayer = if (!scratched && pottedOwnBall) {
-                        state.currentPlayer
-                    } else {
-                        if (state.currentPlayer == 1) 2 else 1
-                    }
-
-                    _uiState.update {
-                        it.copy(
-                            balls = settledBalls,
-                            playerGroups = groups,
-                            currentPlayer = nextPlayer,
-                            secondsLeft = EIGHT_BALL_TURN_SECONDS,
-                            fouled = scratched,
-                            isResolving = false
-                        )
-                    }
-                    startTimer()
-                }
-            }
-        }
-    }
-
-    private suspend fun awardCoupon() {
-        val coupon = rewardsRepository.claimReward(GameId.EIGHT_BALL)
-        couponsRepository.addCoupon(coupon)
-        _uiState.update { it.copy(wonCouponId = coupon.id) }
     }
 
     fun onPlayAgain() {
         timerJob?.cancel()
+        computerJob?.cancel()
         pocketedThisShot.clear()
         _uiState.value = EightBallUiState()
         startTimer()
+    }
+
+    private fun shoot(direction: Vec2, power: Float) {
+        val state = _uiState.value
+        if (state.balls.none { it.id == CUE_BALL_ID && !it.pocketed }) return
+        timerJob?.cancel()
+        pocketedThisShot.clear()
+        _uiState.update {
+            it.copy(
+                balls = EightBallRules.launch(state.match.balls, direction, power),
+                isBallsMoving = true,
+                fouled = false,
+                lastTurnTimedOut = false
+            )
+        }
+    }
+
+    private fun resolveShot(outcome: EightBallShotOutcome) {
+        viewModelScope.launch {
+            val result = gameEngineRepository.resolve(
+                GameId.EIGHT_BALL,
+                GameSnapshot.EightBall(
+                    shooterClearedGroup = outcome.shooterClearedGroup,
+                    eightBallPocketed = outcome.eightBallPocketed,
+                    scratched = outcome.scratched
+                )
+            )
+            val winner = when (result) {
+                GameOutcome.WIN -> outcome.shooter
+                GameOutcome.LOSE -> 3 - outcome.shooter
+                GameOutcome.DRAW, GameOutcome.IN_PROGRESS -> null
+            }
+            _uiState.update {
+                it.copy(
+                    match = outcome.after,
+                    balls = outcome.after.balls,
+                    winner = winner,
+                    endedOnFoul = result == GameOutcome.LOSE,
+                    fouled = outcome.scratched,
+                    isResolving = false
+                )
+            }
+
+            when {
+                winner == EIGHT_BALL_HUMAN -> {
+                    val coupon = rewardsRepository.claimReward(GameId.EIGHT_BALL)
+                    couponsRepository.addCoupon(coupon)
+                    _uiState.update { it.copy(wonCouponId = coupon.id) }
+                }
+                winner == null -> startTurn()
+                else -> Unit
+            }
+        }
+    }
+
+    /** Hands the next shot to whoever the match says is up: the human gets a shot clock, the computer plays. */
+    private fun startTurn() {
+        if (_uiState.value.currentPlayer == EIGHT_BALL_HUMAN) {
+            startTimer()
+            return
+        }
+        timerJob?.cancel()
+        computerJob?.cancel()
+        _uiState.update { it.copy(isComputerThinking = true, secondsLeft = EIGHT_BALL_TURN_SECONDS) }
+        computerJob = viewModelScope.launch {
+            val match = _uiState.value.match
+            val started = System.currentTimeMillis()
+            val shot = withContext(Dispatchers.Default) { EightBallBot.chooseShot(match) }
+            delay((COMPUTER_MIN_THINK_MILLIS - (System.currentTimeMillis() - started)).coerceAtLeast(0))
+            _uiState.update { it.copy(isComputerThinking = false) }
+            shoot(shot.direction, shot.power)
+        }
     }
 
     private fun startTimer() {
@@ -192,19 +165,17 @@ class EightBallViewModel @Inject constructor(
                 _uiState.update { it.copy(secondsLeft = secondsLeft) }
                 delay(1000)
             }
-            // Timed out: pass the turn without taking a shot.
+            // Timed out: the human's turn passes to the computer without a shot.
             _uiState.update {
-                it.copy(
-                    currentPlayer = if (it.currentPlayer == 1) 2 else 1,
-                    secondsLeft = EIGHT_BALL_TURN_SECONDS,
-                    lastTurnTimedOut = true
-                )
+                val passed = EightBallRules.passTurn(it.match)
+                it.copy(match = passed, balls = passed.balls, secondsLeft = EIGHT_BALL_TURN_SECONDS, lastTurnTimedOut = true)
             }
-            startTimer()
+            startTurn()
         }
     }
 
     override fun onCleared() {
         timerJob?.cancel()
+        computerJob?.cancel()
     }
 }

@@ -21,9 +21,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -45,10 +43,10 @@ import com.example.playwin.core.domain.carrom.CoinColor
 import com.example.playwin.core.domain.carrom.STRIKER_ID
 import com.example.playwin.core.domain.carrom.Vec2
 import com.example.playwin.core.domain.carrom.coinColorOf
+import com.example.playwin.feature.game.PhysicsFrameClock
 import com.example.playwin.feature.game.carrom.online.CarromOnlineRoute
 import com.example.playwin.feature.game.online.GameModeSelectScreen
 import com.example.playwin.feature.game.online.PlayMode
-import kotlinx.coroutines.isActive
 
 /** Entry point for Carrom: play the computer, or get paired with a random online player. */
 @Composable
@@ -88,26 +86,6 @@ private fun CarromComputerRoute(
         onShoot = viewModel::onShoot,
         onPlayAgain = viewModel::onPlayAgain
     )
-}
-
-/**
- * Drives a physics simulation from the screen's own frame clock, independent
- * of any turn timer: [onTick] gets the seconds elapsed since the last frame.
- */
-@Composable
-fun PhysicsFrameClock(onTick: (dtSeconds: Float) -> Unit) {
-    val tick by rememberUpdatedState(onTick)
-    LaunchedEffect(Unit) {
-        var lastFrameTimeNanos = 0L
-        while (isActive) {
-            withFrameNanos { frameTimeNanos ->
-                if (lastFrameTimeNanos != 0L) {
-                    tick((frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000f)
-                }
-                lastFrameTimeNanos = frameTimeNanos
-            }
-        }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

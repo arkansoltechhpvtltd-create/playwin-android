@@ -1,0 +1,101 @@
+package com.example.playwin.core.domain.eightball
+
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.random.Random
+
+/**
+ * The "Play vs Computer" 8-ball opponent. It picks its targets like a
+ * player: any group ball while the table is open, its own group once
+ * assigned, and the 8 only after its group is cleared. For each target and
+ * pocket it aims the cue ball at the "ghost" spot that sends the target
+ * into that pocket, keeps the makeable cuts, and then tries the best ones
+ * with the real [EightBallPhysics] - so it sees balls in the way and
+ * scratches coming. Results are scored with [EightBallRules]: sinking the 8
+ * legally wins, sinking it early (or scratching on it) loses and is avoided
+ * at all costs; own balls and keeping the turn are good, opponent balls and
+ * scratches are bad. A small aiming error keeps it beatable.
+ */
+object EightBallBot {
+
+    data class Shot(val direction: Vec2, val power: Float)
+
+    private val POWERS = listOf(0.4f, 0.65f, 0.95f)
+    private const val MAX_SIMULATED_CANDIDATES = 45
+    private const val MIN_CUT_COSINE = 0.35f
+    private const val DECISIVE = 1000.0
+
+    /** Aiming error in degrees, either way; 0 gives the bot perfect aim. */
+    const val DEFAULT_AIM_ERROR_DEGREES = 1.5
+
+    fun chooseShot(match: EightBallMatch, random: Random = Random, aimErrorDegrees: Double = DEFAULT_AIM_ERROR_DEGREES): Shot {
+        val best = candidates(match)
+            .ifEmpty { listOf(safetyShot(match)) }
+            .maxBy { evaluate(match, it) + random.nextDouble(0.0, 0.01) }
+        if (aimErrorDegrees <= 0.0) return best
+
+        val error = Math.toRadians(random.nextDouble(-aimErrorDegrees, aimErrorDegrees))
+        val (x, y) = best.direction.x.toDouble() to best.direction.y.toDouble()
+        val rotated = Vec2((x * cos(error) - y * sin(error)).toFloat(), (x * sin(error) + y * cos(error)).toFloat())
+        val power = (best.power * random.nextDouble(0.93, 1.07).toFloat()).coerceIn(0.1f, 1f)
+        return Shot(rotated, power)
+    }
+
+    /** How good a shot is, by simulating it with the real physics and judging it with the real rules. */
+    fun evaluate(match: EightBallMatch, shot: Shot): Double {
+        val result = EightBallPhysics.simulate(EightBallRules.launch(match.balls, shot.direction, shot.power))
+        val outcome = EightBallRules.resolveShot(match, result.balls, result.newlyPocketed)
+        when (EightBallRules.predictedWinner(outcome)) {
+            match.currentPlayer -> return DECISIVE
+            match.opponent -> return -DECISIVE
+        }
+
+        val myGroup = outcome.after.playerGroups[match.currentPlayer]
+        var score = 0.0
+        outcome.potted.forEach { id ->
+            when (ballGroupOf(id)) {
+                null -> Unit
+                myGroup -> score += 10.0
+                else -> score -= 6.0
+            }
+        }
+        if (outcome.scratched) score -= 15.0
+        if (outcome.after.currentPlayer == match.currentPlayer) score += 3.0
+        return score
+    }
+
+    /** The balls it's allowed to aim at right now. */
+    internal fun targets(match: EightBallMatch): List<Ball> {
+        val onTable = match.balls.filter { !it.pocketed && it.id != CUE_BALL_ID }
+        val myGroup = match.playerGroups[match.currentPlayer] ?: return onTable.filter { it.id != EIGHT_BALL_ID }
+        val mine = onTable.filter { ballGroupOf(it.id) == myGroup }
+        return mine.ifEmpty { onTable.filter { it.id == EIGHT_BALL_ID } }
+    }
+
+    /** Ghost-ball shots at [targets], most makeable first, capped to keep the thinking time down. */
+    internal fun candidates(match: EightBallMatch): List<Shot> {
+        val cue = match.balls.firstOrNull { it.id == CUE_BALL_ID && !it.pocketed } ?: return emptyList()
+        val aims = mutableListOf<Pair<Vec2, Float>>()
+        for (target in targets(match)) {
+            for (pocket in EightBallTable.corners) {
+                val toPocket = (pocket - target.position).normalizedOrZero()
+                val ghost = target.position - toPocket * (EightBallTable.BALL_RADIUS * 2f)
+                val aim = (ghost - cue.position).normalizedOrZero()
+                val cut = aim.dot(toPocket)
+                if (cut >= MIN_CUT_COSINE) aims += aim to cut
+            }
+        }
+        return aims
+            .sortedByDescending { it.second }
+            .take(MAX_SIMULATED_CANDIDATES / POWERS.size)
+            .flatMap { (aim, _) -> POWERS.map { Shot(aim, it) } }
+    }
+
+    /** No makeable cut: roll firmly into the nearest target so the shot at least hits something of ours. */
+    private fun safetyShot(match: EightBallMatch): Shot {
+        val cue = match.balls.first { it.id == CUE_BALL_ID }
+        val target = targets(match).minByOrNull { (it.position - cue.position).length }
+            ?.position ?: Vec2(EightBallTable.RACK_APEX_X, EightBallTable.CENTER_Y)
+        return Shot((target - cue.position).normalizedOrZero(), 0.6f)
+    }
+}

@@ -1,4 +1,4 @@
-package com.example.playwin.feature.game.eightball
+package com.example.playwin.core.domain.eightball
 
 import kotlin.math.sqrt
 
