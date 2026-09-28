@@ -1,4 +1,4 @@
-package com.example.playwin.feature.game.carrom
+package com.example.playwin.core.domain.carrom
 
 import kotlin.math.sqrt
 

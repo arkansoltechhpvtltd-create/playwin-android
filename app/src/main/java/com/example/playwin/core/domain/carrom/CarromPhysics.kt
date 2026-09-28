@@ -1,4 +1,4 @@
-package com.example.playwin.feature.game.carrom
+package com.example.playwin.core.domain.carrom
 
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -70,6 +70,29 @@ object CarromPhysics {
     private const val PIECE_RESTITUTION = 0.97f
     private const val SUBSTEP_DT = 1f / 240f
     const val MAX_SHOT_SPEED = 1500f
+
+    /** How long [simulate] lets a shot run before calling it settled, as a guard against a never-quite-stopping board. */
+    private const val MAX_SIMULATED_SECONDS = 12f
+    private const val SIMULATION_FRAME = 1f / 60f
+
+    /**
+     * Runs a shot to completion off-screen in fixed 1/60s frames and returns
+     * where everything came to rest plus every piece pocketed along the way.
+     * Used by [CarromBot] to try shots before committing to one.
+     */
+    fun simulate(coins: List<Coin>): CarromStepResult {
+        var current = coins
+        val pocketed = mutableListOf<Int>()
+        var elapsed = 0f
+        while (elapsed < MAX_SIMULATED_SECONDS) {
+            val result = step(current, SIMULATION_FRAME)
+            current = result.coins
+            pocketed += result.newlyPocketed
+            elapsed += SIMULATION_FRAME
+            if (!result.anyMoving) return CarromStepResult(current, pocketed, anyMoving = false)
+        }
+        return CarromStepResult(current.map { if (it.pocketed) it else it.copy(velocity = Vec2.Zero) }, pocketed, anyMoving = false)
+    }
 
     fun step(coins: List<Coin>, dtSeconds: Float): CarromStepResult {
         val clampedDt = min(dtSeconds, 1f / 30f).coerceAtLeast(0f)

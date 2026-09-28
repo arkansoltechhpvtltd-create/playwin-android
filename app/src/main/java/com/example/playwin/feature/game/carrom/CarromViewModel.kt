@@ -2,6 +2,12 @@ package com.example.playwin.feature.game.carrom
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.playwin.core.domain.carrom.CarromBot
+import com.example.playwin.core.domain.carrom.CarromPhysics
+import com.example.playwin.core.domain.carrom.CarromRules
+import com.example.playwin.core.domain.carrom.CarromShotOutcome
+import com.example.playwin.core.domain.carrom.STRIKER_ID
+import com.example.playwin.core.domain.carrom.Vec2
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
@@ -9,6 +15,7 @@ import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,14 +23,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
+private const val COMPUTER_MIN_THINK_MILLIS = 700L
+
 /**
- * Two-player hotseat carrom. This ViewModel owns board *mechanics* - striker
- * physics, whose turn it is, color assignment, scoring, the per-turn timer -
- * but the *verdict* on who wins once the board is cleared always comes from
- * [GameEngineRepository.resolve], never decided locally in the UI, exactly
- * like Connect 4, 2048, and 8-Ball.
+ * Carrom against the computer: the human is [CARROM_HUMAN] (bottom), and
+ * [CarromBot] plays [CARROM_COMPUTER] (top). Striker physics runs frame by
+ * frame from the screen's clock; scoring and turn order come from
+ * [CarromRules]; the *verdict* on who wins once the board is cleared always
+ * comes from [GameEngineRepository.resolve], never decided locally. Only a
+ * human win claims a reward.
  */
 @HiltViewModel
 class CarromViewModel @Inject constructor(
@@ -36,6 +47,7 @@ class CarromViewModel @Inject constructor(
     val uiState: StateFlow<CarromUiState> = _uiState.asStateFlow()
 
     private var timerJob: Job? = null
+    private var computerJob: Job? = null
 
     // Accumulated across every physics tick of the current shot, since a coin
     // can be pocketed on any frame while the pieces are rolling.
@@ -46,20 +58,8 @@ class CarromViewModel @Inject constructor(
     }
 
     fun onShoot(direction: Vec2, power: Float) {
-        val state = _uiState.value
-        if (!state.canAim) return
-        if (state.coins.none { it.id == STRIKER_ID && !it.pocketed }) return
-
-        timerJob?.cancel()
-        pocketedThisShot.clear()
-
-        val speed = CarromPhysics.MAX_SHOT_SPEED * power.coerceIn(0f, 1f)
-        val aimedCoins = state.coins.map {
-            if (it.id == STRIKER_ID) it.copy(velocity = direction.normalizedOrZero() * speed) else it
-        }
-        _uiState.update {
-            it.copy(coins = aimedCoins, isPiecesMoving = true, fouled = false, lastTurnTimedOut = false)
-        }
+        if (!_uiState.value.canAim) return
+        shoot(direction, power)
     }
 
     /** Advances the board by one rendered frame; called from the screen's own frame clock. */
@@ -74,127 +74,89 @@ class CarromViewModel @Inject constructor(
             _uiState.update { it.copy(coins = result.coins) }
         } else {
             _uiState.update { it.copy(coins = result.coins, isPiecesMoving = false, isResolving = true) }
-            resolveShot(result.coins)
+            resolveShot(CarromRules.resolveShot(state.match, result.coins, pocketedThisShot.toList()))
         }
-    }
-
-    private fun resolveShot(coins: List<Coin>) {
-        val state = _uiState.value
-        val potted = pocketedThisShot.toList()
-        val scratched = potted.contains(STRIKER_ID)
-        val pottedCoins = potted.filter { it != STRIKER_ID }
-
-        var colors = state.playerColors
-        if (colors.isEmpty()) {
-            val firstColoredId = pottedCoins.firstOrNull { coinColorOf(it) != CoinColor.QUEEN }
-            val color = firstColoredId?.let(::coinColorOf)
-            if (color != null) {
-                val opponent = if (state.currentPlayer == 1) 2 else 1
-                colors = mapOf(state.currentPlayer to color, opponent to color.other())
-            }
-        }
-
-        var pointsGained = 0
-        if (!scratched) {
-            val shooterColor = colors[state.currentPlayer]
-            pottedCoins.forEach { id ->
-                pointsGained += when (coinColorOf(id)) {
-                    CoinColor.QUEEN -> 3
-                    shooterColor -> 1
-                    else -> 0
-                }
-            }
-        }
-
-        val opponent = if (state.currentPlayer == 1) 2 else 1
-        val newScores = state.scores + (state.currentPlayer to (state.scores.getValue(state.currentPlayer) + pointsGained))
-        val boardCleared = coins.filter { it.id != STRIKER_ID }.all { it.pocketed }
-
-        // A foul (scratch) always passes the turn; otherwise potting your own
-        // color or the queen earns another shot, same as real carrom rules.
-        val nextPlayer = if (!scratched && pointsGained > 0) state.currentPlayer else opponent
-        val respottedCoins = coins.map {
-            if (it.id == STRIKER_ID) it.copy(position = CarromBoard.baselineFor(nextPlayer), velocity = Vec2.Zero, pocketed = false) else it
-        }
-
-        viewModelScope.launch {
-            val outcome = gameEngineRepository.resolve(
-                GameId.CARROM,
-                GameSnapshot.Carrom(
-                    boardCleared = boardCleared,
-                    shooterScore = newScores.getValue(state.currentPlayer),
-                    opponentScore = newScores.getValue(opponent)
-                )
-            )
-
-            when (outcome) {
-                GameOutcome.WIN -> {
-                    _uiState.update {
-                        it.copy(
-                            coins = respottedCoins,
-                            playerColors = colors,
-                            scores = newScores,
-                            winner = state.currentPlayer,
-                            isResolving = false
-                        )
-                    }
-                    awardCoupon()
-                }
-
-                GameOutcome.LOSE -> {
-                    _uiState.update {
-                        it.copy(
-                            coins = respottedCoins,
-                            playerColors = colors,
-                            scores = newScores,
-                            winner = opponent,
-                            isResolving = false
-                        )
-                    }
-                    awardCoupon()
-                }
-
-                GameOutcome.DRAW -> {
-                    _uiState.update {
-                        it.copy(
-                            coins = respottedCoins,
-                            playerColors = colors,
-                            scores = newScores,
-                            isDraw = true,
-                            isResolving = false
-                        )
-                    }
-                }
-
-                GameOutcome.IN_PROGRESS -> {
-                    _uiState.update {
-                        it.copy(
-                            coins = respottedCoins,
-                            playerColors = colors,
-                            scores = newScores,
-                            currentPlayer = nextPlayer,
-                            secondsLeft = CARROM_TURN_SECONDS,
-                            fouled = scratched,
-                            isResolving = false
-                        )
-                    }
-                    startTimer()
-                }
-            }
-        }
-    }
-
-    private suspend fun awardCoupon() {
-        val coupon = rewardsRepository.claimReward(GameId.CARROM)
-        couponsRepository.addCoupon(coupon)
-        _uiState.update { it.copy(wonCouponId = coupon.id) }
     }
 
     fun onPlayAgain() {
         timerJob?.cancel()
+        computerJob?.cancel()
         pocketedThisShot.clear()
         _uiState.value = CarromUiState()
         startTimer()
+    }
+
+    private fun shoot(direction: Vec2, power: Float) {
+        val state = _uiState.value
+        if (state.coins.none { it.id == STRIKER_ID && !it.pocketed }) return
+        timerJob?.cancel()
+        pocketedThisShot.clear()
+        _uiState.update {
+            it.copy(
+                coins = CarromRules.launch(state.match.coins, direction, power),
+                isPiecesMoving = true,
+                fouled = false,
+                lastTurnTimedOut = false
+            )
+        }
+    }
+
+    private fun resolveShot(outcome: CarromShotOutcome) {
+        val after = outcome.after
+        viewModelScope.launch {
+            val result = gameEngineRepository.resolve(
+                GameId.CARROM,
+                GameSnapshot.Carrom(
+                    boardCleared = after.boardCleared,
+                    shooterScore = after.scores.getValue(outcome.shooter),
+                    opponentScore = after.scores.getValue(3 - outcome.shooter)
+                )
+            )
+            val winner = when (result) {
+                GameOutcome.WIN -> outcome.shooter
+                GameOutcome.LOSE -> 3 - outcome.shooter
+                GameOutcome.DRAW, GameOutcome.IN_PROGRESS -> null
+            }
+            _uiState.update {
+                it.copy(
+                    match = after,
+                    coins = after.coins,
+                    winner = winner,
+                    isDraw = result == GameOutcome.DRAW,
+                    fouled = outcome.fouled,
+                    isResolving = false
+                )
+            }
+
+            when {
+                winner == CARROM_HUMAN -> {
+                    val coupon = rewardsRepository.claimReward(GameId.CARROM)
+                    couponsRepository.addCoupon(coupon)
+                    _uiState.update { it.copy(wonCouponId = coupon.id) }
+                }
+                result == GameOutcome.IN_PROGRESS -> startTurn()
+                else -> Unit
+            }
+        }
+    }
+
+    /** Hands the next shot to whoever the match says is up: the human gets a shot clock, the computer plays. */
+    private fun startTurn() {
+        if (_uiState.value.currentPlayer == CARROM_HUMAN) {
+            startTimer()
+            return
+        }
+        timerJob?.cancel()
+        computerJob?.cancel()
+        _uiState.update { it.copy(isComputerThinking = true, secondsLeft = CARROM_TURN_SECONDS) }
+        computerJob = viewModelScope.launch {
+            val match = _uiState.value.match
+            val started = System.currentTimeMillis()
+            val shot = withContext(Dispatchers.Default) { CarromBot.chooseShot(match) }
+            delay((COMPUTER_MIN_THINK_MILLIS - (System.currentTimeMillis() - started)).coerceAtLeast(0))
+            _uiState.update { it.copy(isComputerThinking = false) }
+            shoot(shot.direction, shot.power)
+        }
     }
 
     private fun startTimer() {
@@ -204,23 +166,17 @@ class CarromViewModel @Inject constructor(
                 _uiState.update { it.copy(secondsLeft = secondsLeft) }
                 delay(1000)
             }
-            // Timed out: pass the turn without taking a shot.
-            _uiState.update { state ->
-                val nextPlayer = if (state.currentPlayer == 1) 2 else 1
-                state.copy(
-                    coins = state.coins.map {
-                        if (it.id == STRIKER_ID) it.copy(position = CarromBoard.baselineFor(nextPlayer), velocity = Vec2.Zero, pocketed = false) else it
-                    },
-                    currentPlayer = nextPlayer,
-                    secondsLeft = CARROM_TURN_SECONDS,
-                    lastTurnTimedOut = true
-                )
+            // Timed out: the human's turn passes to the computer without a shot.
+            _uiState.update {
+                val passed = CarromRules.passTurn(it.match)
+                it.copy(match = passed, coins = passed.coins, secondsLeft = CARROM_TURN_SECONDS, lastTurnTimedOut = true)
             }
-            startTimer()
+            startTurn()
         }
     }
 
     override fun onCleared() {
         timerJob?.cancel()
+        computerJob?.cancel()
     }
 }

@@ -10,23 +10,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -34,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
@@ -43,10 +39,37 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
+import com.example.playwin.core.domain.carrom.CarromBoard
+import com.example.playwin.core.domain.carrom.Coin
+import com.example.playwin.core.domain.carrom.CoinColor
+import com.example.playwin.core.domain.carrom.STRIKER_ID
+import com.example.playwin.core.domain.carrom.Vec2
+import com.example.playwin.core.domain.carrom.coinColorOf
+import com.example.playwin.feature.game.carrom.online.CarromOnlineRoute
+import com.example.playwin.feature.game.online.GameModeSelectScreen
+import com.example.playwin.feature.game.online.PlayMode
 import kotlinx.coroutines.isActive
 
+/** Entry point for Carrom: play the computer, or get paired with a random online player. */
 @Composable
 fun CarromRoute(
+    onBack: () -> Unit,
+    onWin: (couponId: String) -> Unit
+) {
+    var mode by remember { mutableStateOf<PlayMode?>(null) }
+    when (mode) {
+        null -> GameModeSelectScreen(title = "Carrom", onBack = onBack, onSelectMode = { mode = it })
+        PlayMode.COMPUTER -> CarromComputerRoute(onBack = { mode = null }, onWin = onWin)
+        PlayMode.ONLINE -> CarromOnlineRoute(
+            onBack = { mode = null },
+            onWin = onWin,
+            onPlayComputer = { mode = PlayMode.COMPUTER }
+        )
+    }
+}
+
+@Composable
+private fun CarromComputerRoute(
     onBack: () -> Unit,
     onWin: (couponId: String) -> Unit,
     viewModel: CarromViewModel = hiltViewModel()
@@ -57,21 +80,7 @@ fun CarromRoute(
         uiState.wonCouponId?.let(onWin)
     }
 
-    // Drives the physics simulation from the screen's own frame clock, independent
-    // of the 20s turn timer (which lives in the ViewModel and simply pauses
-    // while isPiecesMoving is true).
-    LaunchedEffect(Unit) {
-        var lastFrameTimeNanos = 0L
-        while (isActive) {
-            withFrameNanos { frameTimeNanos ->
-                if (lastFrameTimeNanos != 0L) {
-                    val dtSeconds = (frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000f
-                    viewModel.onPhysicsTick(dtSeconds)
-                }
-                lastFrameTimeNanos = frameTimeNanos
-            }
-        }
-    }
+    PhysicsFrameClock(onTick = viewModel::onPhysicsTick)
 
     CarromScreen(
         uiState = uiState,
@@ -79,6 +88,26 @@ fun CarromRoute(
         onShoot = viewModel::onShoot,
         onPlayAgain = viewModel::onPlayAgain
     )
+}
+
+/**
+ * Drives a physics simulation from the screen's own frame clock, independent
+ * of any turn timer: [onTick] gets the seconds elapsed since the last frame.
+ */
+@Composable
+fun PhysicsFrameClock(onTick: (dtSeconds: Float) -> Unit) {
+    val tick by rememberUpdatedState(onTick)
+    LaunchedEffect(Unit) {
+        var lastFrameTimeNanos = 0L
+        while (isActive) {
+            withFrameNanos { frameTimeNanos ->
+                if (lastFrameTimeNanos != 0L) {
+                    tick((frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000f)
+                }
+                lastFrameTimeNanos = frameTimeNanos
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,7 +121,7 @@ fun CarromScreen(
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { PwTopBar(title = "Carrom", onBack = onBack) }
+        topBar = { PwTopBar(title = "Carrom · vs Computer", onBack = onBack) }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -101,23 +130,41 @@ fun CarromScreen(
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            val score = "${uiState.scores[CARROM_HUMAN]}-${uiState.scores[CARROM_COMPUTER]}"
             when {
-                uiState.isDraw -> StatusBanner(text = "It's a draw! Scores: ${uiState.scores[1]} - ${uiState.scores[2]}")
-                uiState.winner != null -> StatusBanner(
-                    text = "Player ${uiState.winner} wins ${uiState.scores[1]}-${uiState.scores[2]}! Claiming your coupon…"
+                uiState.isDraw -> StatusBanner(text = "It's a draw! $score")
+                uiState.winner == CARROM_HUMAN -> StatusBanner(text = "You win $score! Claiming your coupon…")
+                uiState.winner == CARROM_COMPUTER -> StatusBanner(text = "The computer wins $score")
+                else -> TurnBanner(
+                    text = when {
+                        uiState.isComputerThinking -> "Computer is lining up a shot…"
+                        uiState.currentPlayer == CARROM_HUMAN -> "Your shot - drag back from the striker"
+                        else -> "Computer's shot"
+                    } + buildString {
+                        if (uiState.lastTurnTimedOut) append(" (previous turn timed out)")
+                        if (uiState.fouled) append(" (foul on previous shot)")
+                    },
+                    secondsLeft = uiState.secondsLeft.takeIf { uiState.currentPlayer == CARROM_HUMAN },
+                    isBusy = uiState.isPiecesMoving || uiState.isResolving || uiState.isComputerThinking
                 )
-                else -> TurnBanner(uiState)
             }
 
             CarromBoardView(
-                uiState = uiState,
+                coins = uiState.coins,
+                canAim = uiState.canAim,
                 onShoot = onShoot,
                 modifier = Modifier.padding(top = 16.dp)
             )
 
-            ScoreLegend(uiState = uiState, modifier = Modifier.padding(top = 12.dp))
+            ScoreLegend(
+                myColor = uiState.playerColors[CARROM_HUMAN],
+                myScore = uiState.scores.getValue(CARROM_HUMAN),
+                theirScore = uiState.scores.getValue(CARROM_COMPUTER),
+                theirLabel = "Computer",
+                modifier = Modifier.padding(top = 12.dp)
+            )
 
-            if (uiState.winner != null || uiState.isDraw) {
+            if (uiState.isGameOver && uiState.winner != CARROM_HUMAN) {
                 PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
             }
         }
@@ -125,36 +172,25 @@ fun CarromScreen(
 }
 
 @Composable
-private fun TurnBanner(uiState: CarromUiState, modifier: Modifier = Modifier) {
+fun TurnBanner(text: String, secondsLeft: Int?, isBusy: Boolean, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        val color = uiState.playerColors[uiState.currentPlayer]
-        val colorLabel = when (color) {
-            CoinColor.WHITE -> " (white)"
-            CoinColor.BLACK -> " (black)"
-            else -> ""
-        }
-        val suffix = buildString {
-            if (uiState.lastTurnTimedOut) append(" (previous turn timed out)")
-            if (uiState.fouled) append(" (foul on previous shot)")
-        }
-        Text(
-            text = "Player ${uiState.currentPlayer}'s turn$colorLabel$suffix",
-            style = MaterialTheme.typography.titleMedium
-        )
+        Text(text = text, style = MaterialTheme.typography.titleMedium)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            LinearProgressIndicator(
-                progress = { uiState.secondsLeft / CARROM_TURN_SECONDS.toFloat() },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 8.dp)
-            )
-            Text(text = "${uiState.secondsLeft}s", style = MaterialTheme.typography.labelLarge)
-            if (uiState.isPiecesMoving || uiState.isResolving) {
+            if (secondsLeft != null) {
+                LinearProgressIndicator(
+                    progress = { secondsLeft / CARROM_TURN_SECONDS.toFloat() },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
+                )
+                Text(text = "${secondsLeft}s", style = MaterialTheme.typography.labelLarge)
+            }
+            if (isBusy) {
                 CircularProgressIndicator(
                     modifier = Modifier
                         .padding(start = 8.dp)
@@ -172,16 +208,14 @@ private fun StatusBanner(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ScoreLegend(uiState: CarromUiState, modifier: Modifier = Modifier) {
+fun ScoreLegend(myColor: CoinColor?, myScore: Int, theirScore: Int, theirLabel: String, modifier: Modifier = Modifier) {
     Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-        val p1Color = uiState.playerColors[1]
-        val text = if (p1Color == null) {
-            "Board open - first pot picks your color · Score ${uiState.scores[1]} - ${uiState.scores[2]}"
-        } else {
-            "Player 1: ${p1Color.name.lowercase()} · Player 2: ${uiState.playerColors[2]?.name?.lowercase()} · " +
-                "Score ${uiState.scores[1]} - ${uiState.scores[2]}"
-        }
-        Text(text = text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val colors = myColor?.let { "You: ${it.name.lowercase()} · " } ?: "Board open - first pot picks your color · "
+        Text(
+            text = "${colors}You $myScore - $theirScore $theirLabel",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -194,17 +228,26 @@ private val QueenRed = Color(0xFFC62828)
 private val StrikerColor = Color(0xFFFFFFFF)
 private val StrikerRing = Color(0xFFD32F2F)
 
+/**
+ * The board. Drag back from the striker to aim; release to shoot. With
+ * [flipped] the board is turned 180° so a top-baseline player (online
+ * player 2) shoots "up" from the bottom of their screen - aiming still
+ * reports directions in board space, since the rotation applies to touch
+ * input as well as drawing.
+ */
 @Composable
-private fun CarromBoardView(
-    uiState: CarromUiState,
+fun CarromBoardView(
+    coins: List<Coin>,
+    canAim: Boolean,
     onShoot: (Vec2, Float) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    flipped: Boolean = false
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var dragCurrent by remember { mutableStateOf<Offset?>(null) }
 
     val scale = if (canvasSize.width > 0) canvasSize.width / CarromBoard.SIZE else 0f
-    val striker = uiState.coins.firstOrNull { it.id == STRIKER_ID && !it.pocketed }
+    val striker = coins.firstOrNull { it.id == STRIKER_ID && !it.pocketed }
     val strikerScreenPos = striker?.let { Offset(it.position.x * scale, it.position.y * scale) }
 
     val maxDragPx = canvasSize.width * 0.4f
@@ -214,9 +257,10 @@ private fun CarromBoardView(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
+            .graphicsLayer { rotationZ = if (flipped) 180f else 0f }
             .onSizeChanged { canvasSize = it }
-            .pointerInput(uiState.canAim) {
-                if (!uiState.canAim) return@pointerInput
+            .pointerInput(canAim, strikerScreenPos) {
+                if (!canAim) return@pointerInput
                 detectDragGestures(
                     onDragStart = { offset -> dragCurrent = offset },
                     onDrag = { change, _ -> dragCurrent = change.position },
@@ -254,7 +298,7 @@ private fun CarromBoardView(
             drawCircle(color = PocketBlack, radius = pocketRadius, center = toScreen(corner))
         }
 
-        uiState.coins.filterNot { it.pocketed }.forEach { coin ->
+        coins.filterNot { it.pocketed }.forEach { coin ->
             val color = when {
                 coin.id == STRIKER_ID -> StrikerColor
                 coinColorOf(coin.id) == CoinColor.WHITE -> WhiteCoin
@@ -273,7 +317,7 @@ private fun CarromBoardView(
 
         val start = strikerScreenPos
         val end = dragCurrent
-        if (start != null && end != null && uiState.canAim) {
+        if (start != null && end != null && canAim) {
             val pullDistance = (end - start).getDistance()
             val power = if (maxDragPx > 0f) (pullDistance / maxDragPx).coerceIn(0f, 1f) else 0f
             val direction = Vec2(start.x - end.x, start.y - end.y).normalizedOrZero()
