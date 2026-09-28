@@ -2,6 +2,7 @@ package com.example.playwin.feature.game.connectfour
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.playwin.core.domain.connectfour.Connect4Bot
 import com.example.playwin.core.domain.connectfour.Connect4Logic
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
@@ -19,11 +20,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+private const val COMPUTER_THINK_MILLIS = 600L
+
 /**
- * Two-player hotseat Connect 4. This ViewModel owns board *mechanics*
- * (dropping a piece, tracking whose turn it is, the per-turn timer) but the
- * *verdict* on whether a move won the round always comes from
- * [GameEngineRepository.resolve] - never decided locally in the UI.
+ * Connect 4 against the computer: the human is [CONNECT4_HUMAN], the
+ * [Connect4Bot] is [CONNECT4_COMPUTER]. This ViewModel owns board *mechanics*
+ * (dropping a piece, whose turn it is, the per-turn timer) but the *verdict*
+ * on whether a move won the round always comes from
+ * [GameEngineRepository.resolve] - never decided locally in the UI. Only a
+ * human win claims a reward; a computer win is a loss for the player.
  */
 @HiltViewModel
 class Connect4ViewModel @Inject constructor(
@@ -36,6 +41,7 @@ class Connect4ViewModel @Inject constructor(
     val uiState: StateFlow<Connect4UiState> = _uiState.asStateFlow()
 
     private var timerJob: Job? = null
+    private var computerJob: Job? = null
 
     init {
         startTimer()
@@ -43,30 +49,42 @@ class Connect4ViewModel @Inject constructor(
 
     fun onColumnClick(col: Int) {
         val state = _uiState.value
-        if (state.winner != null || state.isDraw || state.isResolving) return
+        if (state.currentPlayer != CONNECT4_HUMAN || state.isGameOver || state.isResolving) return
+        playMove(col, CONNECT4_HUMAN)
+    }
 
-        val newBoard = Connect4Logic.placePiece(state.board, col, state.currentPlayer) ?: return
+    fun onPlayAgain() {
+        timerJob?.cancel()
+        computerJob?.cancel()
+        _uiState.value = Connect4UiState()
+        startTimer()
+    }
+
+    private fun playMove(col: Int, player: Int) {
+        val state = _uiState.value
+        val newBoard = Connect4Logic.placePiece(state.board, col, player) ?: return
 
         timerJob?.cancel()
         _uiState.update { it.copy(board = newBoard, lastTurnTimedOut = false, isResolving = true) }
 
         viewModelScope.launch {
-            val isBoardFull = Connect4Logic.isBoardFull(newBoard)
             val outcome = gameEngineRepository.resolve(
                 GameId.CONNECT_FOUR,
                 GameSnapshot.ConnectFour(
                     board = newBoard,
-                    lastPlayer = state.currentPlayer,
-                    isBoardFull = isBoardFull
+                    lastPlayer = player,
+                    isBoardFull = Connect4Logic.isBoardFull(newBoard)
                 )
             )
 
             when (outcome) {
                 GameOutcome.WIN -> {
-                    _uiState.update { it.copy(winner = state.currentPlayer, isResolving = false) }
-                    val coupon = rewardsRepository.claimReward(GameId.CONNECT_FOUR)
-                    couponsRepository.addCoupon(coupon)
-                    _uiState.update { it.copy(wonCouponId = coupon.id) }
+                    _uiState.update { it.copy(winner = player, isResolving = false) }
+                    if (player == CONNECT4_HUMAN) {
+                        val coupon = rewardsRepository.claimReward(GameId.CONNECT_FOUR)
+                        couponsRepository.addCoupon(coupon)
+                        _uiState.update { it.copy(wonCouponId = coupon.id) }
+                    }
                 }
 
                 GameOutcome.DRAW -> {
@@ -74,23 +92,22 @@ class Connect4ViewModel @Inject constructor(
                 }
 
                 GameOutcome.LOSE, GameOutcome.IN_PROGRESS -> {
-                    _uiState.update {
-                        it.copy(
-                            currentPlayer = if (state.currentPlayer == 1) 2 else 1,
-                            secondsLeft = CONNECT4_TURN_SECONDS,
-                            isResolving = false
-                        )
-                    }
-                    startTimer()
+                    val next = if (player == CONNECT4_HUMAN) CONNECT4_COMPUTER else CONNECT4_HUMAN
+                    _uiState.update { it.copy(currentPlayer = next, isResolving = false) }
+                    if (next == CONNECT4_COMPUTER) playComputerTurn() else startTimer()
                 }
             }
         }
     }
 
-    fun onPlayAgain() {
-        timerJob?.cancel()
-        _uiState.value = Connect4UiState()
-        startTimer()
+    private fun playComputerTurn() {
+        computerJob?.cancel()
+        computerJob = viewModelScope.launch {
+            delay(COMPUTER_THINK_MILLIS)
+            val col = Connect4Bot.chooseColumn(_uiState.value.board, CONNECT4_COMPUTER, CONNECT4_HUMAN)
+                ?: return@launch
+            playMove(col, CONNECT4_COMPUTER)
+        }
     }
 
     private fun startTimer() {
@@ -100,19 +117,20 @@ class Connect4ViewModel @Inject constructor(
                 _uiState.update { it.copy(secondsLeft = secondsLeft) }
                 delay(1000)
             }
-            // Timed out: pass the turn without placing a piece.
+            // Timed out: the human's turn passes to the computer without a piece placed.
             _uiState.update {
                 it.copy(
-                    currentPlayer = if (it.currentPlayer == 1) 2 else 1,
+                    currentPlayer = CONNECT4_COMPUTER,
                     secondsLeft = CONNECT4_TURN_SECONDS,
                     lastTurnTimedOut = true
                 )
             }
-            startTimer()
+            playComputerTurn()
         }
     }
 
     override fun onCleared() {
         timerJob?.cancel()
+        computerJob?.cancel()
     }
 }

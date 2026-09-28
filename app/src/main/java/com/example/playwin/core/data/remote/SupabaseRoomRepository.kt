@@ -1,7 +1,7 @@
 package com.example.playwin.core.data.remote
 
 import android.util.Log
-import com.example.playwin.core.domain.connectfour.Connect4Logic
+import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.Room
 import com.example.playwin.core.domain.model.RoomStatus
 import com.example.playwin.core.domain.repository.RoomConnection
@@ -34,35 +34,17 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val TAG = "SupabaseRoom"
 private const val TABLE = "rooms"
-private const val CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // no 0/O or 1/I - easy to read aloud
-private const val CODE_LENGTH = 6
-private const val MAX_CREATE_ATTEMPTS = 5
 
-/** Thrown for expected room-pairing failures so screens can show their message. */
+/** Thrown for expected matchmaking failures so screens can show their message. */
 class RoomException(message: String) : Exception(message)
 
-private fun generateRoomCode(): String = buildString {
-    repeat(CODE_LENGTH) { append(CODE_CHARS.random()) }
-}
-
 @Serializable
-private data class RoomInsertRow(
-    val id: String,
-    val code: String,
-    @SerialName("game_id") val gameId: String = "CONNECT_FOUR",
-    @SerialName("host_id") val hostId: String,
-    val status: String = "waiting",
-    @SerialName("board_state") val boardState: List<List<Int>>
-)
-
-@Serializable
-private data class JoinRoomParams(@SerialName("p_code") val code: String)
+private data class MatchmakeParams(@SerialName("p_game_id") val gameId: String)
 
 @Serializable
 private data class RoomMoveUpdate(
@@ -78,7 +60,6 @@ private data class RoomAbandonUpdate(val status: String = "abandoned")
 @Serializable
 private data class RoomRow(
     val id: String,
-    val code: String,
     @SerialName("host_id") val hostId: String,
     @SerialName("guest_id") val guestId: String? = null,
     val status: String,
@@ -88,7 +69,6 @@ private data class RoomRow(
 ) {
     fun toDomain(): Room = Room(
         id = id,
-        code = code,
         hostId = hostId,
         guestId = guestId,
         status = runCatching { RoomStatus.valueOf(status.uppercase()) }.getOrDefault(RoomStatus.ABANDONED),
@@ -102,55 +82,39 @@ private data class RoomRow(
 private data class PresenceData(@SerialName("user_id") val userId: String)
 
 /**
- * Real, network-backed [RoomRepository]. Room creation is a plain insert;
- * joining goes through the `join_room` RPC (a `security definer` Postgres
- * function - see `supabase/migrations/0001_rooms.sql`) so a client never
- * needs generic UPDATE access to a room it hasn't joined yet. Row changes are
- * streamed over a Realtime channel scoped to the room's id, and each player
- * tracks their presence on that same channel so the other side can tell
- * whether they're still connected.
+ * Real, network-backed [RoomRepository]. Pairing happens entirely server-side
+ * in the `matchmake` / `cancel_matchmaking` RPCs (`security definer` Postgres
+ * functions - see `supabase/migrations/0002_matchmaking.sql`): the client can
+ * neither create a room nor choose who it's paired with. Once paired, row
+ * changes are streamed over a Realtime channel scoped to the room's id, and
+ * each player tracks their presence on that same channel so the other side
+ * can tell whether they're still connected.
  */
 @Singleton
 class SupabaseRoomRepository @Inject constructor(
     private val supabaseClient: SupabaseClient
 ) : RoomRepository {
 
-    override suspend fun createRoom(hostId: String): Result<Room> {
-        var lastError: Exception? = null
-        repeat(MAX_CREATE_ATTEMPTS) {
-            val row = RoomInsertRow(
-                id = UUID.randomUUID().toString(),
-                code = generateRoomCode(),
-                hostId = hostId,
-                boardState = Connect4Logic.emptyBoard()
-            )
-            try {
-                val inserted = supabaseClient.from(TABLE)
-                    .insert(row) { select() }
-                    .decodeSingle<RoomRow>()
-                return Result.success(inserted.toDomain())
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // Most likely a room-code collision (unique constraint) - retry with a fresh code.
-                lastError = e
-                Log.w(TAG, "createRoom attempt failed, retrying", e)
-            }
-        }
-        return Result.failure(lastError ?: RoomException("Could not create a room"))
-    }
-
-    override suspend fun joinRoom(userId: String, code: String): Result<Room> = try {
-        val params = Json.encodeToJsonElement(JoinRoomParams(code = code.trim().uppercase())).jsonObject
-        val result = supabaseClient.postgrest
-            .rpc("join_room", params)
-            .decodeAs<RoomRow>()
-        Result.success(result.toDomain())
+    override suspend fun matchmake(gameId: GameId): Result<Room?> = try {
+        val rows = supabaseClient.postgrest
+            .rpc("matchmake", params(gameId))
+            .decodeList<RoomRow>()
+        Result.success(rows.firstOrNull()?.toDomain())
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        Log.w(TAG, "Failed to join room with code $code", e)
-        Result.failure(RoomException(friendlyJoinError(e)))
+        Log.w(TAG, "matchmake failed", e)
+        Result.failure(RoomException(friendlyError(e)))
+    }
+
+    override suspend fun cancelMatchmaking(gameId: GameId): Result<Unit> = try {
+        supabaseClient.postgrest.rpc("cancel_matchmaking", params(gameId))
+        Result.success(Unit)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "cancel_matchmaking failed", e)
+        Result.failure(RoomException(friendlyError(e)))
     }
 
     override suspend fun connect(room: Room, selfUserId: String): RoomConnection {
@@ -160,14 +124,15 @@ class SupabaseRoomRepository @Inject constructor(
         return connection
     }
 
-    private fun friendlyJoinError(e: Exception): String {
-        val message = e.message.orEmpty()
-        return when {
-            message.contains("own room", ignoreCase = true) -> "You can't join your own room"
-            message.contains("not authenticated", ignoreCase = true) -> "Sign in to play online"
-            else -> "Room not found or already full - check the code and try again"
+    private fun params(gameId: GameId) =
+        Json.encodeToJsonElement(MatchmakeParams(gameId = gameId.name)).jsonObject
+
+    private fun friendlyError(e: Exception): String =
+        if (e.message.orEmpty().contains("not authenticated", ignoreCase = true)) {
+            "Sign in to play online"
+        } else {
+            "Couldn't reach the matchmaking server - check your connection"
         }
-    }
 }
 
 private class SupabaseRoomConnectionImpl(

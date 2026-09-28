@@ -1,8 +1,8 @@
 package com.example.playwin.core.domain.connectfour
 
 /**
- * Pure Connect 4 board mechanics shared by the local hotseat ViewModel and
- * the online-multiplayer ViewModel, so "where does a dropped piece land" is
+ * Pure Connect 4 board mechanics shared by the vs-Computer ViewModel,
+ * [Connect4Bot] and the online-multiplayer ViewModel, so "where does a dropped piece land" is
  * defined once. Never decides who won - that's still
  * [com.example.playwin.core.domain.repository.GameEngineRepository]'s job.
  */

@@ -1,23 +1,18 @@
 package com.example.playwin.feature.game.connectfour.online
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,12 +24,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.core.designsystem.component.PrimaryButton
@@ -42,26 +33,47 @@ import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.domain.model.RoomStatus
 import com.example.playwin.feature.game.connectfour.Connect4Board
 
+/**
+ * Online Connect 4 via random matchmaking. Opening this route immediately
+ * starts a search (the caller's button already said "Find a random player"),
+ * so there's no menu step and no way to pick or invite an opponent.
+ */
 @Composable
 fun Connect4OnlineRoute(
     onBack: () -> Unit,
     onWin: (couponId: String) -> Unit,
+    onPlayComputer: () -> Unit,
     viewModel: Connect4OnlineViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    var autoStarted by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!autoStarted) {
+            autoStarted = true
+            viewModel.findRandomPlayer()
+        }
+    }
 
     LaunchedEffect(uiState.wonCouponId) {
         uiState.wonCouponId?.let(onWin)
     }
 
+    val exit = {
+        viewModel.exit()
+        onBack()
+    }
+    BackHandler(onBack = exit)
+
     Connect4OnlineScreen(
         uiState = uiState,
-        onBack = {
-            if (uiState.phase == Connect4OnlinePhase.ROOM) viewModel.leaveRoom() else onBack()
+        onBack = exit,
+        onFindRandomPlayer = viewModel::findRandomPlayer,
+        onCancelSearch = viewModel::cancelSearch,
+        onPlayComputer = {
+            viewModel.exit()
+            onPlayComputer()
         },
-        onCreateRoom = viewModel::createRoom,
-        onShowEnterCode = viewModel::showEnterCode,
-        onJoinRoom = viewModel::joinRoom,
         onColumnClick = viewModel::onColumnClick,
         onLeaveRoom = viewModel::leaveRoom,
         onDismissError = viewModel::dismissError
@@ -73,9 +85,9 @@ fun Connect4OnlineRoute(
 fun Connect4OnlineScreen(
     uiState: Connect4OnlineUiState,
     onBack: () -> Unit,
-    onCreateRoom: () -> Unit,
-    onShowEnterCode: () -> Unit,
-    onJoinRoom: (String) -> Unit,
+    onFindRandomPlayer: () -> Unit,
+    onCancelSearch: () -> Unit,
+    onPlayComputer: () -> Unit,
     onColumnClick: (Int) -> Unit,
     onLeaveRoom: () -> Unit,
     onDismissError: () -> Unit,
@@ -96,11 +108,9 @@ fun Connect4OnlineScreen(
                 SignInRequiredContent()
             } else {
                 when (uiState.phase) {
-                    Connect4OnlinePhase.MENU -> MenuContent(onCreateRoom, onShowEnterCode)
-                    Connect4OnlinePhase.ENTER_CODE -> EnterCodeContent(onJoinRoom)
-                    Connect4OnlinePhase.CREATING, Connect4OnlinePhase.JOINING -> LoadingContent(
-                        text = if (uiState.phase == Connect4OnlinePhase.CREATING) "Creating room…" else "Joining room…"
-                    )
+                    Connect4OnlinePhase.IDLE -> IdleContent(onFindRandomPlayer)
+                    Connect4OnlinePhase.SEARCHING -> SearchingContent(uiState.searchSecondsElapsed, onCancelSearch)
+                    Connect4OnlinePhase.NO_OPPONENT_FOUND -> NoOpponentContent(onFindRandomPlayer, onPlayComputer)
                     Connect4OnlinePhase.ROOM -> RoomContent(uiState, onColumnClick, onLeaveRoom)
                 }
             }
@@ -133,7 +143,7 @@ private fun SignInRequiredContent(modifier: Modifier = Modifier) {
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Guest sessions can play locally, but online rooms need a real account so we know who's who.",
+            text = "Guest sessions can play vs the computer, but online matches need a real account so we know who's who.",
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center
         )
@@ -141,51 +151,66 @@ private fun SignInRequiredContent(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun MenuContent(onCreateRoom: () -> Unit, onShowEnterCode: () -> Unit, modifier: Modifier = Modifier) {
+private fun IdleContent(onFindRandomPlayer: () -> Unit, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Text(text = "Play Connect 4 online", style = MaterialTheme.typography.titleLarge)
-        Spacer(modifier = Modifier.height(24.dp))
-        PrimaryButton(text = "Create room", onClick = onCreateRoom)
-        Spacer(modifier = Modifier.height(12.dp))
-        OutlinedButton(onClick = onShowEnterCode) { Text("Join room") }
-    }
-}
-
-@Composable
-private fun EnterCodeContent(onJoinRoom: (String) -> Unit, modifier: Modifier = Modifier) {
-    var code by rememberSaveable { mutableStateOf("") }
-    Column(
-        modifier = modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(text = "Enter room code", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(16.dp))
-        OutlinedTextField(
-            value = code,
-            onValueChange = { code = it.uppercase().take(6) },
-            label = { Text("Code") },
-            singleLine = true
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "You'll be paired with a random player.",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center
         )
-        Spacer(modifier = Modifier.height(16.dp))
-        PrimaryButton(text = "Join", onClick = { onJoinRoom(code) })
+        Spacer(modifier = Modifier.height(24.dp))
+        PrimaryButton(text = "Find a random player", onClick = onFindRandomPlayer)
     }
 }
 
 @Composable
-private fun LoadingContent(text: String, modifier: Modifier = Modifier) {
+private fun SearchingContent(secondsElapsed: Int, onCancelSearch: () -> Unit, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         CircularProgressIndicator()
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(text = "Finding a random player…", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "${secondsElapsed}s / ${MATCHMAKING_TIMEOUT_SECONDS}s",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        OutlinedButton(onClick = onCancelSearch) { Text("Cancel") }
+    }
+}
+
+@Composable
+private fun NoOpponentContent(
+    onFindRandomPlayer: () -> Unit,
+    onPlayComputer: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(text = "No opponent found", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Nobody else is searching right now. Try again, or play the computer.",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        PrimaryButton(text = "Find a random player", onClick = onFindRandomPlayer)
         Spacer(modifier = Modifier.height(12.dp))
-        Text(text = text)
+        OutlinedButton(onClick = onPlayComputer) { Text("Play vs Computer") }
     }
 }
 
@@ -198,37 +223,9 @@ private fun RoomContent(
 ) {
     val room = uiState.room ?: return
     when (room.status) {
-        RoomStatus.WAITING -> WaitingContent(code = room.code, onLeaveRoom = onLeaveRoom, modifier = modifier)
         RoomStatus.ACTIVE -> ActiveGameContent(uiState, onColumnClick, onLeaveRoom, modifier)
         RoomStatus.FINISHED -> FinishedContent(uiState, onLeaveRoom, modifier)
-        RoomStatus.ABANDONED -> AbandonedContent(onLeaveRoom, modifier)
-    }
-}
-
-@Composable
-private fun WaitingContent(code: String, onLeaveRoom: () -> Unit, modifier: Modifier = Modifier) {
-    val clipboard = LocalClipboardManager.current
-    Column(
-        modifier = modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(text = "Waiting for opponent…", style = MaterialTheme.typography.titleMedium)
-        Spacer(modifier = Modifier.height(16.dp))
-        CircularProgressIndicator()
-        Spacer(modifier = Modifier.height(24.dp))
-        Text(text = "Share this code:", style = MaterialTheme.typography.bodyMedium)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = code,
-                style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
-            )
-            IconButton(onClick = { clipboard.setText(AnnotatedString(code)) }) {
-                Icon(Icons.Filled.ContentCopy, contentDescription = "Copy code")
-            }
-        }
-        Spacer(modifier = Modifier.height(24.dp))
-        TextButton(onClick = onLeaveRoom) { Text("Cancel") }
+        RoomStatus.WAITING, RoomStatus.ABANDONED -> AbandonedContent(onLeaveRoom, modifier)
     }
 }
 
@@ -248,11 +245,16 @@ private fun ActiveGameContent(
             text = if (uiState.isMyTurn) "Your turn" else "Opponent's turn",
             style = MaterialTheme.typography.titleMedium
         )
-        if (!uiState.opponentOnline) {
+        uiState.disconnectSecondsLeft?.let { secondsLeft ->
             Text(
-                text = "Opponent seems to have disconnected",
+                text = if (uiState.opponentEverSeen) {
+                    "Opponent disconnected - game ends in ${secondsLeft}s unless they return"
+                } else {
+                    "Waiting for opponent to connect… (${secondsLeft}s)"
+                },
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center
             )
         }
         Connect4Board(
@@ -287,7 +289,7 @@ private fun FinishedContent(uiState: Connect4OnlineUiState, onLeaveRoom: () -> U
         Spacer(modifier = Modifier.height(16.dp))
         Text(text = text, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
         Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onLeaveRoom) { Text("Back to menu") }
+        Button(onClick = onLeaveRoom) { Text("Back") }
     }
 }
 
@@ -298,8 +300,18 @@ private fun AbandonedContent(onLeaveRoom: () -> Unit, modifier: Modifier = Modif
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(text = "Opponent left the game", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        Text(
+            text = "Your opponent left or lost connection",
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "This game has ended with no result.",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center
+        )
         Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onLeaveRoom) { Text("Back to menu") }
+        Button(onClick = onLeaveRoom) { Text("Back") }
     }
 }

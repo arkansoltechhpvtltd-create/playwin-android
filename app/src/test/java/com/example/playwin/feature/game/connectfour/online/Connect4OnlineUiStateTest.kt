@@ -18,7 +18,6 @@ class Connect4OnlineUiStateTest {
         currentTurn: String? = "host"
     ) = Room(
         id = "room-1",
-        code = "ABC123",
         hostId = hostId,
         guestId = guestId,
         status = status,

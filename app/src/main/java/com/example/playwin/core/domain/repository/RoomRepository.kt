@@ -1,25 +1,32 @@
 package com.example.playwin.core.domain.repository
 
+import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.Room
 import com.example.playwin.core.domain.model.RoomStatus
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Pairs two players into an online-multiplayer room via a short shareable
- * code. Today only Connect 4 uses this, but nothing here is Connect-4-specific
+ * Random matchmaking into online-multiplayer rooms. There is deliberately no
+ * way to create a room or name an opponent: the server pairs whoever is
+ * waiting, so two players who know each other can't choose to play each
+ * other. Today only Connect 4 uses this, but nothing here is Connect-4-specific
  * beyond [Room.board]'s shape - a second online game can reuse it.
  *
  * Today [com.example.playwin.core.data.remote.SupabaseRoomRepository] is the
  * only implementation, and it requires a real (non-guest) signed-in user,
- * since the backend RLS keying off `auth.uid()` has nothing to check a local
- * guest session against.
+ * since the backend keys everything off `auth.uid()`.
  */
 interface RoomRepository {
-    /** Creates a new waiting room hosted by [hostId] and returns it with its shareable code. */
-    suspend fun createRoom(hostId: String): Result<Room>
+    /**
+     * Enters (or stays in) the matchmaking queue for [gameId]. Call it
+     * repeatedly while searching - each call is also the heartbeat that keeps
+     * this player pairable. Returns the paired room once the server has
+     * matched this player with a random opponent, or null while still waiting.
+     */
+    suspend fun matchmake(gameId: GameId): Result<Room?>
 
-    /** Joins the waiting room identified by [code] as [userId]. Fails if it's full, finished, or your own. */
-    suspend fun joinRoom(userId: String, code: String): Result<Room>
+    /** Leaves the matchmaking queue for [gameId]. Safe to call when not queued. */
+    suspend fun cancelMatchmaking(gameId: GameId): Result<Unit>
 
     /** Opens a live subscription to [room], tracking [selfUserId]'s presence in it. */
     suspend fun connect(room: Room, selfUserId: String): RoomConnection

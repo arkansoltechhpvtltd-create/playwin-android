@@ -42,9 +42,9 @@ import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import com.example.playwin.feature.game.connectfour.online.Connect4OnlineRoute
 
-private enum class Connect4Mode { LOCAL, ONLINE }
+private enum class Connect4Mode { COMPUTER, ONLINE }
 
-/** Entry point for Connect 4: lets the player choose local pass-and-play or an online room. */
+/** Entry point for Connect 4: play the computer, or get paired with a random online player. */
 @Composable
 fun Connect4Route(
     onBack: () -> Unit,
@@ -54,11 +54,15 @@ fun Connect4Route(
     when (mode) {
         null -> Connect4ModeSelectScreen(
             onBack = onBack,
-            onSelectLocal = { mode = Connect4Mode.LOCAL },
+            onSelectComputer = { mode = Connect4Mode.COMPUTER },
             onSelectOnline = { mode = Connect4Mode.ONLINE }
         )
-        Connect4Mode.LOCAL -> Connect4LocalRoute(onBack = { mode = null }, onWin = onWin)
-        Connect4Mode.ONLINE -> Connect4OnlineRoute(onBack = { mode = null }, onWin = onWin)
+        Connect4Mode.COMPUTER -> Connect4ComputerRoute(onBack = { mode = null }, onWin = onWin)
+        Connect4Mode.ONLINE -> Connect4OnlineRoute(
+            onBack = { mode = null },
+            onWin = onWin,
+            onPlayComputer = { mode = Connect4Mode.COMPUTER }
+        )
     }
 }
 
@@ -66,7 +70,7 @@ fun Connect4Route(
 @Composable
 private fun Connect4ModeSelectScreen(
     onBack: () -> Unit,
-    onSelectLocal: () -> Unit,
+    onSelectComputer: () -> Unit,
     onSelectOnline: () -> Unit
 ) {
     Scaffold(
@@ -82,14 +86,14 @@ private fun Connect4ModeSelectScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Text(text = "How do you want to play?", style = MaterialTheme.typography.titleLarge)
-            PrimaryButton(text = "Local · pass & play", onClick = onSelectLocal, modifier = Modifier.padding(top = 24.dp))
-            PrimaryButton(text = "Play online", onClick = onSelectOnline, modifier = Modifier.padding(top = 12.dp))
+            PrimaryButton(text = "Play vs Computer", onClick = onSelectComputer, modifier = Modifier.padding(top = 24.dp))
+            PrimaryButton(text = "Find a random player", onClick = onSelectOnline, modifier = Modifier.padding(top = 12.dp))
         }
     }
 }
 
 @Composable
-private fun Connect4LocalRoute(
+private fun Connect4ComputerRoute(
     onBack: () -> Unit,
     onWin: (couponId: String) -> Unit,
     viewModel: Connect4ViewModel = hiltViewModel()
@@ -119,7 +123,7 @@ fun Connect4Screen(
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { PwTopBar(title = "Connect 4", onBack = onBack) }
+        topBar = { PwTopBar(title = "Connect 4 · vs Computer", onBack = onBack) }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -130,18 +134,19 @@ fun Connect4Screen(
         ) {
             when {
                 uiState.isDraw -> StatusBanner(text = "It's a draw!")
-                uiState.winner != null -> StatusBanner(text = "Player ${uiState.winner} wins! Claiming your coupon…")
+                uiState.winner == CONNECT4_HUMAN -> StatusBanner(text = "You win! Claiming your coupon…")
+                uiState.winner != null -> StatusBanner(text = "The computer wins this round")
                 else -> TurnBanner(uiState)
             }
 
             Connect4Board(
                 board = uiState.board,
-                enabled = uiState.winner == null && !uiState.isDraw && !uiState.isResolving,
+                enabled = uiState.currentPlayer == CONNECT4_HUMAN && !uiState.isGameOver && !uiState.isResolving,
                 onColumnClick = onColumnClick,
                 modifier = Modifier.padding(top = 16.dp)
             )
 
-            if (uiState.isDraw) {
+            if (uiState.isGameOver && uiState.winner != CONNECT4_HUMAN) {
                 PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
             }
         }
@@ -152,7 +157,7 @@ fun Connect4Screen(
 private fun TurnBanner(uiState: Connect4UiState, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
-            text = "Player ${uiState.currentPlayer}'s turn" + if (uiState.lastTurnTimedOut) " (previous turn timed out)" else "",
+            text = (if (uiState.currentPlayer == CONNECT4_HUMAN) "Your turn" else "Computer is thinking…") + if (uiState.lastTurnTimedOut) " (previous turn timed out)" else "",
             style = MaterialTheme.typography.titleMedium
         )
         Row(
@@ -185,7 +190,7 @@ private fun StatusBanner(text: String, modifier: Modifier = Modifier) {
     Text(text = text, style = MaterialTheme.typography.titleMedium, modifier = modifier.fillMaxWidth())
 }
 
-/** Shared by both local and online Connect 4 screens. */
+/** Shared by both the vs-Computer and online Connect 4 screens. */
 @Composable
 fun Connect4Board(
     board: List<List<Int>>,
