@@ -8,6 +8,11 @@ import com.example.playwin.core.domain.model.GameSnapshot
 import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
+import com.example.playwin.core.domain.wordhunt.WORD_HUNT_TURN_SECONDS
+import com.example.playwin.core.domain.wordhunt.WordHuntBot
+import com.example.playwin.core.domain.wordhunt.WordHuntClaim
+import com.example.playwin.core.domain.wordhunt.WordHuntScoring
+import com.example.playwin.core.domain.wordhunt.matches
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -19,11 +24,12 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Single-player word search against a 90s countdown. Generating the grid and
- * matching a tapped start/end pair against a hidden word is local mechanics,
- * but whether that completes the puzzle (or the clock running out counts as
- * a loss) is always confirmed by [GameEngineRepository.resolve], never
- * decided directly by this ViewModel - same rule as every other game.
+ * Head-to-head Word Hunt against the computer on one shared grid. Players
+ * alternate turns; on a turn you have [WORD_HUNT_TURN_SECONDS] to find any
+ * unclaimed word (tap its first and last letter), scoring its length plus a
+ * speed bonus. [WordHuntBot] plays the computer's turns. Whether the game is
+ * decided - and who won - is always confirmed by [GameEngineRepository.resolve]
+ * from the claims, never decided here. Only a human win claims a reward.
  */
 @HiltViewModel
 class WordHuntViewModel @Inject constructor(
@@ -35,93 +41,98 @@ class WordHuntViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(WordHuntUiState())
     val uiState: StateFlow<WordHuntUiState> = _uiState.asStateFlow()
 
-    private var timerJob: Job? = null
+    private var turnJob: Job? = null
 
     init {
-        startTimer()
+        startTurn(WordHuntSide.HUMAN)
     }
 
     fun onCellTap(row: Int, col: Int) {
         val state = _uiState.value
-        if (state.hasWon || state.hasLost || state.isResolving) return
+        if (!state.canHunt) return
 
         val first = state.firstSelection
-        if (first == null) {
-            _uiState.update { it.copy(firstSelection = row to col) }
-            return
-        }
-
         val second = row to col
-        if (first == second) {
-            _uiState.update { it.copy(firstSelection = null) }
+        if (first == null || first == second) {
+            _uiState.update { it.copy(firstSelection = if (first == null) second else null) }
             return
         }
 
-        val match = state.words.firstOrNull { placed ->
-            placed.word !in state.foundWords &&
-                (
-                    ((placed.startRow to placed.startCol) == first && (placed.endRow to placed.endCol) == second) ||
-                        ((placed.endRow to placed.endCol) == first && (placed.startRow to placed.startCol) == second)
-                    )
-        }
+        val claimed = (state.humanClaims + state.computerClaims).map { it.word }.toSet()
+        val match = state.words.firstOrNull { it.word !in claimed && it.matches(first, second) }
+        _uiState.update { it.copy(firstSelection = null) }
+        if (match == null) return
 
-        if (match == null) {
-            _uiState.update { it.copy(firstSelection = null) }
-            return
-        }
-
-        val newFound = state.foundWords + match.word
-        _uiState.update { it.copy(foundWords = newFound, firstSelection = null, isResolving = true) }
-
-        viewModelScope.launch {
-            val allFound = newFound.size == state.words.size
-            val outcome = gameEngineRepository.resolve(
-                GameId.WORD_HUNT,
-                GameSnapshot.WordHunt(allWordsFound = allFound, timeExpired = false)
-            )
-
-            when (outcome) {
-                GameOutcome.WIN -> {
-                    timerJob?.cancel()
-                    _uiState.update { it.copy(hasWon = true, isResolving = false) }
-                    val coupon = rewardsRepository.claimReward(GameId.WORD_HUNT)
-                    couponsRepository.addCoupon(coupon)
-                    _uiState.update { it.copy(wonCouponId = coupon.id) }
-                }
-
-                GameOutcome.LOSE, GameOutcome.DRAW, GameOutcome.IN_PROGRESS -> {
-                    _uiState.update { it.copy(isResolving = false) }
-                }
-            }
-        }
+        turnJob?.cancel()
+        claim(WordHuntSide.HUMAN, WordHuntClaim(match.word, WordHuntScoring.bonusFor(state.secondsLeft)))
     }
 
     fun onPlayAgain() {
-        timerJob?.cancel()
+        turnJob?.cancel()
         _uiState.value = WordHuntUiState()
-        startTimer()
+        startTurn(WordHuntSide.HUMAN)
     }
 
-    private fun startTimer() {
-        timerJob?.cancel()
-        timerJob = viewModelScope.launch {
-            for (secondsLeft in WORD_HUNT_TIME_SECONDS downTo 0) {
-                _uiState.update { it.copy(secondsLeft = secondsLeft) }
-                delay(1000)
+    private fun claim(side: WordHuntSide, claim: WordHuntClaim) {
+        _uiState.update {
+            when (side) {
+                WordHuntSide.HUMAN -> it.copy(humanClaims = it.humanClaims + claim, isResolving = true)
+                WordHuntSide.COMPUTER -> it.copy(computerClaims = it.computerClaims + claim, isResolving = true)
             }
+        }
 
-            // Time's up. If the win already landed first this coroutine would
-            // have been cancelled, so reaching here always means a loss.
-            _uiState.update { it.copy(isResolving = true) }
+        viewModelScope.launch {
+            val state = _uiState.value
             val outcome = gameEngineRepository.resolve(
                 GameId.WORD_HUNT,
-                GameSnapshot.WordHunt(allWordsFound = false, timeExpired = true)
+                GameSnapshot.WordHunt(
+                    puzzleWords = state.words.map { it.word },
+                    myClaims = state.humanClaims,
+                    opponentClaims = state.computerClaims
+                )
             )
-            _uiState.update { it.copy(hasLost = outcome == GameOutcome.LOSE, isResolving = false) }
+            if (outcome == GameOutcome.IN_PROGRESS) {
+                _uiState.update { it.copy(isResolving = false, lastTurnTimedOut = false) }
+                startTurn(if (side == WordHuntSide.HUMAN) WordHuntSide.COMPUTER else WordHuntSide.HUMAN)
+                return@launch
+            }
+
+            _uiState.update { it.copy(result = outcome, isResolving = false) }
+            if (outcome == GameOutcome.WIN) {
+                val coupon = rewardsRepository.claimReward(GameId.WORD_HUNT)
+                couponsRepository.addCoupon(coupon)
+                _uiState.update { it.copy(wonCouponId = coupon.id) }
+            }
+        }
+    }
+
+    /** Runs [side]'s turn clock; the computer claims its word partway through, the human by tapping. */
+    private fun startTurn(side: WordHuntSide) {
+        turnJob?.cancel()
+        _uiState.update { it.copy(turn = side, secondsLeft = WORD_HUNT_TURN_SECONDS, firstSelection = null) }
+        val computerFindsAt = if (side == WordHuntSide.COMPUTER) WORD_HUNT_TURN_SECONDS - WordHuntBot.thinkSeconds() else null
+
+        turnJob = viewModelScope.launch {
+            for (secondsLeft in WORD_HUNT_TURN_SECONDS downTo 0) {
+                _uiState.update { it.copy(secondsLeft = secondsLeft) }
+                if (secondsLeft == computerFindsAt) {
+                    val state = _uiState.value
+                    val claimed = (state.humanClaims + state.computerClaims).map { it.word }.toSet()
+                    val word = WordHuntBot.chooseWord(state.grid, state.words.map { it.word }, claimed)
+                    if (word != null) {
+                        claim(WordHuntSide.COMPUTER, WordHuntClaim(word.word, WordHuntScoring.bonusFor(secondsLeft)))
+                        return@launch
+                    }
+                }
+                delay(1000)
+            }
+            // Time's up: the turn passes without a word.
+            _uiState.update { it.copy(lastTurnTimedOut = true) }
+            startTurn(if (side == WordHuntSide.HUMAN) WordHuntSide.COMPUTER else WordHuntSide.HUMAN)
         }
     }
 
     override fun onCleared() {
-        timerJob?.cancel()
+        turnJob?.cancel()
     }
 }

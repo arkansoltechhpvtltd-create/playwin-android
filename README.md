@@ -66,7 +66,7 @@ unlocks, including tightening the `coupons` table's RLS to drop client
    reusing the exact rules in `MockGameEngineRepository` (Connect Four
    win-line scan, 2048 tile-reached/no-moves-left, 8-ball
    group-cleared-and-no-scratch, Carrom score comparison once cleared, Bingo
-   row/column/diagonal, Word Hunt all-found/timeout, Chess checkmate/stalemate
+   row/column/diagonal, Word Hunt claim validation + score comparison, Chess checkmate/stalemate
    via a full rules engine, Ludo all-tokens-home, Rummy valid-declaration
    check). Never trust a client-reported "I won" flag.
 3. Only if the outcome is `WIN`, pick/generate a coupon and `insert` it into

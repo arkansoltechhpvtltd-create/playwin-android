@@ -12,20 +12,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,9 +35,34 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
+import com.example.playwin.core.domain.model.GameOutcome
+import com.example.playwin.core.domain.wordhunt.PlacedWord
+import com.example.playwin.core.domain.wordhunt.WORD_HUNT_TIME_WARNING_SECONDS
+import com.example.playwin.core.domain.wordhunt.cells
+import com.example.playwin.feature.game.online.GameModeSelectScreen
+import com.example.playwin.feature.game.online.PlayMode
+import com.example.playwin.feature.game.wordhunt.online.WordHuntOnlineRoute
 
+/** Entry point for Word Hunt: play the computer, or get paired with a random online player. */
 @Composable
 fun WordHuntRoute(
+    onBack: () -> Unit,
+    onWin: (couponId: String) -> Unit
+) {
+    var mode by remember { mutableStateOf<PlayMode?>(null) }
+    when (mode) {
+        null -> GameModeSelectScreen(title = "Word Hunt", onBack = onBack, onSelectMode = { mode = it })
+        PlayMode.COMPUTER -> WordHuntComputerRoute(onBack = { mode = null }, onWin = onWin)
+        PlayMode.ONLINE -> WordHuntOnlineRoute(
+            onBack = { mode = null },
+            onWin = onWin,
+            onPlayComputer = { mode = PlayMode.COMPUTER }
+        )
+    }
+}
+
+@Composable
+private fun WordHuntComputerRoute(
     onBack: () -> Unit,
     onWin: (couponId: String) -> Unit,
     viewModel: WordHuntViewModel = hiltViewModel()
@@ -70,7 +92,7 @@ fun WordHuntScreen(
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { PwTopBar(title = "Word Hunt", onBack = onBack) }
+        topBar = { PwTopBar(title = "Word Hunt · vs Computer", onBack = onBack) }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -79,21 +101,44 @@ fun WordHuntScreen(
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            when {
-                uiState.hasWon -> StatusBanner(text = "All words found! Claiming your coupon…")
-                uiState.hasLost -> StatusBanner(text = "Time's up! Better luck next time.")
-                else -> TimerBanner(uiState)
+            val banner = when (uiState.result) {
+                GameOutcome.WIN -> "You win! Claiming your coupon…"
+                GameOutcome.LOSE -> "The computer wins this round"
+                GameOutcome.DRAW -> "It's a draw!"
+                else -> null
+            }
+            if (banner != null) {
+                Text(text = banner, style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+            } else {
+                TurnBanner(
+                    text = if (uiState.turn == WordHuntSide.HUMAN) "Your turn - find a word" else "Computer is hunting…",
+                    secondsLeft = uiState.secondsLeft,
+                    note = if (uiState.lastTurnTimedOut) "(previous turn timed out)" else null,
+                    isResolving = uiState.isResolving
+                )
             }
 
-            WordList(uiState, modifier = Modifier.padding(top = 12.dp))
+            ScoreLine(myScore = uiState.humanScore, theirScore = uiState.computerScore, theirLabel = "Computer")
+
+            WordList(
+                words = uiState.words,
+                myWords = uiState.humanClaims.map { it.word }.toSet(),
+                theirWords = uiState.computerClaims.map { it.word }.toSet(),
+                modifier = Modifier.padding(top = 12.dp)
+            )
 
             LetterGrid(
-                uiState = uiState,
+                grid = uiState.grid,
+                words = uiState.words,
+                myWords = uiState.humanClaims.map { it.word }.toSet(),
+                theirWords = uiState.computerClaims.map { it.word }.toSet(),
+                selection = uiState.firstSelection,
+                enabled = uiState.canHunt,
                 onCellTap = onCellTap,
                 modifier = Modifier.padding(top = 16.dp)
             )
 
-            if (uiState.hasWon || uiState.hasLost) {
+            if (uiState.result == GameOutcome.LOSE || uiState.result == GameOutcome.DRAW) {
                 PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
             }
         }
@@ -101,64 +146,76 @@ fun WordHuntScreen(
 }
 
 @Composable
-private fun TimerBanner(uiState: WordHuntUiState, modifier: Modifier = Modifier) {
-    val isWarning = uiState.secondsLeft <= WORD_HUNT_TIME_WARNING_SECONDS
-    val color = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+fun TurnBanner(text: String, secondsLeft: Int, note: String?, isResolving: Boolean, modifier: Modifier = Modifier) {
+    val isWarning = secondsLeft <= WORD_HUNT_TIME_WARNING_SECONDS
+    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = text, style = MaterialTheme.typography.titleMedium)
+            note?.let { Text(text = it, style = MaterialTheme.typography.bodySmall) }
+        }
         Text(
-            text = "Time: ${uiState.secondsLeft}s",
+            text = "${secondsLeft}s",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
-            color = color
+            color = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
         )
-        if (uiState.isResolving) {
-            CircularProgressIndicator(
-                modifier = Modifier.padding(start = 10.dp),
-                strokeWidth = 2.dp
-            )
+        if (isResolving) {
+            CircularProgressIndicator(modifier = Modifier.padding(start = 10.dp), strokeWidth = 2.dp)
         }
     }
 }
 
 @Composable
-private fun StatusBanner(text: String, modifier: Modifier = Modifier) {
-    Text(text = text, style = MaterialTheme.typography.titleMedium, modifier = modifier.fillMaxWidth())
+fun ScoreLine(myScore: Int, theirScore: Int, theirLabel: String, modifier: Modifier = Modifier) {
+    Text(
+        text = "You $myScore  ·  $theirLabel $theirScore",
+        style = MaterialTheme.typography.titleSmall,
+        modifier = modifier.fillMaxWidth().padding(top = 8.dp)
+    )
+    Text(
+        text = "A word scores its length + half the seconds left on your clock.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 @Composable
-private fun WordList(uiState: WordHuntUiState, modifier: Modifier = Modifier) {
+fun WordList(words: List<PlacedWord>, myWords: Set<String>, theirWords: Set<String>, modifier: Modifier = Modifier) {
     FlowRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        uiState.words.forEach { placed ->
-            val isFound = placed.word in uiState.foundWords
+        words.forEach { placed ->
+            val claimed = placed.word in myWords || placed.word in theirWords
             Text(
                 text = placed.word,
                 style = MaterialTheme.typography.labelLarge,
-                textDecoration = if (isFound) TextDecoration.LineThrough else TextDecoration.None,
-                color = if (isFound) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.onSurface
+                textDecoration = if (claimed) TextDecoration.LineThrough else TextDecoration.None,
+                color = when (placed.word) {
+                    in myWords -> MaterialTheme.colorScheme.tertiary
+                    in theirWords -> MaterialTheme.colorScheme.secondary
+                    else -> MaterialTheme.colorScheme.onSurface
                 }
             )
         }
     }
 }
 
+/** The letter grid; words you found are highlighted in one colour, your opponent's in another. */
 @Composable
-private fun LetterGrid(
-    uiState: WordHuntUiState,
+fun LetterGrid(
+    grid: List<List<Char>>,
+    words: List<PlacedWord>,
+    myWords: Set<String>,
+    theirWords: Set<String>,
+    selection: Pair<Int, Int>?,
+    enabled: Boolean,
     onCellTap: (row: Int, col: Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val enabled = !uiState.hasWon && !uiState.hasLost && !uiState.isResolving
+    val myCells = words.filter { it.word in myWords }.flatMap { it.cells() }.toSet()
+    val theirCells = words.filter { it.word in theirWords }.flatMap { it.cells() }.toSet()
 
     Column(
         modifier = modifier
@@ -168,37 +225,31 @@ private fun LetterGrid(
             .padding(4.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        for (row in uiState.grid.indices) {
+        for (row in grid.indices) {
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.fillMaxWidth()) {
-                for (col in uiState.grid[row].indices) {
-                    val isSelected = uiState.firstSelection == row to col
-                    val isFoundCell = row to col in uiState.foundCells
-
+                for (col in grid[row].indices) {
+                    val cell = row to col
+                    val (background, onBackground) = when {
+                        cell in myCells -> MaterialTheme.colorScheme.tertiary to MaterialTheme.colorScheme.onTertiary
+                        cell in theirCells -> MaterialTheme.colorScheme.secondary to MaterialTheme.colorScheme.onSecondary
+                        selection == cell -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
+                        else -> MaterialTheme.colorScheme.surface to MaterialTheme.colorScheme.onSurface
+                    }
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .aspectRatio(1f)
                             .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                when {
-                                    isFoundCell -> MaterialTheme.colorScheme.tertiary
-                                    isSelected -> MaterialTheme.colorScheme.secondaryContainer
-                                    else -> MaterialTheme.colorScheme.surface
-                                }
-                            )
+                            .background(background)
                             .clickable(enabled = enabled) { onCellTap(row, col) },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = uiState.grid[row][col].toString(),
+                            text = grid[row][col].toString(),
                             style = MaterialTheme.typography.labelSmall,
-                            fontWeight = if (isFoundCell) FontWeight.Bold else FontWeight.Normal,
+                            fontWeight = if (cell in myCells || cell in theirCells) FontWeight.Bold else FontWeight.Normal,
                             textAlign = TextAlign.Center,
-                            color = if (isFoundCell) {
-                                MaterialTheme.colorScheme.onTertiary
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            }
+                            color = onBackground
                         )
                     }
                 }

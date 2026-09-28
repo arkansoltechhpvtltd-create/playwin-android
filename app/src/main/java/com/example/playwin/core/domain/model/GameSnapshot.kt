@@ -3,6 +3,7 @@ package com.example.playwin.core.domain.model
 import com.example.playwin.core.domain.chess.ChessPosition
 import com.example.playwin.core.domain.rummy.Card
 import com.example.playwin.core.domain.rummy.Rank
+import com.example.playwin.core.domain.wordhunt.WordHuntClaim
 
 /**
  * A serializable snapshot of a game's board state at the moment a player
@@ -71,12 +72,20 @@ sealed interface GameSnapshot {
     ) : GameSnapshot
 
     /**
-     * @param allWordsFound true once every hidden word has been located.
-     * @param timeExpired true if the countdown reached zero before that happened.
+     * A head-to-head Word Hunt position, from the point of view of the player
+     * asking. The engine re-derives the score itself: every claimed word must
+     * be one of [puzzleWords] and claimed at most once across both players,
+     * and bonuses are capped - see
+     * [com.example.playwin.core.domain.wordhunt.WordHuntScoring].
+     *
+     * @param puzzleWords every word hidden in this round's grid.
+     * @param myClaims the words this player found, with their speed bonuses.
+     * @param opponentClaims the words the other player found.
      */
     data class WordHunt(
-        val allWordsFound: Boolean,
-        val timeExpired: Boolean
+        val puzzleWords: List<String>,
+        val myClaims: List<WordHuntClaim>,
+        val opponentClaims: List<WordHuntClaim>
     ) : GameSnapshot
 
     /**

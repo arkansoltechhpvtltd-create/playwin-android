@@ -8,6 +8,7 @@ import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.rummy.RummyValidator
+import com.example.playwin.core.domain.wordhunt.WordHuntScoring
 import kotlinx.coroutines.delay
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -108,9 +109,21 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
     }
 
     private fun resolveWordHunt(snapshot: GameSnapshot.WordHunt): GameOutcome {
-        if (snapshot.allWordsFound) return GameOutcome.WIN
-        if (snapshot.timeExpired) return GameOutcome.LOSE
-        return GameOutcome.IN_PROGRESS
+        val claimedWords = (snapshot.myClaims + snapshot.opponentClaims).map { it.word }
+        // A word outside the puzzle, or claimed twice, is a fabricated result.
+        if (claimedWords.any { it !in snapshot.puzzleWords } || claimedWords.size != claimedWords.toSet().size) {
+            return GameOutcome.LOSE
+        }
+
+        val mine = WordHuntScoring.total(snapshot.myClaims)
+        val theirs = WordHuntScoring.total(snapshot.opponentClaims)
+        val stillOpen = WordHuntScoring.maxRemaining(snapshot.puzzleWords - claimedWords.toSet())
+        return when {
+            mine > theirs + stillOpen -> GameOutcome.WIN
+            theirs > mine + stillOpen -> GameOutcome.LOSE
+            stillOpen > 0 -> GameOutcome.IN_PROGRESS
+            else -> GameOutcome.DRAW
+        }
     }
 
     private fun resolveChess(snapshot: GameSnapshot.Chess): GameOutcome {
