@@ -2,13 +2,15 @@ package com.example.playwin.feature.game.bingo
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.playwin.core.domain.bingo.BingoBot
+import com.example.playwin.core.domain.bingo.BingoRules
 import com.example.playwin.core.domain.model.GameId
-import com.example.playwin.core.domain.model.GameOutcome
-import com.example.playwin.core.domain.model.GameSnapshot
 import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,11 +18,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+private const val COMPUTER_THINK_MILLIS = 900L
+
 /**
- * Single-player bingo against the caller. Drawing numbers and daubing the
- * card is local mechanics, but whether a daub actually completed a winning
- * row/column/diagonal is always confirmed by [GameEngineRepository.resolve],
- * never decided directly by this ViewModel - same rule as every other game.
+ * Head-to-head bingo against the computer: each side has its own card, the
+ * two take turns calling a number (which marks both cards), and the first
+ * completed line wins. [BingoBot] picks the computer's calls. Whether a call
+ * completed a line is always confirmed by [GameEngineRepository.resolve],
+ * never decided directly here. Only a human win claims a reward.
  */
 @HiltViewModel
 class BingoViewModel @Inject constructor(
@@ -32,54 +37,68 @@ class BingoViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(BingoUiState())
     val uiState: StateFlow<BingoUiState> = _uiState.asStateFlow()
 
-    fun onCallNumber() {
+    private var computerJob: Job? = null
+
+    /** The human calls [number] - it must be on their card and not yet called. */
+    fun onCallNumber(number: Int) {
         val state = _uiState.value
-        if (state.hasWon || state.isResolving || state.isBoardExhausted) return
-        if (state.calledNumbers.size >= BINGO_MAX_NUMBER) {
-            _uiState.update { it.copy(isBoardExhausted = true) }
-            return
-        }
-
-        var next: Int
-        do {
-            next = (1..BINGO_MAX_NUMBER).random()
-        } while (next in state.calledNumbers)
-
-        _uiState.update { it.copy(calledNumbers = it.calledNumbers + next, currentCall = next) }
+        if (!state.canCall || number in state.called || state.myCard.none { number in it }) return
+        call(number, BingoSide.HUMAN)
     }
 
-    fun onDaub(row: Int, col: Int) {
+    fun onCallRandom() {
         val state = _uiState.value
-        if (state.hasWon || state.isResolving) return
-        if (state.daubed[row][col]) return
+        if (!state.canCall) return
+        BingoRules.randomUncalled(state.called)?.let { call(it, BingoSide.HUMAN) }
+    }
 
-        val isFree = row == BINGO_FREE_ROW && col == BINGO_FREE_COL
-        if (!isFree && state.card[row][col] !in state.calledNumbers) return
+    fun onPlayAgain() {
+        computerJob?.cancel()
+        _uiState.value = BingoUiState()
+    }
 
-        val newDaubed = state.daubed.mapIndexed { r, rowValues ->
-            rowValues.mapIndexed { c, daubed -> daubed || (r == row && c == col) }
-        }
-        _uiState.update { it.copy(daubed = newDaubed, isResolving = true) }
+    private fun call(number: Int, caller: BingoSide) {
+        val called = _uiState.value.called + number
+        _uiState.update { it.copy(called = called, lastCall = number, lastCaller = caller, isResolving = true) }
 
         viewModelScope.launch {
-            val outcome = gameEngineRepository.resolve(GameId.BINGO, GameSnapshot.Bingo(daubed = newDaubed))
+            val state = _uiState.value
+            val (callerCard, otherCard) = when (caller) {
+                BingoSide.HUMAN -> state.myCard to state.computerCard
+                BingoSide.COMPUTER -> state.computerCard to state.myCard
+            }
+            val other = if (caller == BingoSide.HUMAN) BingoSide.COMPUTER else BingoSide.HUMAN
+            val winner = when (gameEngineRepository.resolveBingoCall(callerCard, otherCard, called)) {
+                BingoCallResult.CALLER_WINS -> caller
+                BingoCallResult.OTHER_WINS -> other
+                BingoCallResult.NO_WINNER -> null
+            }
 
-            when (outcome) {
-                GameOutcome.WIN -> {
-                    _uiState.update { it.copy(hasWon = true, isResolving = false) }
+            if (winner != null) {
+                _uiState.update { it.copy(winner = winner, isResolving = false) }
+                if (winner == BingoSide.HUMAN) {
                     val coupon = rewardsRepository.claimReward(GameId.BINGO)
                     couponsRepository.addCoupon(coupon)
                     _uiState.update { it.copy(wonCouponId = coupon.id) }
                 }
-
-                GameOutcome.LOSE, GameOutcome.DRAW, GameOutcome.IN_PROGRESS -> {
-                    _uiState.update { it.copy(isResolving = false) }
-                }
+                return@launch
             }
+
+            _uiState.update { it.copy(turn = other, isResolving = false) }
+            if (other == BingoSide.COMPUTER) playComputerTurn()
         }
     }
 
-    fun onPlayAgain() {
-        _uiState.value = BingoUiState()
+    private fun playComputerTurn() {
+        computerJob?.cancel()
+        computerJob = viewModelScope.launch {
+            delay(COMPUTER_THINK_MILLIS)
+            val state = _uiState.value
+            BingoBot.chooseCall(state.computerCard, state.myCard, state.called)?.let { call(it, BingoSide.COMPUTER) }
+        }
+    }
+
+    override fun onCleared() {
+        computerJob?.cancel()
     }
 }
