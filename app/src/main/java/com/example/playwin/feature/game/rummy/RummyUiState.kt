@@ -10,16 +10,19 @@ data class RummyUiState(
     val game: RummyState = RummyEngine.deal(),
     val selectedCard: Card? = null,
     val hasWon: Boolean = false,
+    /** The human lost by declaring an invalid hand. */
     val hasLost: Boolean = false,
+    /** The computer declared a valid hand first. */
+    val computerDeclared: Boolean = false,
     val isResolving: Boolean = false,
     val isBotThinking: Boolean = false,
     val wonCouponId: String? = null
 ) {
-    private val gameOver = hasWon || hasLost
+    val isGameOver: Boolean get() = hasWon || hasLost || computerDeclared
 
     val isPlayerTurn: Boolean get() = game.turn == RummyTurn.PLAYER
-    val canDraw: Boolean get() = !gameOver && !isResolving && isPlayerTurn && game.phase == RummyPhase.AWAITING_DRAW
-    val canDiscard: Boolean get() = !gameOver && !isResolving && isPlayerTurn && game.phase == RummyPhase.AWAITING_DISCARD
+    val canDraw: Boolean get() = !isGameOver && !isResolving && isPlayerTurn && game.phase == RummyPhase.AWAITING_DRAW
+    val canDiscard: Boolean get() = !isGameOver && !isResolving && isPlayerTurn && game.phase == RummyPhase.AWAITING_DISCARD
     val canConfirmDiscard: Boolean get() = canDiscard && selectedCard != null
     val canDeclare: Boolean get() = canDiscard && selectedCard != null
 }

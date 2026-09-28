@@ -9,11 +9,14 @@ import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import com.example.playwin.core.domain.rummy.Card
+import com.example.playwin.core.domain.rummy.RummyBot
 import com.example.playwin.core.domain.rummy.RummyEngine
 import com.example.playwin.core.domain.rummy.RummyState
 import com.example.playwin.core.domain.rummy.RummyTurn
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,7 +25,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Single-player 13-card Indian Rummy against a simple bot. Dealing, drawing,
+ * 13-card Indian Rummy against the computer ([RummyBot]). Dealing, drawing,
  * and discarding are local mechanics delegated to [RummyEngine], but whether
  * a declared hand actually wins is always confirmed by
  * [GameEngineRepository.resolve] via [com.example.playwin.core.domain.rummy.RummyValidator] -
@@ -104,8 +107,28 @@ class RummyViewModel @Inject constructor(
         _uiState.update { it.copy(isBotThinking = true) }
         viewModelScope.launch {
             delay(700) // brief pause so the player can see the bot's turn happen
-            val afterBot = RummyEngine.playBotTurn(game)
-            _uiState.update { it.copy(game = afterBot, isBotThinking = false) }
+            val turn = withContext(Dispatchers.Default) { RummyBot.playTurn(game) }
+            when (turn) {
+                is RummyBot.Turn.Played -> _uiState.update { it.copy(game = turn.state, isBotThinking = false) }
+                is RummyBot.Turn.Declared -> resolveComputerDeclaration(turn)
+            }
+        }
+    }
+
+    /** The computer's declaration is confirmed by the game engine like the player's; an invalid one hands the player the round. */
+    private suspend fun resolveComputerDeclaration(turn: RummyBot.Turn.Declared) {
+        _uiState.update { it.copy(game = turn.state, isResolving = true) }
+        val outcome = gameEngineRepository.resolve(
+            GameId.RUMMY,
+            GameSnapshot.Rummy(declaredHand = turn.declaredHand, wildRank = turn.state.wildRank)
+        )
+        if (outcome == GameOutcome.WIN) {
+            _uiState.update { it.copy(computerDeclared = true, isResolving = false, isBotThinking = false) }
+        } else {
+            _uiState.update { it.copy(hasWon = true, isResolving = false, isBotThinking = false) }
+            val coupon = rewardsRepository.claimReward(GameId.RUMMY)
+            couponsRepository.addCoupon(coupon)
+            _uiState.update { it.copy(wonCouponId = coupon.id) }
         }
     }
 }

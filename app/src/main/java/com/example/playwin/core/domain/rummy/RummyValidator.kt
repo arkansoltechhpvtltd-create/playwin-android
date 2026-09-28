@@ -40,7 +40,7 @@ object RummyValidator {
     }
 
     /** Null if [group] is neither a valid set nor a valid sequence; otherwise true iff it's a pure sequence. */
-    private fun evaluateGroup(group: List<Card>, wildRank: Rank): Boolean? {
+    internal fun evaluateGroup(group: List<Card>, wildRank: Rank): Boolean? {
         if (isValidSet(group, wildRank)) return false
         if (isValidSequence(group, wildRank)) return group.none { isWild(it, wildRank) }
         return null

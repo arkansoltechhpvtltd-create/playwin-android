@@ -85,7 +85,7 @@ fun RummyScreen(
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { PwTopBar(title = "Rummy", onBack = onBack) }
+        topBar = { PwTopBar(title = "Rummy · vs Computer", onBack = onBack) }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -132,7 +132,7 @@ fun RummyScreen(
                     }
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Bot's hand", style = MaterialTheme.typography.labelMedium)
+                    Text("Computer's hand", style = MaterialTheme.typography.labelMedium)
                     Text(
                         text = "${uiState.game.botHand.size} cards",
                         style = MaterialTheme.typography.bodyMedium,
@@ -184,7 +184,7 @@ fun RummyScreen(
                 )
             }
 
-            if (uiState.hasWon || uiState.hasLost) {
+            if (uiState.isGameOver) {
                 PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 16.dp))
             }
         }
@@ -204,11 +204,12 @@ private fun Card.sortRank(): Int = when (this) {
 @Composable
 private fun StatusBanner(uiState: RummyUiState) {
     val text = when {
-        uiState.hasWon -> "Valid declaration! Claiming your coupon…"
+        uiState.hasWon -> "You win! Claiming your coupon…"
+        uiState.computerDeclared -> "The computer declared a valid hand - you lose this round."
         uiState.hasLost -> "Invalid declaration - you lose this round."
         uiState.isPlayerTurn && uiState.canDraw -> "Your turn - draw a card"
         uiState.isPlayerTurn -> "Your turn - discard or declare"
-        else -> "Bot's turn…"
+        else -> "Computer's turn…"
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(text = text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))

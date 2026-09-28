@@ -1,9 +1,10 @@
 package com.example.playwin.core.domain.rummy
 
 /**
- * Game mechanics for 13-card Indian Rummy against a simple bot: building the
- * 2-deck shoe, dealing, drawing/discarding, and the bot's turn. Whether a
- * declared hand actually wins is [RummyValidator]'s job, never decided here.
+ * Game mechanics for 13-card Indian Rummy against the computer: building the
+ * 2-deck shoe, dealing, and drawing/discarding ([RummyBot] decides the
+ * computer's moves). Whether a declared hand actually wins is
+ * [RummyValidator]'s job, never decided here.
  */
 object RummyEngine {
 
@@ -73,14 +74,6 @@ object RummyEngine {
             turn = nextTurn,
             phase = RummyPhase.AWAITING_DRAW
         )
-    }
-
-    /** A simple bot: always draws from the shoe, then discards a random card. */
-    fun playBotTurn(state: RummyState): RummyState {
-        require(state.turn == RummyTurn.BOT)
-        val afterDraw = drawFromShoe(state)
-        val discarded = afterDraw.botHand.random()
-        return discard(afterDraw, discarded)
     }
 
     private fun handFor(state: RummyState, turn: RummyTurn): List<Card> =
