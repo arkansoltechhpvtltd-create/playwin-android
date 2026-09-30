@@ -1,7 +1,19 @@
 package com.example.playwin.feature.game.bingo
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,17 +27,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,19 +49,41 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
+import com.example.playwin.core.designsystem.theme.PwGameBingo
+import com.example.playwin.core.designsystem.theme.PwGameFourInARow
+import com.example.playwin.core.designsystem.theme.PwGameGrid
+import com.example.playwin.core.designsystem.theme.PwGameWordHunt
+import com.example.playwin.core.designsystem.theme.PwGoldDark
+import com.example.playwin.core.designsystem.theme.PwGoldInk
+import com.example.playwin.core.designsystem.theme.PwGoldLight
+import com.example.playwin.core.domain.bingo.BINGO_COLUMN_RANGES
 import com.example.playwin.core.domain.bingo.BINGO_FREE_COL
 import com.example.playwin.core.domain.bingo.BINGO_FREE_ROW
 import com.example.playwin.core.domain.bingo.BINGO_LETTERS
 import com.example.playwin.core.domain.bingo.BINGO_SIZE
+import com.example.playwin.core.domain.bingo.BingoRules
 import com.example.playwin.core.domain.bingo.bingoLetterFor
+import com.example.playwin.feature.game.CelebrationBurst
+import com.example.playwin.feature.game.GameStatusBanner
 import com.example.playwin.feature.game.bingo.online.BingoOnlineRoute
 import com.example.playwin.feature.game.online.GameModeSelectScreen
 import com.example.playwin.feature.game.online.PlayMode
@@ -111,23 +149,49 @@ fun BingoScreen(
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            val humanWon = uiState.winner == BingoSide.HUMAN
             val banner = when {
-                uiState.winner == BingoSide.HUMAN -> "Bingo! Claiming your coupon…"
+                humanWon -> "Bingo! Claiming your coupon…"
                 uiState.winner == BingoSide.COMPUTER -> "The computer got bingo first"
                 uiState.turn == BingoSide.HUMAN -> "Your call - tap a number on your card"
                 else -> "Computer is calling…"
             }
-            Text(text = banner, style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+            val gold = MaterialTheme.colorScheme.primary
+            GameStatusBanner(accent = if (uiState.turn == BingoSide.HUMAN || humanWon) gold else PwGameBingo) {
+                if (humanWon) {
+                    Icon(
+                        imageVector = Icons.Filled.EmojiEvents,
+                        contentDescription = null,
+                        tint = gold,
+                        modifier = Modifier
+                            .padding(end = 12.dp)
+                            .size(26.dp)
+                    )
+                }
+                Text(
+                    text = banner,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+            }
             LastCallText(uiState.lastCall, uiState.lastCaller?.let { if (it == BingoSide.HUMAN) "You" else "Computer" })
 
             CalledNumbersRow(uiState.called, modifier = Modifier.padding(top = 8.dp))
 
-            BingoCardView(
-                card = uiState.myCard,
-                called = uiState.called,
-                onCall = if (uiState.canCall) onCallNumber else null,
-                modifier = Modifier.padding(top = 16.dp)
-            )
+            Box(modifier = Modifier.padding(top = 16.dp)) {
+                BingoCardView(
+                    card = uiState.myCard,
+                    called = uiState.called,
+                    onCall = if (uiState.canCall) onCallNumber else null
+                )
+                if (humanWon) {
+                    CelebrationBurst(
+                        colors = listOf(PwGoldDark, PwGoldLight, Color.White) + LETTER_COLORS,
+                        modifier = Modifier.matchParentSize()
+                    )
+                }
+            }
 
             Row(
                 modifier = Modifier.padding(top = 12.dp),
@@ -148,21 +212,110 @@ fun BingoScreen(
     }
 }
 
+/** One jewel tone per BINGO column, shared by the header tabs and the called balls. */
+private val LETTER_COLORS = listOf(PwGameGrid, PwGameFourInARow, PwGoldLight, PwGameWordHunt, PwGameBingo)
+
+private fun colorForNumber(number: Int): Color =
+    LETTER_COLORS.getOrElse(BINGO_COLUMN_RANGES.indexOfFirst { number in it }) { PwGoldLight }
+
+/** A glossy numbered ball, as drawn from the cage: its column's colour around a white label. */
+@Composable
+private fun BingoBall(number: Int, size: Dp, modifier: Modifier = Modifier) {
+    val color = colorForNumber(number)
+    Box(
+        modifier = modifier
+            .size(size)
+            .drawBehind {
+                val r = this.size.minDimension / 2f * 0.92f
+                drawCircle(Color.Black.copy(alpha = 0.25f), r, center + Offset(0f, r * 0.12f))
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(lerp(color, Color.White, 0.45f), color, lerp(color, Color.Black, 0.35f)),
+                        center = center - Offset(r * 0.35f, r * 0.4f),
+                        radius = r * 1.7f
+                    ),
+                    radius = r,
+                    center = center
+                )
+                drawCircle(Color(0xFFFDFBF5), r * 0.66f, center)
+                drawCircle(lerp(color, Color.Black, 0.2f), r * 0.66f, center, style = Stroke(width = r * 0.05f))
+                drawCircle(Color.White.copy(alpha = 0.55f), r * 0.16f, center - Offset(r * 0.5f, r * 0.58f))
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = bingoLetterFor(number),
+                fontSize = (size.value * 0.17f).sp,
+                lineHeight = (size.value * 0.18f).sp,
+                fontWeight = FontWeight.Bold,
+                color = lerp(color, Color.Black, 0.25f)
+            )
+            Text(
+                text = number.toString(),
+                fontSize = (size.value * 0.3f).sp,
+                lineHeight = (size.value * 0.3f).sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color(0xFF1C1710)
+            )
+        }
+    }
+}
+
+/** The latest call: the ball rolls in and pops each time a new number is called. */
 @Composable
 fun LastCallText(lastCall: Int?, caller: String?, modifier: Modifier = Modifier) {
-    val text = if (lastCall != null && caller != null) "$caller called ${bingoLetterFor(lastCall)}-$lastCall" else "No numbers called yet"
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.fillMaxWidth().padding(top = 4.dp)
-    )
+    val pop = remember { Animatable(1f) }
+    LaunchedEffect(lastCall) {
+        if (lastCall != null) {
+            pop.snapTo(0f)
+            pop.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = 320f))
+        }
+    }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (lastCall != null && caller != null) {
+            BingoBall(
+                number = lastCall,
+                size = 60.dp,
+                modifier = Modifier.graphicsLayer {
+                    val p = pop.value
+                    scaleX = 0.4f + 0.6f * p
+                    scaleY = 0.4f + 0.6f * p
+                    rotationZ = (1f - p) * -120f
+                    alpha = p.coerceIn(0f, 1f)
+                }
+            )
+            Column(modifier = Modifier.padding(start = 12.dp)) {
+                Text(
+                    text = "$caller called",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "${bingoLetterFor(lastCall)}-$lastCall",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        } else {
+            Text(
+                text = "No numbers called yet",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }
 
 @Composable
 fun OpponentCard(label: String, card: List<List<Int>>, called: List<Int>, modifier: Modifier = Modifier) {
     Column(modifier = modifier.padding(top = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = label, style = MaterialTheme.typography.labelLarge)
+        Text(text = label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         BingoCardView(
             card = card,
             called = called,
@@ -180,19 +333,8 @@ fun CalledNumbersRow(calledNumbers: List<Int>, modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        items(calledNumbers.asReversed()) { number ->
-            Box(
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.secondaryContainer)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    text = "${bingoLetterFor(number)}-$number",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-            }
+        items(calledNumbers.asReversed(), key = { it }) { number ->
+            BingoBall(number = number, size = 38.dp, modifier = Modifier.animateItem())
         }
     }
 }
@@ -209,62 +351,175 @@ fun BingoCardView(
     modifier: Modifier = Modifier,
     showHeader: Boolean = true
 ) {
+    // [showHeader] is off for the small opponent card, which is drawn more tightly throughout.
+    val compact = !showHeader
+    val gap = if (compact) 3.dp else 5.dp
+    val shape = RoundedCornerShape(if (compact) 14.dp else 20.dp)
+
+    // Completed lines glow - a display nicety only; the win itself is decided by the engine.
+    val lineCells = remember(card, called) {
+        val marks = BingoRules.marks(card, called)
+        BingoRules.LINES.filter { line -> line.all { (r, c) -> marks[r][c] } }.flatten().toSet()
+    }
+    val linePulse = if (lineCells.isNotEmpty()) {
+        rememberInfiniteTransition(label = "bingoLine").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(700, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "bingoLinePulse"
+        )
+    } else {
+        null
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(6.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+            .shadow(elevation = if (compact) 4.dp else 10.dp, shape = shape)
+            .clip(shape)
+            .background(
+                Brush.verticalGradient(
+                    listOf(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.surfaceVariant)
+                )
+            )
+            .border(1.5.dp, Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark)), shape)
+            .padding(if (compact) 6.dp else 10.dp),
+        verticalArrangement = Arrangement.spacedBy(gap)
     ) {
         if (showHeader) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
-                BINGO_LETTERS.forEach { letter ->
+            Row(horizontalArrangement = Arrangement.spacedBy(gap), modifier = Modifier.fillMaxWidth()) {
+                BINGO_LETTERS.forEachIndexed { index, letter ->
+                    val color = LETTER_COLORS[index]
                     Text(
                         text = letter,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Brush.verticalGradient(listOf(lerp(color, Color.White, 0.2f), lerp(color, Color.Black, 0.15f))))
+                            .padding(vertical = 4.dp),
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White
                     )
                 }
             }
         }
         for (row in 0 until BINGO_SIZE) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(gap), modifier = Modifier.fillMaxWidth()) {
                 for (col in 0 until BINGO_SIZE) {
                     val isFree = row == BINGO_FREE_ROW && col == BINGO_FREE_COL
                     val number = card[row][col]
                     val isMarked = isFree || number in called
-                    val tappable = onCall != null && !isMarked
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                when {
-                                    isMarked -> MaterialTheme.colorScheme.tertiary
-                                    tappable -> MaterialTheme.colorScheme.secondaryContainer
-                                    else -> MaterialTheme.colorScheme.surface
-                                }
-                            )
-                            .clickable(enabled = tappable) { onCall?.invoke(number) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (isFree) "FREE" else number.toString(),
-                            style = if (showHeader) MaterialTheme.typography.labelLarge else MaterialTheme.typography.labelSmall,
-                            fontWeight = if (isMarked) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isMarked) MaterialTheme.colorScheme.onTertiary else MaterialTheme.colorScheme.onSurface
-                        )
-                    }
+                    BingoCell(
+                        number = number,
+                        isFree = isFree,
+                        isMarked = isMarked,
+                        compact = compact,
+                        linePulse = linePulse.takeIf { (row to col) in lineCells },
+                        onClick = if (onCall != null && !isMarked) ({ onCall(number) }) else null,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun BingoCell(
+    number: Int,
+    isFree: Boolean,
+    isMarked: Boolean,
+    compact: Boolean,
+    linePulse: State<Float>?,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    val tappable = onClick != null
+    val shape = RoundedCornerShape(if (compact) 6.dp else 10.dp)
+    val face = MaterialTheme.colorScheme.surface
+    val edge = MaterialTheme.colorScheme.outline
+    val callable = MaterialTheme.colorScheme.secondary
+
+    // The daub stamps down with a little overshoot when a number is called;
+    // numbers already marked when the card first appears are just shown marked.
+    val daub = remember { Animatable(if (isMarked) 1f else 0f) }
+    LaunchedEffect(isMarked) {
+        if (isMarked) daub.animateTo(1f, spring(dampingRatio = 0.5f, stiffness = 380f)) else daub.snapTo(0f)
+    }
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.9f else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
+        label = "bingoCellPress"
+    )
+
+    Box(
+        modifier = modifier
+            .aspectRatio(1f)
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(face, lerp(face, edge, 0.45f))))
+            .border(1.dp, if (tappable) callable.copy(alpha = 0.7f) else edge, shape)
+            .drawBehind {
+                val d = daub.value
+                if (d > 0f) drawDaub(progress = d)
+                if (linePulse != null) {
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.5f + 0.5f * linePulse.value),
+                        radius = size.minDimension * 0.4f,
+                        style = Stroke(width = size.minDimension * (0.05f + 0.03f * linePulse.value))
+                    )
+                }
+            }
+            .clickable(
+                enabled = tappable,
+                interactionSource = interactionSource,
+                indication = null
+            ) { onClick?.invoke() },
+        contentAlignment = Alignment.Center
+    ) {
+        if (isFree) {
+            Icon(
+                imageVector = Icons.Filled.Star,
+                contentDescription = "Free",
+                tint = PwGoldInk,
+                modifier = Modifier.fillMaxSize(0.5f)
+            )
+        } else {
+            Text(
+                text = number.toString(),
+                style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.titleMedium,
+                fontWeight = if (isMarked || tappable) FontWeight.Bold else FontWeight.Medium,
+                color = if (isMarked) PwGoldInk else MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+/** The gold ink stamp over a called number; [progress] overshoots 1 briefly as it lands. */
+private fun DrawScope.drawDaub(progress: Float) {
+    val radius = size.minDimension * 0.4f * (1.7f - 0.7f * progress)
+    val alpha = progress.coerceIn(0f, 1f)
+    drawCircle(Color.Black.copy(alpha = 0.2f * alpha), radius, center + Offset(0f, radius * 0.1f))
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(Color(0xFFFFF0BF), PwGoldDark, PwGoldLight),
+            center = center - Offset(radius * 0.3f, radius * 0.35f),
+            radius = radius * 1.6f
+        ),
+        radius = radius,
+        center = center,
+        alpha = alpha
+    )
+    drawCircle(Color(0xFF7A5A14).copy(alpha = 0.6f * alpha), radius, style = Stroke(width = radius * 0.08f))
+    drawCircle(Color.White.copy(alpha = 0.45f * alpha), radius * 0.18f, center - Offset(radius * 0.45f, radius * 0.5f))
 }
 
 @androidx.compose.ui.tooling.preview.Preview
