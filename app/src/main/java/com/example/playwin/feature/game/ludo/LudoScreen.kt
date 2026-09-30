@@ -74,6 +74,9 @@ import com.example.playwin.core.domain.ludo.LudoColor
 import com.example.playwin.core.domain.ludo.LudoEngine
 import com.example.playwin.core.domain.ludo.LudoState
 import com.example.playwin.core.domain.ludo.Token
+import com.example.playwin.feature.game.CelebrationBurst
+import com.example.playwin.feature.game.GameStatusBanner
+import com.example.playwin.feature.game.TurnTimerRing
 import com.example.playwin.feature.game.ludo.online.LudoOnlineRoute
 import com.example.playwin.feature.game.online.GameModeSelectScreen
 import com.example.playwin.feature.game.online.PlayMode
@@ -199,33 +202,10 @@ internal fun colorFor(color: LudoColor): Color = when (color) {
     LudoColor.BLUE -> Color(0xFF1E88E5)
 }
 
-/** A raised pill that carries the turn / result line, tinted from the left by [accent]. */
-@Composable
-private fun StatusBanner(
-    accent: Color,
-    modifier: Modifier = Modifier,
-    content: @Composable RowScope.() -> Unit
-) {
-    val shape = RoundedCornerShape(18.dp)
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .shadow(elevation = 4.dp, shape = shape)
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surface)
-            .background(Brush.horizontalGradient(listOf(accent.copy(alpha = 0.26f), Color.Transparent)))
-            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        content()
-    }
-}
-
 @Composable
 private fun TurnBanner(uiState: LudoUiState, modifier: Modifier = Modifier) {
     val accent = colorFor(uiState.currentColor)
-    StatusBanner(accent = accent, modifier = modifier) {
+    GameStatusBanner(accent = accent, modifier = modifier) {
         Canvas(modifier = Modifier.size(26.dp)) {
             drawToken(center = center, radius = size.minDimension * 0.42f, color = accent)
         }
@@ -247,14 +227,14 @@ private fun TurnBanner(uiState: LudoUiState, modifier: Modifier = Modifier) {
                 )
             }
         }
-        TimerRing(secondsLeft = uiState.secondsLeft, totalSeconds = LUDO_TURN_SECONDS)
+        TurnTimerRing(secondsLeft = uiState.secondsLeft, totalSeconds = LUDO_TURN_SECONDS)
     }
 }
 
 @Composable
 private fun WinnerBanner(humanWon: Boolean, modifier: Modifier = Modifier) {
     val gold = MaterialTheme.colorScheme.primary
-    StatusBanner(accent = if (humanWon) gold else colorFor(LUDO_COMPUTER), modifier = modifier) {
+    GameStatusBanner(accent = if (humanWon) gold else colorFor(LUDO_COMPUTER), modifier = modifier) {
         if (humanWon) {
             Icon(imageVector = Icons.Filled.EmojiEvents, contentDescription = null, tint = gold, modifier = Modifier.size(26.dp))
         } else {
@@ -269,41 +249,6 @@ private fun WinnerBanner(humanWon: Boolean, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .weight(1f)
                 .padding(start = 12.dp)
-        )
-    }
-}
-
-/** The per-turn countdown as a draining ring; it turns to the error colour for the last few seconds. */
-@Composable
-private fun TimerRing(secondsLeft: Int, totalSeconds: Int, modifier: Modifier = Modifier) {
-    val fraction by animateFloatAsState(
-        targetValue = secondsLeft / totalSeconds.toFloat(),
-        animationSpec = tween(durationMillis = 900, easing = LinearEasing),
-        label = "ludoTimer"
-    )
-    val urgent = secondsLeft <= 5
-    val ringColor = if (urgent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    val trackColor = MaterialTheme.colorScheme.outline
-    Box(modifier = modifier.size(40.dp), contentAlignment = Alignment.Center) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val stroke = 3.dp.toPx()
-            val inset = Offset(stroke / 2f, stroke / 2f)
-            val arcSize = Size(size.width - stroke, size.height - stroke)
-            drawArc(trackColor, 0f, 360f, useCenter = false, topLeft = inset, size = arcSize, style = Stroke(stroke))
-            drawArc(
-                color = ringColor,
-                startAngle = -90f,
-                sweepAngle = 360f * fraction,
-                useCenter = false,
-                topLeft = inset,
-                size = arcSize,
-                style = Stroke(stroke, cap = StrokeCap.Round)
-            )
-        }
-        Text(
-            text = "$secondsLeft",
-            style = MaterialTheme.typography.labelLarge,
-            color = if (urgent) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
         )
     }
 }
