@@ -12,6 +12,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.domain.ludo.LudoEngine
 import com.example.playwin.feature.game.ludo.LudoBoard
+import com.example.playwin.feature.game.ludo.LudoDice
 import com.example.playwin.feature.game.ludo.colorFor
 import com.example.playwin.feature.game.ludo.label
 import com.example.playwin.feature.game.online.OnlineMatchEffects
@@ -53,11 +54,19 @@ fun LudoOnlineRoute(
                 game.diceValue != null -> "Rolled: ${game.diceValue} - tap a token"
                 else -> room.ludoLastRoll()?.let { "Roll dice (last roll: $it)" } ?: "Roll dice"
             }
+            val canRoll = canAct && game.diceValue == null
+            LudoDice(
+                value = game.diceValue ?: room.ludoLastRoll(),
+                live = game.diceValue != null,
+                enabled = canRoll,
+                onClick = viewModel::onRollDice,
+                modifier = Modifier.padding(top = 16.dp)
+            )
             PrimaryButton(
                 text = rollText,
                 onClick = viewModel::onRollDice,
-                enabled = canAct && game.diceValue == null,
-                modifier = Modifier.padding(top = 16.dp)
+                enabled = canRoll,
+                modifier = Modifier.padding(top = 12.dp)
             )
         },
         finishedBoard = { room ->
