@@ -1,6 +1,15 @@
 package com.example.playwin.feature.lobby
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -83,14 +92,40 @@ fun LobbyScreen(
             item(span = fullSpan) {
                 SectionHeader(title = "Games")
             }
-            items(uiState.games) { game ->
-                GameTileCard(
-                    title = game.title,
-                    icon = game.icon.toImageVector(),
-                    accentColor = game.icon.toAccentColor(),
-                    onClick = { onGameClick(game.id) }
-                )
+            if (uiState.isLoading) {
+                items(SKELETON_TILE_COUNT) {
+                    GameTileSkeleton()
+                }
+            } else {
+                items(uiState.games, key = { it.id }) { game ->
+                    GameTileCard(
+                        title = game.title,
+                        icon = game.icon.toImageVector(),
+                        accentColor = game.icon.toAccentColor(),
+                        onClick = { onGameClick(game.id) },
+                        modifier = Modifier.animateItem()
+                    )
+                }
             }
         }
     }
+}
+
+private const val SKELETON_TILE_COUNT = 9
+
+/** A grey stand-in the size and shape of a [GameTileCard], gently breathing while the games load. */
+@Composable
+private fun GameTileSkeleton(modifier: Modifier = Modifier) {
+    val pulse by rememberInfiniteTransition(label = "lobbySkeleton").animateFloat(
+        initialValue = 0.45f,
+        targetValue = 0.9f,
+        animationSpec = infiniteRepeatable(tween(800), RepeatMode.Reverse),
+        label = "lobbySkeletonPulse"
+    )
+    Box(
+        modifier = modifier
+            .aspectRatio(0.95f)
+            .graphicsLayer { alpha = pulse }
+            .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.large)
+    )
 }
