@@ -2,6 +2,7 @@ package com.example.playwin.core.designsystem.component
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -41,7 +43,8 @@ import com.example.playwin.core.designsystem.theme.PlayWinTheme
  * hairline frame and neutral icon badge in every case. The ONLY per-game
  * variation is the icon itself and its jewel accent colour - never the tile's
  * background - so the grid reads as a unified, classy set rather than a
- * patchwork of different pastel cards.
+ * patchwork of different pastel cards. A game with its own badge artwork passes
+ * it as [image], which replaces the icon badge.
  */
 @Composable
 fun GameTileCard(
@@ -49,7 +52,8 @@ fun GameTileCard(
     icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    accentColor: Color = MaterialTheme.colorScheme.primary
+    accentColor: Color = MaterialTheme.colorScheme.primary,
+    image: Painter? = null
 ) {
     val isDark = LocalPwIsDarkTheme.current
     val interactionSource = remember { MutableInteractionSource() }
@@ -79,22 +83,32 @@ fun GameTileCard(
                 .padding(horizontal = 10.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = CircleShape
-                    )
-                    .border(1.dp, accentColor.copy(alpha = 0.45f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
+            if (image != null) {
+                // Full artwork stands in for the badge; it's drawn a little larger but
+                // takes the same total height, so labels stay level across the row.
+                Image(
+                    painter = image,
                     contentDescription = null,
-                    tint = accentColor,
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(BADGE_IMAGE_SIZE)
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(ICON_BADGE_SIZE)
+                        .background(
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = CircleShape
+                        )
+                        .border(1.dp, accentColor.copy(alpha = 0.45f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = accentColor,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
             }
             Text(
                 text = title,
@@ -103,11 +117,15 @@ fun GameTileCard(
                 maxLines = 2,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp)
+                    .padding(top = if (image != null) LABEL_GAP - (BADGE_IMAGE_SIZE - ICON_BADGE_SIZE) else LABEL_GAP)
             )
         }
     }
 }
+
+private val ICON_BADGE_SIZE = 52.dp
+private val BADGE_IMAGE_SIZE = 60.dp
+private val LABEL_GAP = 12.dp
 
 @Preview
 @Composable

@@ -10,8 +10,12 @@ import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.ViewModule
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
+import com.example.playwin.R
 import com.example.playwin.core.designsystem.theme.PwGameBilliards
 import com.example.playwin.core.designsystem.theme.PwGameBingo
 import com.example.playwin.core.designsystem.theme.PwGameCards
@@ -51,4 +55,11 @@ fun GameIconKey.toAccentColor(): Color = when (this) {
     GameIconKey.CHESS -> PwGameChess
     GameIconKey.LUDO -> PwGameLudo
     GameIconKey.CARDS -> PwGameCards
+}
+
+/** Artwork that replaces the icon badge on a game's lobby tile, for games that have it. */
+@Composable
+fun GameIconKey.toBadgePainter(): Painter? = when (this) {
+    GameIconKey.LUDO -> painterResource(R.drawable.ludo_logo)
+    else -> null
 }

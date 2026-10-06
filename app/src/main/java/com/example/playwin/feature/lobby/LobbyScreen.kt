@@ -32,6 +32,7 @@ import com.example.playwin.core.designsystem.component.FeaturedBannerCard
 import com.example.playwin.core.designsystem.component.GameTileCard
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.component.SectionHeader
+import com.example.playwin.core.designsystem.icon.toBadgePainter
 import com.example.playwin.core.designsystem.icon.toAccentColor
 import com.example.playwin.core.designsystem.icon.toImageVector
 import com.example.playwin.core.designsystem.theme.PwSpacing
@@ -102,6 +103,7 @@ fun LobbyScreen(
                         title = game.title,
                         icon = game.icon.toImageVector(),
                         accentColor = game.icon.toAccentColor(),
+                        image = game.icon.toBadgePainter(),
                         onClick = { onGameClick(game.id) },
                         modifier = Modifier.animateItem()
                     )
