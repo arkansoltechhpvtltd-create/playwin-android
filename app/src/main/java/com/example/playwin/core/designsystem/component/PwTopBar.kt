@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 
 /**
@@ -29,8 +30,7 @@ fun PwTopBar(
     titleColor: Color = Color.Unspecified,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
-    CenterAlignedTopAppBar(
-        modifier = modifier,
+    PwTopBar(
         title = {
             Text(
                 text = title,
@@ -38,6 +38,26 @@ fun PwTopBar(
                 color = titleColor
             )
         },
+        modifier = modifier,
+        onBack = onBack,
+        actions = actions
+    )
+}
+
+/** A [PwTopBar] whose title is any content, such as a logo; [height] grows the bar to fit it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PwTopBar(
+    title: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null,
+    height: Dp = TopAppBarDefaults.TopAppBarExpandedHeight,
+    actions: @Composable RowScope.() -> Unit = {}
+) {
+    CenterAlignedTopAppBar(
+        modifier = modifier,
+        title = title,
+        expandedHeight = height,
         navigationIcon = {
             if (onBack != null) {
                 IconButton(onClick = onBack) {

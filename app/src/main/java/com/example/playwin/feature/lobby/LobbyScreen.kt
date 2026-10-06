@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -22,11 +24,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.R
 import com.example.playwin.core.designsystem.component.CouponBalanceChip
 import com.example.playwin.core.designsystem.component.FeaturedBannerCard
 import com.example.playwin.core.designsystem.component.GameTileCard
@@ -59,7 +63,18 @@ fun LobbyScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { PwTopBar(title = "PlayWin", titleColor = MaterialTheme.colorScheme.primary) }
+        topBar = {
+            PwTopBar(
+                title = {
+                    Image(
+                        painter = painterResource(R.drawable.playwin_logo),
+                        contentDescription = "PlayWin",
+                        modifier = Modifier.size(84.dp)
+                    )
+                },
+                height = 96.dp
+            )
+        }
     ) { innerPadding ->
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
