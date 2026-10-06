@@ -1,5 +1,7 @@
 package com.example.playwin.feature.game.ludo
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -53,20 +55,29 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.ColorUtils
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.R
 import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
-import com.example.playwin.core.designsystem.theme.LocalPwIsDarkTheme
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import com.example.playwin.core.designsystem.theme.PwGoldDark
 import com.example.playwin.core.designsystem.theme.PwGoldLight
@@ -82,6 +93,8 @@ import com.example.playwin.feature.game.online.GameModeSelectScreen
 import com.example.playwin.feature.game.online.PlayMode
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 @Composable
@@ -205,9 +218,10 @@ internal fun colorFor(color: LudoColor): Color = when (color) {
 @Composable
 private fun TurnBanner(uiState: LudoUiState, modifier: Modifier = Modifier) {
     val accent = colorFor(uiState.currentColor)
+    val tokenImage = rememberTokenImages().getValue(uiState.currentColor)
     GameStatusBanner(accent = accent, modifier = modifier) {
         Canvas(modifier = Modifier.size(26.dp)) {
-            drawToken(center = center, radius = size.minDimension * 0.42f, color = accent)
+            drawToken(center = center, radius = size.minDimension * 0.42f, image = tokenImage)
         }
         Column(
             modifier = Modifier
@@ -234,12 +248,13 @@ private fun TurnBanner(uiState: LudoUiState, modifier: Modifier = Modifier) {
 @Composable
 private fun WinnerBanner(humanWon: Boolean, modifier: Modifier = Modifier) {
     val gold = MaterialTheme.colorScheme.primary
+    val computerToken = rememberTokenImages().getValue(LUDO_COMPUTER)
     GameStatusBanner(accent = if (humanWon) gold else colorFor(LUDO_COMPUTER), modifier = modifier) {
         if (humanWon) {
             Icon(imageVector = Icons.Filled.EmojiEvents, contentDescription = null, tint = gold, modifier = Modifier.size(26.dp))
         } else {
             Canvas(modifier = Modifier.size(26.dp)) {
-                drawToken(center = center, radius = size.minDimension * 0.42f, color = colorFor(LUDO_COMPUTER))
+                drawToken(center = center, radius = size.minDimension * 0.42f, image = computerToken)
             }
         }
         Text(
@@ -302,8 +317,24 @@ private fun cellFor(color: LudoColor, index: Int, position: Int): Pair<Int, Int>
 
 private fun cellFor(token: Token): Pair<Int, Int> = cellFor(token.color, token.index, token.position)
 
+// ludo_board.jpg has no track of its own, only corner bases, a centre medallion and
+// gold-railed channels through the middle, so the grid is laid over it with two
+// visual adjustments: home columns shift half a cell to run down the channels and
+// end on the medallion, and base tokens sit in the image's slot circles.
+
+/** Base-slot rows/columns mapped onto the image's slot circles, in grid units. */
+private val BASE_SLOT_GRID = mapOf(3 to 2.45f, 5 to 3.68f, 10 to 11.3f, 12 to 12.52f)
+
 /** The centre of a cell in grid units (multiply by the cell size for pixels). */
-private fun gridPoint(cell: Pair<Int, Int>): Offset = Offset(cell.second.toFloat(), cell.first.toFloat())
+private fun gridPoint(cell: Pair<Int, Int>): Offset {
+    val (row, col) = cell
+    val slotX = BASE_SLOT_GRID[col]
+    val slotY = BASE_SLOT_GRID[row]
+    if (slotX != null && slotY != null) return Offset(slotX, slotY)
+    val (homeRow, homeCol) = HOME_CELL
+    val inHomeColumn = (row == homeRow && col in 2..12) || (col == homeCol && row in 2..12)
+    return if (inHomeColumn) Offset(col + 0.5f, row + 0.5f) else Offset(col.toFloat(), row.toFloat())
+}
 
 private const val HOP_MILLIS_PER_CELL = 110
 private const val FLIGHT_MILLIS = 420
@@ -370,29 +401,82 @@ private class TokenMotion(token: Token) {
     }
 }
 
-private class BoardPalette(
-    val background: List<Color>,
-    val tile: Color,
-    val tileEdge: Color,
-    val yard: Color,
-    val star: Color
-)
+// Track tiles are drawn to match the board image's navy slate and gold trim in both themes.
+private val TileFace = Color(0xFF2B3447)
+private val TileEdge = Color(0xFF151A24)
+private val TileTrim = Color(0xFFB08A3A)
+private val BoardNavy = Color(0xFF1B2232)
 
-private val LightBoardPalette = BoardPalette(
-    background = listOf(Color(0xFFFBF7EE), Color(0xFFEDE3CC)),
-    tile = Color(0xFFFFFFFF),
-    tileEdge = Color(0xFFD3C7AB),
-    yard = Color(0xFFFFFBF2),
-    star = PwGoldLight
-)
+/**
+ * Which corner each colour's base square occupies, as (column, row) with 0 = left/top
+ * and 1 = right/bottom: [boardCorner] is where the game puts it (next to its start
+ * square), [imageCorner] is where ludo_board.jpg painted it. The image's diagonals
+ * pair the colours differently from the turn order, so squares are redrawn to fit.
+ */
+private fun boardCorner(color: LudoColor): Pair<Int, Int> = when (color) {
+    LudoColor.RED -> 0 to 0
+    LudoColor.GREEN -> 1 to 0
+    LudoColor.YELLOW -> 1 to 1
+    LudoColor.BLUE -> 0 to 1
+}
 
-private val DarkBoardPalette = BoardPalette(
-    background = listOf(Color(0xFF1D2430), Color(0xFF11151C)),
-    tile = Color(0xFF343D4B),
-    tileEdge = Color(0xFF1A1F28),
-    yard = Color(0xFF232A35),
-    star = PwGoldDark
-)
+private fun imageCorner(color: LudoColor): Pair<Int, Int> = when (color) {
+    LudoColor.RED -> 0 to 0
+    LudoColor.YELLOW -> 1 to 0
+    LudoColor.BLUE -> 1 to 1
+    LudoColor.GREEN -> 0 to 1
+}
+
+/** A base square plus a little surrounding background, as fractions of the image's width. */
+private const val BASE_BAND_START = 0.1025f
+private const val BASE_BAND_END = 0.6895f
+private const val BASE_BAND_SIZE = 0.208f
+
+/** How much of ludo_token.png's width the disc itself covers. */
+private const val TOKEN_DISC_FRACTION = 0.724f
+private const val TOKEN_BITMAP_PX = 192
+
+/**
+ * ludo_token.png in each player's colour. Only the red body is recoloured (hue
+ * swapped, saturation/brightness matched to the target), so the gold rim and the
+ * white highlights stay as painted.
+ */
+@Composable
+private fun rememberTokenImages(): Map<LudoColor, ImageBitmap> {
+    val resources = LocalContext.current.resources
+    return remember(resources) {
+        val source = BitmapFactory.decodeResource(resources, R.drawable.ludo_token)
+        val scaled = Bitmap.createScaledBitmap(source, TOKEN_BITMAP_PX, TOKEN_BITMAP_PX, true)
+        LudoEngine.PLAYER_ORDER.associateWith { tintToken(scaled, it).asImageBitmap() }
+    }
+}
+
+private fun tintToken(source: Bitmap, color: LudoColor): Bitmap {
+    if (color == LudoColor.RED) return source
+    val from = FloatArray(3).also { android.graphics.Color.colorToHSV(colorFor(LudoColor.RED).toArgb(), it) }
+    val to = FloatArray(3).also { android.graphics.Color.colorToHSV(colorFor(color).toArgb(), it) }
+    val width = source.width
+    val height = source.height
+    val pixels = IntArray(width * height)
+    source.getPixels(pixels, 0, width, 0, 0, width, height)
+    val hsv = FloatArray(3)
+    for (i in pixels.indices) {
+        val pixel = pixels[i]
+        val alpha = pixel ushr 24
+        if (alpha == 0) continue
+        android.graphics.Color.colorToHSV(pixel, hsv)
+        // Distance from red on the colour wheel: the body is near 0°, the gold rim near 40°.
+        val fromRed = min(hsv[0], 360f - hsv[0])
+        val weight = ((26f - fromRed) / 8f).coerceIn(0f, 1f)
+        if (weight == 0f) continue
+        hsv[0] = to[0]
+        hsv[1] = (hsv[1] * to[1] / from[1]).coerceIn(0f, 1f)
+        hsv[2] = (hsv[2] * to[2] / from[2]).coerceIn(0f, 1f)
+        val tinted = android.graphics.Color.HSVToColor(alpha, hsv)
+        pixels[i] = if (weight == 1f) tinted else ColorUtils.blendARGB(pixel, tinted, weight)
+    }
+    return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+}
 
 private typealias TokenKey = Pair<LudoColor, Int>
 
@@ -415,7 +499,8 @@ fun LudoBoard(
     modifier: Modifier = Modifier,
     celebrate: Boolean = false
 ) {
-    val palette = if (LocalPwIsDarkTheme.current) DarkBoardPalette else LightBoardPalette
+    val boardImage = ImageBitmap.imageResource(R.drawable.ludo_board)
+    val tokenImages = rememberTokenImages()
     val gold = MaterialTheme.colorScheme.primary
     val frameShape = RoundedCornerShape(22.dp)
     val boardShape = RoundedCornerShape(18.dp)
@@ -462,7 +547,7 @@ fun LudoBoard(
                 .fillMaxSize()
                 .graphicsLayer()
         ) {
-            drawBoard(palette = palette, players = game.players)
+            drawBoard(image = boardImage, players = game.players)
         }
 
         Canvas(
@@ -492,7 +577,7 @@ fun LudoBoard(
                     drawToken(
                         center = (motion.offset() + motion.spread.value) * cell,
                         radius = cell * (if (stacked) 0.32f else 0.4f),
-                        color = colorFor(token.color),
+                        image = tokenImages.getValue(token.color),
                         lift = motion.lift() * cell,
                         glow = if (isMovable) glow else null,
                         glowColor = gold
@@ -509,107 +594,87 @@ fun LudoBoard(
     }
 }
 
-private fun DrawScope.drawBoard(palette: BoardPalette, players: List<LudoColor>) {
+private fun DrawScope.drawBoard(image: ImageBitmap, players: List<LudoColor>) {
     val cell = size.width / GRID
     fun center(rc: Pair<Int, Int>) = gridPoint(rc) * cell
 
-    drawRect(brush = Brush.verticalGradient(palette.background), size = size)
+    drawImage(
+        image = image,
+        dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
+        filterQuality = FilterQuality.High
+    )
 
-    // Corner yards: a glossy coloured slab, an inset panel, and four recessed slots.
+    // Base squares: each colour's square from the image, redrawn in that colour's corner,
+    // and dimmed under a navy scrim when that colour isn't playing.
+    val scale = size.width / image.width
+    fun band(corner: Int) = if (corner == 0) BASE_BAND_START else BASE_BAND_END
+    val bandPx = (BASE_BAND_SIZE * image.width).roundToInt()
     for (color in LudoEngine.PLAYER_ORDER) {
-        val inPlay = color in players
-        val base = colorFor(color).let { if (inPlay) it else lerp(it, palette.yard, 0.6f) }
-        val (tr, tc) = baseTopLeft(color)
-        val topLeft = Offset((tc - 0.5f) * cell + cell * 0.1f, (tr - 0.5f) * cell + cell * 0.1f)
-        val side = cell * 4.8f
-        val corner = CornerRadius(cell * 0.9f)
-        drawRoundRect(
-            color = lerp(base, Color.Black, 0.35f),
-            topLeft = topLeft + Offset(0f, cell * 0.12f),
-            size = Size(side, side),
-            cornerRadius = corner
-        )
-        drawRoundRect(
-            brush = Brush.linearGradient(
-                colors = listOf(lerp(base, Color.White, 0.3f), base, lerp(base, Color.Black, 0.18f)),
-                start = topLeft,
-                end = topLeft + Offset(side, side)
-            ),
-            topLeft = topLeft,
-            size = Size(side, side),
-            cornerRadius = corner
-        )
-        val panelInset = cell * 0.55f
-        drawRoundRect(
-            color = palette.yard,
-            topLeft = topLeft + Offset(panelInset, panelInset),
-            size = Size(side - panelInset * 2, side - panelInset * 2),
-            cornerRadius = CornerRadius(cell * 0.6f)
-        )
-        BASE_SLOT_OFFSETS.forEach { (or, oc) ->
-            val slot = center((tr + or) to (tc + oc))
-            drawCircle(color = lerp(base, Color.Black, 0.3f), radius = cell * 0.5f, center = slot)
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(lerp(base, Color.Black, 0.12f), lerp(base, Color.White, 0.25f)),
-                    center = slot - Offset(0f, cell * 0.12f),
-                    radius = cell * 0.6f
-                ),
-                radius = cell * 0.43f,
-                center = slot + Offset(0f, cell * 0.04f)
+        val (sx, sy) = imageCorner(color)
+        val (dx, dy) = boardCorner(color)
+        val dst = Offset(band(dx) * image.width, band(dy) * image.width) * scale
+        val dstSize = IntSize((bandPx * scale).roundToInt(), (bandPx * scale).roundToInt())
+        if ((sx to sy) != (dx to dy)) {
+            drawImage(
+                image = image,
+                srcOffset = IntOffset((band(sx) * image.width).roundToInt(), (band(sy) * image.width).roundToInt()),
+                srcSize = IntSize(bandPx, bandPx),
+                dstOffset = IntOffset(dst.x.roundToInt(), dst.y.roundToInt()),
+                dstSize = dstSize,
+                filterQuality = FilterQuality.High
+            )
+        }
+        if (color !in players) {
+            drawRect(
+                color = BoardNavy.copy(alpha = 0.6f),
+                topLeft = dst,
+                size = Size(dstSize.width.toFloat(), dstSize.height.toFloat())
             )
         }
     }
 
-    // The shared track: raised tiles, entry squares tinted in their colour, stars on the other safe squares.
+    // The shared track: slate tiles with gold trim, entry squares in their colour, stars on the other safe squares.
     val entryColors = LudoEngine.PLAYER_ORDER.associateBy { LudoEngine.startIndexFor(it) }
     RING_CELLS.forEachIndexed { index, rc ->
         val entry = entryColors[index]
         if (entry != null) {
             val tint = colorFor(entry)
-            drawTile(rc, cell, face = lerp(palette.tile, tint, 0.7f), edge = lerp(tint, Color.Black, 0.4f))
+            drawTile(center(rc), cell, face = lerp(TileFace, tint, 0.8f), edge = lerp(tint, Color.Black, 0.5f))
             drawCircle(color = Color.White.copy(alpha = 0.85f), radius = cell * 0.16f, center = center(rc))
         } else {
-            drawTile(rc, cell, face = palette.tile, edge = palette.tileEdge)
+            drawTile(center(rc), cell, face = TileFace, edge = TileEdge)
             if (index in LudoEngine.SAFE_GLOBAL_INDICES) {
-                drawStar(center = center(rc), radius = cell * 0.32f, color = palette.star)
+                drawStar(center = center(rc), radius = cell * 0.32f, color = PwGoldLight)
             }
         }
     }
 
+    // Home columns run down the image's railed channels to its medallion, which is home.
     for (color in LudoEngine.PLAYER_ORDER) {
         val tint = colorFor(color)
         homeColumnCells(color).forEach { rc ->
             if (rc != HOME_CELL) {
-                drawTile(rc, cell, face = lerp(tint, Color.White, 0.12f), edge = lerp(tint, Color.Black, 0.4f))
+                drawTile(center(rc), cell, face = lerp(TileFace, tint, 0.85f), edge = lerp(tint, Color.Black, 0.5f))
             }
         }
     }
-
-    // Home: a gold medallion where every home column ends.
-    val home = center(HOME_CELL)
-    drawCircle(color = Color.Black.copy(alpha = 0.25f), radius = cell * 0.78f, center = home + Offset(0f, cell * 0.1f))
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(Color(0xFFFFF1C2), PwGoldDark, PwGoldLight),
-            center = home - Offset(cell * 0.25f, cell * 0.3f),
-            radius = cell * 1.3f
-        ),
-        radius = cell * 0.76f,
-        center = home
-    )
-    drawCircle(color = Color(0xFF7A5A14), radius = cell * 0.76f, center = home, style = Stroke(cell * 0.06f))
-    drawStar(center = home, radius = cell * 0.42f, color = Color(0xFF7A5A14))
 }
 
-/** One raised, rounded track tile: a darker edge peeking out below a lighter face. */
-private fun DrawScope.drawTile(rc: Pair<Int, Int>, cell: Float, face: Color, edge: Color) {
+/** One raised, rounded track tile centred on [center]: a darker edge below a face with a gold trim. */
+private fun DrawScope.drawTile(center: Offset, cell: Float, face: Color, edge: Color) {
     val inset = cell * 0.05f
     val side = cell - inset * 2
-    val topLeft = Offset((rc.second - 0.5f) * cell + inset, (rc.first - 0.5f) * cell + inset)
+    val topLeft = center - Offset(side / 2f, side / 2f)
     val corner = CornerRadius(cell * 0.2f)
     drawRoundRect(color = edge, topLeft = topLeft, size = Size(side, side), cornerRadius = corner)
     drawRoundRect(color = face, topLeft = topLeft, size = Size(side, side - cell * 0.07f), cornerRadius = corner)
+    drawRoundRect(
+        color = TileTrim.copy(alpha = 0.75f),
+        topLeft = topLeft,
+        size = Size(side, side),
+        cornerRadius = corner,
+        style = Stroke(width = cell * 0.035f)
+    )
 }
 
 private fun DrawScope.drawStar(center: Offset, radius: Float, color: Color) {
@@ -626,14 +691,14 @@ private fun DrawScope.drawStar(center: Offset, radius: Float, color: Color) {
 }
 
 /**
- * A glossy, domed playing piece. [center] is where it stands on the board;
+ * A playing piece drawn from [image]. [center] is where it stands on the board;
  * [lift] raises the piece off its shadow mid-hop. A non-null [glow] (0..1)
  * marks it as tappable with a breathing halo in [glowColor].
  */
 private fun DrawScope.drawToken(
     center: Offset,
     radius: Float,
-    color: Color,
+    image: ImageBitmap,
     lift: Float = 0f,
     glow: Float? = null,
     glowColor: Color = Color.Transparent
@@ -641,7 +706,6 @@ private fun DrawScope.drawToken(
     val airborne = (lift / (radius * 3f)).coerceIn(0f, 1f)
     val r = radius * (1f + (glow ?: 0f) * 0.08f + airborne * 0.15f)
     val body = center - Offset(0f, lift)
-    val dark = lerp(color, Color.Black, 0.45f)
 
     drawCircle(
         color = Color.Black.copy(alpha = 0.32f * (1f - airborne * 0.5f)),
@@ -657,30 +721,12 @@ private fun DrawScope.drawToken(
             style = Stroke(width = r * 0.14f)
         )
     }
-    drawCircle(color = dark, radius = r, center = body)
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(lerp(color, Color.White, 0.45f), color, lerp(color, Color.Black, 0.25f)),
-            center = body - Offset(r * 0.3f, r * 0.35f),
-            radius = r * 1.5f
-        ),
-        radius = r * 0.9f,
-        center = body
-    )
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(lerp(color, Color.White, 0.6f), lerp(color, Color.Black, 0.1f)),
-            center = body - Offset(r * 0.15f, r * 0.2f),
-            radius = r * 0.7f
-        ),
-        radius = r * 0.5f,
-        center = body
-    )
-    drawCircle(color = dark.copy(alpha = 0.45f), radius = r * 0.5f, center = body, style = Stroke(width = r * 0.06f))
-    drawOval(
-        color = Color.White.copy(alpha = 0.6f),
-        topLeft = body + Offset(-r * 0.55f, -r * 0.68f),
-        size = Size(r * 0.5f, r * 0.28f)
+    val side = (2f * r / TOKEN_DISC_FRACTION).roundToInt()
+    drawImage(
+        image = image,
+        dstOffset = IntOffset((body.x - side / 2f).roundToInt(), (body.y - side / 2f).roundToInt()),
+        dstSize = IntSize(side, side),
+        filterQuality = FilterQuality.High
     )
 }
 
