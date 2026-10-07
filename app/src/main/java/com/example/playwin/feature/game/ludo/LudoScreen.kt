@@ -1,5 +1,6 @@
 package com.example.playwin.feature.game.ludo
 
+import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.animation.core.Animatable
@@ -44,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -67,8 +69,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.imageResource
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -80,6 +80,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.R
 import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
+import com.example.playwin.core.designsystem.image.ArtworkCache
+import com.example.playwin.core.designsystem.image.artworkPainter
+import com.example.playwin.core.designsystem.image.rememberArtwork
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import com.example.playwin.core.designsystem.theme.PwGoldDark
 import com.example.playwin.core.designsystem.theme.PwGoldLight
@@ -93,6 +96,8 @@ import com.example.playwin.feature.game.TurnTimerRing
 import com.example.playwin.feature.game.ludo.online.LudoOnlineRoute
 import com.example.playwin.feature.game.online.GameModeSelectScreen
 import com.example.playwin.feature.game.online.PlayMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min
@@ -105,6 +110,9 @@ fun LudoRoute(
     onWin: (couponId: String) -> Unit
 ) {
     var mode by remember { mutableStateOf<PlayMode?>(null) }
+    // Board and tokens are ready in the background by the time a mode is picked.
+    val resources = LocalContext.current.resources
+    LaunchedEffect(Unit) { preloadLudoArtwork(resources) }
     when (mode) {
         null -> GameModeSelectScreen(title = "Ludo", onBack = onBack, onSelectMode = { mode = it })
         PlayMode.COMPUTER -> LudoComputerRoute(onBack = { mode = null }, onWin = onWin)
@@ -152,7 +160,7 @@ fun LudoScreen(
         topBar = {
             PwTopBar(title = "Ludo · vs Computer", onBack = onBack) {
                 Image(
-                    painter = painterResource(R.drawable.ludo_logo),
+                    painter = artworkPainter(R.drawable.ludo_logo),
                     contentDescription = null,
                     modifier = Modifier
                         .padding(end = 12.dp)
@@ -230,10 +238,10 @@ internal fun colorFor(color: LudoColor): Color = when (color) {
 @Composable
 private fun TurnBanner(uiState: LudoUiState, modifier: Modifier = Modifier) {
     val accent = colorFor(uiState.currentColor)
-    val tokenImage = rememberTokenImages().getValue(uiState.currentColor)
+    val tokenImage = rememberTokenImages()?.getValue(uiState.currentColor)
     GameStatusBanner(accent = accent, modifier = modifier) {
         Canvas(modifier = Modifier.size(26.dp)) {
-            drawToken(center = center, radius = size.minDimension * 0.42f, image = tokenImage)
+            if (tokenImage != null) drawToken(center = center, radius = size.minDimension * 0.42f, image = tokenImage)
         }
         Column(
             modifier = Modifier
@@ -260,13 +268,13 @@ private fun TurnBanner(uiState: LudoUiState, modifier: Modifier = Modifier) {
 @Composable
 private fun WinnerBanner(humanWon: Boolean, modifier: Modifier = Modifier) {
     val gold = MaterialTheme.colorScheme.primary
-    val computerToken = rememberTokenImages().getValue(LUDO_COMPUTER)
+    val computerToken = rememberTokenImages()?.getValue(LUDO_COMPUTER)
     GameStatusBanner(accent = if (humanWon) gold else colorFor(LUDO_COMPUTER), modifier = modifier) {
         if (humanWon) {
             Icon(imageVector = Icons.Filled.EmojiEvents, contentDescription = null, tint = gold, modifier = Modifier.size(26.dp))
         } else {
             Canvas(modifier = Modifier.size(26.dp)) {
-                drawToken(center = center, radius = size.minDimension * 0.42f, image = computerToken)
+                if (computerToken != null) drawToken(center = center, radius = size.minDimension * 0.42f, image = computerToken)
             }
         }
         Text(
@@ -448,19 +456,37 @@ private const val BASE_BAND_SIZE = 0.208f
 private const val TOKEN_DISC_FRACTION = 0.724f
 private const val TOKEN_BITMAP_PX = 192
 
+/** The tinted tokens, built once per process by [loadTokenImages]. */
+@Volatile
+private var tokenImageCache: Map<LudoColor, ImageBitmap>? = null
+
 /**
  * ludo_token.png in each player's colour. Only the red body is recoloured (hue
  * swapped, saturation/brightness matched to the target), so the gold rim and the
- * white highlights stay as painted.
+ * white highlights stay as painted. A per-pixel pass, so keep it off the main thread.
  */
+private fun loadTokenImages(resources: Resources): Map<LudoColor, ImageBitmap> = tokenImageCache ?: run {
+    val source = BitmapFactory.decodeResource(resources, R.drawable.ludo_token)
+    val scaled = Bitmap.createScaledBitmap(source, TOKEN_BITMAP_PX, TOKEN_BITMAP_PX, true)
+    LudoEngine.PLAYER_ORDER.associateWith { tintToken(scaled, it).asImageBitmap() }
+        .also { tokenImageCache = it }
+}
+
+/** Decodes the board, header badge and tinted tokens ahead of the board appearing. */
+private suspend fun preloadLudoArtwork(resources: Resources) = withContext(Dispatchers.Default) {
+    ArtworkCache.load(resources, R.drawable.ludo_board)
+    ArtworkCache.load(resources, R.drawable.ludo_logo)
+    loadTokenImages(resources)
+}
+
+/** The tinted tokens; null for the frame or two before they're ready if they weren't preloaded. */
 @Composable
-private fun rememberTokenImages(): Map<LudoColor, ImageBitmap> {
+private fun rememberTokenImages(): Map<LudoColor, ImageBitmap>? {
     val resources = LocalContext.current.resources
-    return remember(resources) {
-        val source = BitmapFactory.decodeResource(resources, R.drawable.ludo_token)
-        val scaled = Bitmap.createScaledBitmap(source, TOKEN_BITMAP_PX, TOKEN_BITMAP_PX, true)
-        LudoEngine.PLAYER_ORDER.associateWith { tintToken(scaled, it).asImageBitmap() }
+    val images by produceState(initialValue = tokenImageCache) {
+        if (value == null) value = withContext(Dispatchers.Default) { loadTokenImages(resources) }
     }
+    return images
 }
 
 private fun tintToken(source: Bitmap, color: LudoColor): Bitmap {
@@ -511,7 +537,7 @@ fun LudoBoard(
     modifier: Modifier = Modifier,
     celebrate: Boolean = false
 ) {
-    val boardImage = ImageBitmap.imageResource(R.drawable.ludo_board)
+    val boardImage = rememberArtwork(R.drawable.ludo_board)
     val tokenImages = rememberTokenImages()
     val gold = MaterialTheme.colorScheme.primary
     val frameShape = RoundedCornerShape(22.dp)
@@ -559,7 +585,7 @@ fun LudoBoard(
                 .fillMaxSize()
                 .graphicsLayer()
         ) {
-            drawBoard(image = boardImage, players = game.players)
+            if (boardImage != null) drawBoard(image = boardImage, players = game.players)
         }
 
         Canvas(
@@ -577,6 +603,7 @@ fun LudoBoard(
                     }
                 }
         ) {
+            val images = tokenImages ?: return@Canvas
             val cell = size.width / GRID
             val glow = pulse?.value
             game.tokens
@@ -589,7 +616,7 @@ fun LudoBoard(
                     drawToken(
                         center = (motion.offset() + motion.spread.value) * cell,
                         radius = cell * (if (stacked) 0.32f else 0.4f),
-                        image = tokenImages.getValue(token.color),
+                        image = images.getValue(token.color),
                         lift = motion.lift() * cell,
                         glow = if (isMovable) glow else null,
                         glowColor = gold

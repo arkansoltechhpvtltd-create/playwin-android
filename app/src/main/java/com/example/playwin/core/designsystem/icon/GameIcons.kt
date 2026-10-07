@@ -1,5 +1,6 @@
 package com.example.playwin.core.designsystem.icon
 
+import androidx.annotation.DrawableRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.EmojiEvents
@@ -14,8 +15,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.painterResource
 import com.example.playwin.R
+import com.example.playwin.core.designsystem.image.artworkPainter
 import com.example.playwin.core.designsystem.theme.PwGameBilliards
 import com.example.playwin.core.designsystem.theme.PwGameBingo
 import com.example.playwin.core.designsystem.theme.PwGameCards
@@ -57,16 +58,23 @@ fun GameIconKey.toAccentColor(): Color = when (this) {
     GameIconKey.CARDS -> PwGameCards
 }
 
+/** The badge artwork drawable for a game's lobby tile, for games that have it. */
+@DrawableRes
+fun GameIconKey.badgeRes(): Int? = when (this) {
+    GameIconKey.GRID -> R.drawable.twozerofoureight_logo
+    GameIconKey.BILLIARDS -> R.drawable.eightball_logo
+    GameIconKey.CARROM -> R.drawable.carrom_logo
+    GameIconKey.FOUR_IN_A_ROW -> R.drawable.connect4_logo
+    GameIconKey.BINGO -> R.drawable.bingo_logo
+    GameIconKey.WORD_HUNT -> R.drawable.wordhunt_logo
+    GameIconKey.CHESS -> R.drawable.chess_logo
+    GameIconKey.LUDO -> R.drawable.ludo_logo
+    GameIconKey.CARDS -> R.drawable.rummy_logo
+}
+
 /** Artwork that replaces the icon badge on a game's lobby tile, for games that have it. */
 @Composable
-fun GameIconKey.toBadgePainter(): Painter? = when (this) {
-    GameIconKey.GRID -> painterResource(R.drawable.twozerofoureight_logo)
-    GameIconKey.BILLIARDS -> painterResource(R.drawable.eightball_logo)
-    GameIconKey.CARROM -> painterResource(R.drawable.carrom_logo)
-    GameIconKey.FOUR_IN_A_ROW -> painterResource(R.drawable.connect4_logo)
-    GameIconKey.BINGO -> painterResource(R.drawable.bingo_logo)
-    GameIconKey.WORD_HUNT -> painterResource(R.drawable.wordhunt_logo)
-    GameIconKey.CHESS -> painterResource(R.drawable.chess_logo)
-    GameIconKey.LUDO -> painterResource(R.drawable.ludo_logo)
-    GameIconKey.CARDS -> painterResource(R.drawable.rummy_logo)
-}
+fun GameIconKey.toBadgePainter(): Painter? = badgeRes()?.let { artworkPainter(it) }
+
+/** Every image the lobby draws, so it can be decoded before the lobby first appears. */
+val LobbyArtwork: List<Int> = GameIconKey.entries.mapNotNull { it.badgeRes() } + R.drawable.playwin_logo

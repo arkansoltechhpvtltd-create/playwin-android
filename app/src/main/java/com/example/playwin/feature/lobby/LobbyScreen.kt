@@ -24,7 +24,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
+import com.example.playwin.core.designsystem.image.artworkPainter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -67,7 +67,7 @@ fun LobbyScreen(
             PwTopBar(
                 title = {
                     Image(
-                        painter = painterResource(R.drawable.playwin_logo),
+                        painter = artworkPainter(R.drawable.playwin_logo),
                         contentDescription = "PlayWin",
                         modifier = Modifier.size(84.dp)
                     )
