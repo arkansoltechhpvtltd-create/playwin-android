@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material3.Card
@@ -27,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
@@ -89,7 +91,9 @@ fun GameTileCard(
                 Image(
                     painter = image,
                     contentDescription = null,
-                    modifier = Modifier.size(BADGE_IMAGE_SIZE)
+                    modifier = Modifier
+                        .size(BADGE_IMAGE_SIZE)
+                        .clip(RoundedCornerShape(BADGE_IMAGE_CORNER))
                 )
             } else {
                 Box(
@@ -125,6 +129,7 @@ fun GameTileCard(
 
 private val ICON_BADGE_SIZE = 52.dp
 private val BADGE_IMAGE_SIZE = 60.dp
+private val BADGE_IMAGE_CORNER = 12.dp
 private val LABEL_GAP = 12.dp
 
 @Preview

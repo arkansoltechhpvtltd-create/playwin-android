@@ -60,6 +60,13 @@ fun GameIconKey.toAccentColor(): Color = when (this) {
 /** Artwork that replaces the icon badge on a game's lobby tile, for games that have it. */
 @Composable
 fun GameIconKey.toBadgePainter(): Painter? = when (this) {
+    GameIconKey.GRID -> painterResource(R.drawable.twozerofoureight_logo)
+    GameIconKey.BILLIARDS -> painterResource(R.drawable.eightball_logo)
+    GameIconKey.CARROM -> painterResource(R.drawable.carrom_logo)
+    GameIconKey.FOUR_IN_A_ROW -> painterResource(R.drawable.connect4_logo)
+    GameIconKey.BINGO -> painterResource(R.drawable.bingo_logo)
+    GameIconKey.WORD_HUNT -> painterResource(R.drawable.wordhunt_logo)
+    GameIconKey.CHESS -> painterResource(R.drawable.chess_logo)
     GameIconKey.LUDO -> painterResource(R.drawable.ludo_logo)
-    else -> null
+    GameIconKey.CARDS -> painterResource(R.drawable.rummy_logo)
 }
