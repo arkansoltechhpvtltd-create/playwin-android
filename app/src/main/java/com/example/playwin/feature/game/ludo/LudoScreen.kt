@@ -297,18 +297,26 @@ private fun WinnerBanner(humanWon: Boolean, modifier: Modifier = Modifier) {
 
 private const val GRID = 15
 
+/**
+ * The 52 ring cells in shared-path order, clockwise. Index 0 is (6,1) so that
+ * each colour's last ring cell (start + 50) sits beside its home column - Red
+ * leaves the ring at (8,1) next to row 7 - instead of 4 cells past it. The home
+ * columns run down the board's centre lines, which fall between two ring
+ * cells, so each turn-off is the cell just before that line.
+ */
 private fun ringCells(): List<Pair<Int, Int>> {
     val cells = mutableListOf<Pair<Int, Int>>()
+    for (r in 6 downTo 2) cells += r to 1
     for (c in 1..14) cells += 1 to c
     for (r in 2..14) cells += r to 14
     for (c in 13 downTo 1) cells += 14 to c
-    for (r in 13 downTo 2) cells += r to 1
+    for (r in 13 downTo 7) cells += r to 1
     return cells
 }
 
-private val RING_CELLS = ringCells()
+internal val RING_CELLS = ringCells()
 
-private fun homeColumnCells(color: LudoColor): List<Pair<Int, Int>> = when (color) {
+internal fun homeColumnCells(color: LudoColor): List<Pair<Int, Int>> = when (color) {
     LudoColor.RED -> (2..7).map { 7 to it }
     LudoColor.GREEN -> (2..7).map { it to 7 }
     LudoColor.YELLOW -> (12 downTo 7).map { 7 to it }
@@ -347,7 +355,7 @@ private fun cellFor(token: Token): Pair<Int, Int> = cellFor(token.color, token.i
 private val BASE_SLOT_GRID = mapOf(3 to 2.45f, 5 to 3.68f, 10 to 11.3f, 12 to 12.52f)
 
 /** The centre of a cell in grid units (multiply by the cell size for pixels). */
-private fun gridPoint(cell: Pair<Int, Int>): Offset {
+internal fun gridPoint(cell: Pair<Int, Int>): Offset {
     val (row, col) = cell
     val slotX = BASE_SLOT_GRID[col]
     val slotY = BASE_SLOT_GRID[row]
