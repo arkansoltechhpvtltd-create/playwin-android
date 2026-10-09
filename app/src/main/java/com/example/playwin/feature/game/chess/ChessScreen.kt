@@ -1,5 +1,10 @@
 package com.example.playwin.feature.game.chess
 
+import android.content.res.Resources
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Paint
+import android.graphics.Rect as AndroidRect
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.VectorConverter
@@ -8,7 +13,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -21,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
@@ -37,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -48,17 +54,24 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.R
 import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
@@ -76,7 +89,10 @@ import com.example.playwin.feature.game.chess.online.ChessOnlineRoute
 import com.example.playwin.feature.game.online.GameModeSelectScreen
 import com.example.playwin.feature.game.online.PlayMode
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 @Composable
 fun ChessRoute(
@@ -84,6 +100,9 @@ fun ChessRoute(
     onWin: (couponId: String) -> Unit
 ) {
     var mode by remember { mutableStateOf<PlayMode?>(null) }
+    // Prepares the board artwork while the mode is being picked.
+    val resources = LocalContext.current.resources
+    LaunchedEffect(Unit) { withContext(Dispatchers.Default) { loadBoardImage(resources) } }
     when (mode) {
         null -> GameModeSelectScreen(title = "Chess", onBack = onBack, onSelectMode = { mode = it })
         PlayMode.COMPUTER -> ChessComputerRoute(onBack = { mode = null }, onWin = onWin)
@@ -216,12 +235,7 @@ private fun StatusBanner(text: String, modifier: Modifier = Modifier, trophy: Bo
     }
 }
 
-private val LightSquare = Color(0xFFF1E4C6)
-private val LightSquareShade = Color(0xFFE4D3AE)
-private val DarkSquare = Color(0xFF3B7A64)
-private val DarkSquareShade = Color(0xFF2C6150)
-private val FrameLight = Color(0xFF5E3A20)
-private val FrameDark = Color(0xFF2E170A)
+private val FrameDark = Color(0xFF1C1A17)
 private val CheckRed = Color(0xFFD5402F)
 
 // Pieces get their own fixed light/dark colors with a contrasting outline so
@@ -366,47 +380,34 @@ fun ChessBoard(
     fun displayCol(col: Float) = if (flipped) 7f - col else col
     fun displayRow(row: Float) = if (flipped) row else 7f - row
 
-    val frameShape = RoundedCornerShape(20.dp)
-    Box(
+    val boardImage = rememberBoardImage()
+    val frameShape = RoundedCornerShape(4.dp)
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(1f)
+            .aspectRatio(BoardArt.SIZE / (BoardArt.SIZE * BoardArt.ROW_STRETCH))
             .shadow(elevation = 12.dp, shape = frameShape)
             .clip(frameShape)
-            .background(Brush.linearGradient(listOf(FrameLight, FrameDark, FrameLight)))
-            .border(1.5.dp, Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark)), frameShape)
-            .padding(10.dp)
+            .background(FrameDark)
     ) {
+        if (boardImage != null) {
+            Canvas(modifier = Modifier.matchParentSize()) {
+                drawImage(
+                    image = boardImage,
+                    dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
+                    filterQuality = FilterQuality.High
+                )
+            }
+        }
+        // The squares are the artwork's; the play area sits exactly on its 8x8 grid.
+        val artPixel = maxWidth / BoardArt.SIZE
         BoxWithConstraints(
             modifier = Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(6.dp))
+                .padding(start = artPixel * BoardArt.GRID_LEFT, top = artPixel * BoardArt.ROW_STRETCH * BoardArt.GRID_TOP)
+                .width(artPixel * BoardArt.GRID_WIDTH)
+                .aspectRatio(1f)
         ) {
             val glyphSize = with(LocalDensity.current) { (maxWidth / 8 * 0.74f).toSp() }
-
-            // The squares never change, so they keep their own layer.
-            Canvas(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer()
-            ) {
-                val cell = size.width / 8f
-                for (row in 0..7) {
-                    for (col in 0..7) {
-                        val dark = (row + col) % 2 == 0
-                        val topLeft = Offset(displayCol(col.toFloat()) * cell, displayRow(row.toFloat()) * cell)
-                        drawRect(
-                            brush = Brush.linearGradient(
-                                colors = if (dark) listOf(DarkSquare, DarkSquareShade) else listOf(LightSquare, LightSquareShade),
-                                start = topLeft,
-                                end = topLeft + Offset(cell, cell)
-                            ),
-                            topLeft = topLeft,
-                            size = Size(cell, cell)
-                        )
-                    }
-                }
-            }
 
             // Highlights: the last move, the selected piece, where it can go, and a king in check.
             Canvas(modifier = Modifier.fillMaxSize()) {
@@ -416,8 +417,16 @@ fun ChessBoard(
 
                 fun centerOf(square: Square) = topLeftOf(square) + Offset(cell / 2f, cell / 2f)
 
+                // Gold on the marble: a wash for the light squares, an inset rule
+                // so it still reads on the black ones.
                 animator.lastMove.forEach { square ->
                     drawRect(PwGoldDark.copy(alpha = 0.38f), topLeftOf(square), Size(cell, cell))
+                    drawRect(
+                        color = PwGoldLight.copy(alpha = 0.8f),
+                        topLeft = topLeftOf(square) + Offset(cell * 0.025f, cell * 0.025f),
+                        size = Size(cell * 0.95f, cell * 0.95f),
+                        style = Stroke(width = cell * 0.035f)
+                    )
                 }
                 checkedKing?.let { square ->
                     drawCircle(
@@ -439,15 +448,23 @@ fun ChessBoard(
                         style = Stroke(width = cell * 0.06f)
                     )
                 }
+                // Gold with a dark edge, so they show on cream and black marble alike.
                 legalTargets.forEach { square ->
                     if (position.pieceAt(square) == null) {
-                        drawCircle(Color.Black.copy(alpha = 0.28f), cell * 0.15f, centerOf(square))
+                        drawCircle(Color.Black.copy(alpha = 0.45f), cell * 0.16f, centerOf(square))
+                        drawCircle(PwGoldLight, cell * 0.12f, centerOf(square))
                     } else {
                         drawCircle(
-                            color = Color.Black.copy(alpha = 0.32f),
+                            color = Color.Black.copy(alpha = 0.45f),
                             radius = cell * 0.43f,
                             center = centerOf(square),
-                            style = Stroke(width = cell * 0.08f)
+                            style = Stroke(width = cell * 0.1f)
+                        )
+                        drawCircle(
+                            color = PwGoldLight,
+                            radius = cell * 0.43f,
+                            center = centerOf(square),
+                            style = Stroke(width = cell * 0.055f)
                         )
                     }
                 }
@@ -502,6 +519,65 @@ fun ChessBoard(
             }
         }
     }
+}
+
+/**
+ * Where things are in chess_board.jpg (1024px square), as [loadBoardImage] leaves it:
+ * mirrored left to right, because the artwork has a light square bottom-left and
+ * a1 (or h8, from Black's side) must be dark. All in the image's pixels.
+ */
+private object BoardArt {
+    const val SIZE = 1024f
+
+    // The outer edge of the 8x8 grid, after the mirror.
+    const val GRID_LEFT = 110f
+    const val GRID_TOP = 116f
+    const val GRID_WIDTH = 801f
+    const val GRID_HEIGHT = 795f
+
+    /** The grid is a touch short; the image is stretched by this much vertically so the squares are square. */
+    const val ROW_STRETCH = GRID_WIDTH / GRID_HEIGHT
+
+    /**
+     * The narrow band between the grid and the inner gold rule carries garbled
+     * lettering; it's painted over in the band's own near-black. Left, top, right,
+     * bottom, after the mirror.
+     */
+    val labelBands = listOf(
+        AndroidRect(101, 103, 110, 921),
+        AndroidRect(101, 103, 923, 116),
+        AndroidRect(911, 103, 923, 921),
+        AndroidRect(101, 910, 923, 921)
+    )
+}
+
+/** The prepared board, built once per process by [loadBoardImage]. */
+@Volatile
+private var boardImageCache: ImageBitmap? = null
+
+/** chess_board.jpg mirrored and with its label bands painted out (see [BoardArt]). Keep this off the main thread. */
+private fun loadBoardImage(resources: Resources): ImageBitmap = boardImageCache ?: run {
+    val source = BitmapFactory.decodeResource(resources, R.drawable.chess_board)
+    val board = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(board)
+    canvas.save()
+    canvas.scale(-1f, 1f, source.width / 2f, 0f)
+    canvas.drawBitmap(source, 0f, 0f, null)
+    canvas.restore()
+    val band = Paint().apply { color = FrameDark.toArgb() }
+    BoardArt.labelBands.forEach { canvas.drawRect(it, band) }
+    source.recycle()
+    board.asImageBitmap().also { boardImageCache = it }
+}
+
+/** The prepared board; null for the frame or two before it's ready if it wasn't preloaded. */
+@Composable
+private fun rememberBoardImage(): ImageBitmap? {
+    val resources = LocalContext.current.resources
+    val image by produceState(initialValue = boardImageCache) {
+        if (value == null) value = withContext(Dispatchers.Default) { loadBoardImage(resources) }
+    }
+    return image
 }
 
 /** A solid piece silhouette with a contrasting outline and a soft drop shadow. */
