@@ -13,8 +13,10 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -35,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -69,6 +72,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.R
@@ -130,7 +134,9 @@ private fun ChessComputerRoute(
         uiState = uiState,
         onBack = onBack,
         onSquareTap = viewModel::onSquareTap,
-        onPlayAgain = viewModel::onPlayAgain
+        onPlayAgain = viewModel::onPlayAgain,
+        onPromotionChosen = viewModel::onPromotionChosen,
+        onPromotionCancelled = viewModel::onPromotionCancelled
     )
 }
 
@@ -141,8 +147,11 @@ fun ChessScreen(
     onBack: () -> Unit,
     onSquareTap: (Square) -> Unit,
     onPlayAgain: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onPromotionChosen: (PieceType) -> Unit = {},
+    onPromotionCancelled: () -> Unit = {}
 ) {
+    uiState.promotion?.let { PromotionPicker(it, onChoose = onPromotionChosen, onCancel = onPromotionCancelled) }
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = { PwTopBar(title = "Chess · vs Computer", onBack = onBack) }
@@ -578,6 +587,100 @@ private fun rememberBoardImage(): ImageBitmap? {
         if (value == null) value = withContext(Dispatchers.Default) { loadBoardImage(resources) }
     }
     return image
+}
+
+private val PickerNavyTop = Color(0xFF1C2E56)
+private val PickerNavyBottom = Color(0xFF0A1530)
+private val PickerGoldRim = Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark))
+
+private fun pieceName(type: PieceType): String = when (type) {
+    PieceType.QUEEN -> "Queen"
+    PieceType.ROOK -> "Rook"
+    PieceType.BISHOP -> "Bishop"
+    PieceType.KNIGHT -> "Knight"
+    PieceType.PAWN -> "Pawn"
+    PieceType.KING -> "King"
+}
+
+/**
+ * Asks what a pawn reaching the last rank becomes: [PendingPromotion.options]
+ * in order, the first (the queen) highlighted. Picking one calls [onChoose];
+ * Cancel, Back or tapping outside call [onCancel] - nothing is promoted until
+ * the player picks. Shared by vs-Computer and online play.
+ */
+@Composable
+fun PromotionPicker(promotion: PendingPromotion, onChoose: (PieceType) -> Unit, onCancel: () -> Unit) {
+    Dialog(onDismissRequest = onCancel) {
+        val shape = RoundedCornerShape(22.dp)
+        Column(
+            modifier = Modifier
+                .shadow(elevation = 16.dp, shape = shape)
+                .clip(shape)
+                .background(Brush.verticalGradient(listOf(PickerNavyTop, PickerNavyBottom)))
+                .border(2.dp, PickerGoldRim, shape)
+                .padding(horizontal = 18.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Promote your pawn",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = Color.White
+            )
+            Text(
+                text = "Choose what it becomes",
+                style = MaterialTheme.typography.bodyMedium,
+                color = PwGoldDark,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+            Row(
+                modifier = Modifier.padding(top = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                promotion.options.forEachIndexed { index, type ->
+                    PromotionOption(
+                        piece = ChessPiece(type, promotion.color),
+                        highlighted = index == 0,
+                        onClick = { onChoose(type) }
+                    )
+                }
+            }
+            TextButton(onClick = onCancel, modifier = Modifier.padding(top = 10.dp)) {
+                Text(text = "Cancel move", color = PwGoldDark, style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PromotionOption(piece: ChessPiece, highlighted: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    val density = LocalDensity.current
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(62.dp)
+                .shadow(elevation = if (highlighted) 8.dp else 3.dp, shape = shape)
+                .clip(shape)
+                .background(
+                    if (highlighted) {
+                        Brush.verticalGradient(listOf(Color(0xFFFFF0BF), PwGoldDark))
+                    } else {
+                        Brush.verticalGradient(listOf(Color(0xFFFFFCF4), Color(0xFFEDE1C5)))
+                    }
+                )
+                .border(if (highlighted) 3.dp else 1.dp, if (highlighted) PwGoldLight else PwGoldDark.copy(alpha = 0.6f), shape)
+                .clickable(onClickLabel = "Promote to ${pieceName(piece.type)}", onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            PieceGlyph(piece = piece, fontSize = with(density) { 44.dp.toSp() })
+        }
+        Text(
+            text = pieceName(piece.type),
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (highlighted) FontWeight.Bold else FontWeight.Medium),
+            color = if (highlighted) PwGoldDark else Color.White,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+    }
 }
 
 /** A solid piece silhouette with a contrasting outline and a soft drop shadow. */

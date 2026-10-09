@@ -4,8 +4,8 @@ import kotlin.math.abs
 
 /**
  * A complete, pure-Kotlin chess rules engine: legal move generation for every
- * piece (including castling, en passant, and auto-queen promotion), check,
- * checkmate, and stalemate detection. A pseudo-legal move is only included in
+ * piece (including castling, en passant, and promotion to any of
+ * [PROMOTION_PIECES]), check, checkmate, and stalemate detection. A pseudo-legal move is only included in
  * [legalMoves] if playing it would not leave the mover's own king in check.
  *
  * This has no Android dependency and is exercised directly by unit tests -
@@ -19,6 +19,9 @@ object ChessEngine {
     private val DIAGONAL_DIRECTIONS = listOf(-1 to -1, -1 to 1, 1 to -1, 1 to 1)
     private val ORTHOGONAL_DIRECTIONS = listOf(-1 to 0, 1 to 0, 0 to -1, 0 to 1)
     private val ALL_DIRECTIONS = DIAGONAL_DIRECTIONS + ORTHOGONAL_DIRECTIONS
+
+    /** What a pawn may become on the last rank, strongest first. */
+    val PROMOTION_PIECES = listOf(PieceType.QUEEN, PieceType.ROOK, PieceType.BISHOP, PieceType.KNIGHT)
 
     fun initialPosition(): ChessPosition {
         val backRank = listOf(
@@ -63,6 +66,15 @@ object ChessEngine {
 
     fun legalMovesFrom(position: ChessPosition, square: Square): List<ChessMove> =
         legalMoves(position).filter { it.from == square }
+
+    /**
+     * The legal move from [from] to [to] for the side to move, promoting to
+     * [promotion] - which must be given for a pawn reaching the last rank and
+     * must be null otherwise. Null if there's no such legal move: this is how a
+     * player's chosen promotion is checked before it's played.
+     */
+    fun legalMove(position: ChessPosition, from: Square, to: Square, promotion: PieceType? = null): ChessMove? =
+        legalMovesFrom(position, from).firstOrNull { it.to == to && it.promotion == promotion }
 
     fun gameStatus(position: ChessPosition): GameStatus {
         if (legalMoves(position).isNotEmpty()) return GameStatus.IN_PROGRESS
@@ -236,8 +248,13 @@ object ChessEngine {
         return moves
     }
 
+    /** A pawn move; onto the last rank it's one move per piece the pawn could become. */
     private fun addPawnMove(moves: MutableList<ChessMove>, from: Square, to: Square, promotionRow: Int) {
-        moves += if (to.row == promotionRow) ChessMove(from, to, promotion = PieceType.QUEEN) else ChessMove(from, to)
+        if (to.row == promotionRow) {
+            PROMOTION_PIECES.forEach { moves += ChessMove(from, to, promotion = it) }
+        } else {
+            moves += ChessMove(from, to)
+        }
     }
 
     private fun knightMoves(position: ChessPosition, from: Square, color: PieceColor): List<ChessMove> {

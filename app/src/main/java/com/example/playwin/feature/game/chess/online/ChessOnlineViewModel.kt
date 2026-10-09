@@ -7,6 +7,7 @@ import com.example.playwin.core.domain.chess.ChessFen
 import com.example.playwin.core.domain.chess.ChessMove
 import com.example.playwin.core.domain.chess.ChessPosition
 import com.example.playwin.core.domain.chess.PieceColor
+import com.example.playwin.core.domain.chess.PieceType
 import com.example.playwin.core.domain.chess.Square
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
@@ -14,6 +15,8 @@ import com.example.playwin.core.domain.model.GameSnapshot
 import com.example.playwin.core.domain.model.Room
 import com.example.playwin.core.domain.model.RoomStatus
 import com.example.playwin.core.domain.repository.GameEngineRepository
+import com.example.playwin.feature.game.chess.PendingPromotion
+import com.example.playwin.feature.game.chess.promotionFor
 import com.example.playwin.feature.game.online.OnlineMatchController
 import com.example.playwin.feature.game.online.OnlineMatchState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -43,8 +46,15 @@ fun ChessPosition.toRoomJson(): JsonElement = json.encodeToJsonElement(ChessRoom
 /** Online the host (player 1) plays White and moves first; the guest plays Black. */
 fun chessColorOf(playerNumber: Int): PieceColor = if (playerNumber == 1) PieceColor.WHITE else PieceColor.BLACK
 
-/** Tap-to-select state for the local player; the position itself always comes from the room. */
-data class ChessSelection(val square: Square? = null, val moves: List<ChessMove> = emptyList())
+/**
+ * Tap-to-select state for the local player; the position itself always comes from
+ * the room. [promotion] is a pawn move onto the last rank waiting on the player's pick.
+ */
+data class ChessSelection(
+    val square: Square? = null,
+    val moves: List<ChessMove> = emptyList(),
+    val promotion: PendingPromotion? = null
+)
 
 /**
  * Online chess via random matchmaking. Each move is one room write that the
@@ -69,9 +79,15 @@ class ChessOnlineViewModel @Inject constructor(
         val room = state.room ?: return
         val me = state.myPlayerNumber ?: return
         if (!state.isMyTurn || state.isResolving) return
+        if (_selection.value.promotion != null) return
 
         val position = room.chessPosition()
         val current = _selection.value
+        val promotion = promotionFor(position, current.moves, square)
+        if (promotion != null) {
+            _selection.value = current.copy(promotion = promotion)
+            return
+        }
         val move = current.moves.firstOrNull { it.to == square }
         if (move != null) {
             _selection.value = ChessSelection()
@@ -85,6 +101,28 @@ class ChessOnlineViewModel @Inject constructor(
         } else {
             ChessSelection()
         }
+    }
+
+    /**
+     * Plays the held promotion as [piece], checked as a legal move by the engine
+     * against the room's current position. The promoted piece is part of the
+     * position written to the room, so the opponent sees it too.
+     */
+    fun onPromotionChosen(piece: PieceType) {
+        val state = uiState.value
+        val promotion = _selection.value.promotion ?: return
+        _selection.value = ChessSelection()
+        val room = state.room ?: return
+        val me = state.myPlayerNumber ?: return
+        if (!state.isMyTurn || state.isResolving) return
+        val position = room.chessPosition()
+        val move = ChessEngine.legalMove(position, promotion.from, promotion.to, piece) ?: return
+        play(position, move, me)
+    }
+
+    /** Backs out of a promotion: nothing was played, and the pawn stays where it was. */
+    fun onPromotionCancelled() {
+        _selection.value = ChessSelection()
     }
 
     private fun play(position: ChessPosition, move: ChessMove, me: Int) {

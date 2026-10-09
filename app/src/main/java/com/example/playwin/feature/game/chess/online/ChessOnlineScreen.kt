@@ -12,6 +12,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.core.domain.chess.ChessEngine
 import com.example.playwin.core.domain.chess.PieceColor
 import com.example.playwin.feature.game.chess.ChessBoard
+import com.example.playwin.feature.game.chess.PromotionPicker
 import com.example.playwin.feature.game.online.OnlineMatchEffects
 import com.example.playwin.feature.game.online.OnlineMatchScreen
 
@@ -26,6 +27,9 @@ fun ChessOnlineRoute(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
     OnlineMatchEffects(state, viewModel.controller, onBack, onWin)
+    selection.promotion?.takeIf { state.isMyTurn }?.let {
+        PromotionPicker(it, onChoose = viewModel::onPromotionChosen, onCancel = viewModel::onPromotionCancelled)
+    }
 
     OnlineMatchScreen(
         title = "Chess · Online",

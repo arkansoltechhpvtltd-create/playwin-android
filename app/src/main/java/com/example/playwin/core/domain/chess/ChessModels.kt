@@ -17,8 +17,8 @@ data class Square(val row: Int, val col: Int) {
 }
 
 /**
- * A single move. [promotion] is always [PieceType.QUEEN] when a pawn reaches
- * the last rank - this engine only supports auto-queen promotion.
+ * A single move. [promotion] is the piece a pawn becomes on reaching the last
+ * rank - one of [ChessEngine.PROMOTION_PIECES] - and null for every other move.
  */
 data class ChessMove(
     val from: Square,

@@ -4,6 +4,7 @@ import com.example.playwin.core.domain.chess.ChessEngine
 import com.example.playwin.core.domain.chess.ChessMove
 import com.example.playwin.core.domain.chess.ChessPosition
 import com.example.playwin.core.domain.chess.PieceColor
+import com.example.playwin.core.domain.chess.PieceType
 import com.example.playwin.core.domain.chess.Square
 
 data class ChessUiState(
@@ -14,7 +15,9 @@ data class ChessUiState(
     val isDraw: Boolean = false,
     val isResolving: Boolean = false,
     val isComputerThinking: Boolean = false,
-    val wonCouponId: String? = null
+    val wonCouponId: String? = null,
+    /** A pawn move onto the last rank, held until the player picks what it becomes. */
+    val promotion: PendingPromotion? = null
 ) {
     /** 1 = White (the human, in vs-Computer play), 2 = Black. */
     val currentPlayer: Int get() = if (position.sideToMove == PieceColor.WHITE) 1 else 2
@@ -26,3 +29,20 @@ data class ChessUiState(
 
 /** In "Play vs Computer" the human plays White and moves first. */
 val CHESS_HUMAN = PieceColor.WHITE
+
+/**
+ * A pawn move onto the last rank that's waiting on the player's choice of
+ * piece. Nothing has been played yet: picking [options] plays it (through
+ * [ChessEngine.legalMove]), backing out leaves the board as it was.
+ */
+data class PendingPromotion(val from: Square, val to: Square, val color: PieceColor, val options: List<PieceType>)
+
+/**
+ * The promotion a tap onto [to] starts, if [moves] (the selected piece's legal
+ * moves) promote there; null for an ordinary move.
+ */
+fun promotionFor(position: ChessPosition, moves: List<ChessMove>, to: Square): PendingPromotion? {
+    val promotions = moves.filter { it.to == to && it.promotion != null }
+    val first = promotions.firstOrNull() ?: return null
+    return PendingPromotion(first.from, to, position.sideToMove, promotions.mapNotNull { it.promotion })
+}

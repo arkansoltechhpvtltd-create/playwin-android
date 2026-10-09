@@ -6,6 +6,7 @@ import com.example.playwin.core.domain.chess.ChessBot
 import com.example.playwin.core.domain.chess.ChessEngine
 import com.example.playwin.core.domain.chess.ChessMove
 import com.example.playwin.core.domain.chess.PieceColor
+import com.example.playwin.core.domain.chess.PieceType
 import com.example.playwin.core.domain.chess.Square
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
@@ -51,6 +52,7 @@ class ChessViewModel @Inject constructor(
     fun onSquareTap(square: Square) {
         val state = _uiState.value
         if (state.isGameOver || state.isResolving || state.isComputerThinking || !state.isHumanTurn) return
+        if (state.promotion != null) return
 
         val selected = state.selectedSquare
         if (selected == null) {
@@ -63,6 +65,13 @@ class ChessViewModel @Inject constructor(
             return
         }
 
+        // A pawn onto the last rank waits for the player to pick what it becomes.
+        val promotion = promotionFor(state.position, state.pendingMoves, square)
+        if (promotion != null) {
+            _uiState.update { it.copy(promotion = promotion) }
+            return
+        }
+
         val chosenMove = state.pendingMoves.firstOrNull { it.to == square }
         if (chosenMove != null) {
             playMove(chosenMove)
@@ -71,6 +80,24 @@ class ChessViewModel @Inject constructor(
 
         // Tapping a different own piece re-targets the selection instead of requiring a deselect first.
         selectIfOwnPiece(state, square)
+    }
+
+    /** Plays the held promotion as [piece]. The engine checks it's a legal move before it's played. */
+    fun onPromotionChosen(piece: PieceType) {
+        val state = _uiState.value
+        val promotion = state.promotion ?: return
+        val move = ChessEngine.legalMove(state.position, promotion.from, promotion.to, piece)
+        if (move == null || !state.isHumanTurn || state.isGameOver) {
+            onPromotionCancelled()
+            return
+        }
+        _uiState.update { it.copy(promotion = null) }
+        playMove(move)
+    }
+
+    /** Backs out of a promotion: nothing was played, and the pawn stays where it was. */
+    fun onPromotionCancelled() {
+        _uiState.update { it.copy(promotion = null, selectedSquare = null, pendingMoves = emptyList()) }
     }
 
     fun onPlayAgain() {
