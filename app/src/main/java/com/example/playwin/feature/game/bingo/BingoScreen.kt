@@ -218,7 +218,15 @@ private val LETTER_COLORS = listOf(PwGameGrid, PwGameFourInARow, PwGoldLight, Pw
 private fun colorForNumber(number: Int): Color =
     LETTER_COLORS.getOrElse(BINGO_COLUMN_RANGES.indexOfFirst { number in it }) { PwGoldLight }
 
-/** A glossy numbered ball, as drawn from the cage: its column's colour around a white label. */
+// The premium card: deep navy in both themes, gold rims, ivory tiles.
+private val NavyTop = Color(0xFF1C2E56)
+private val NavyBottom = Color(0xFF0A1530)
+private val NavyInk = Color(0xFF14213D)
+private val IvoryTop = Color(0xFFFFFCF4)
+private val IvoryBottom = Color(0xFFEFE4CB)
+private val GoldRim = Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark))
+
+/** A glossy numbered ball, as drawn from the cage: its column's colour around a white label, in a gold rim. */
 @Composable
 private fun BingoBall(number: Int, size: Dp, modifier: Modifier = Modifier) {
     val color = colorForNumber(number)
@@ -227,19 +235,41 @@ private fun BingoBall(number: Int, size: Dp, modifier: Modifier = Modifier) {
             .size(size)
             .drawBehind {
                 val r = this.size.minDimension / 2f * 0.92f
-                drawCircle(Color.Black.copy(alpha = 0.25f), r, center + Offset(0f, r * 0.12f))
+                // Soft shadow underneath.
+                drawCircle(Color.Black.copy(alpha = 0.14f), r * 1.04f, center + Offset(0f, r * 0.16f))
+                drawCircle(Color.Black.copy(alpha = 0.18f), r, center + Offset(0f, r * 0.1f))
+                // The gold rim, lit top-left.
                 drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(lerp(color, Color.White, 0.45f), color, lerp(color, Color.Black, 0.35f)),
-                        center = center - Offset(r * 0.35f, r * 0.4f),
-                        radius = r * 1.7f
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFFFFF0BF), PwGoldDark, PwGoldLight, Color(0xFF7A5A14)),
+                        start = center - Offset(r, r),
+                        end = center + Offset(r, r)
                     ),
                     radius = r,
                     center = center
                 )
-                drawCircle(Color(0xFFFDFBF5), r * 0.66f, center)
-                drawCircle(lerp(color, Color.Black, 0.2f), r * 0.66f, center, style = Stroke(width = r * 0.05f))
-                drawCircle(Color.White.copy(alpha = 0.55f), r * 0.16f, center - Offset(r * 0.5f, r * 0.58f))
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(lerp(color, Color.White, 0.5f), color, lerp(color, Color.Black, 0.4f)),
+                        center = center - Offset(r * 0.35f, r * 0.4f),
+                        radius = r * 1.6f
+                    ),
+                    radius = r * 0.88f,
+                    center = center
+                )
+                drawCircle(Color(0xFFFDFBF5), r * 0.6f, center)
+                drawCircle(lerp(color, Color.Black, 0.2f), r * 0.6f, center, style = Stroke(width = r * 0.05f))
+                // Glaze: a broad soft highlight and a sharp catch-light.
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.35f), Color.Transparent),
+                        center = center - Offset(r * 0.42f, r * 0.48f),
+                        radius = r * 0.55f
+                    ),
+                    radius = r * 0.55f,
+                    center = center - Offset(r * 0.42f, r * 0.48f)
+                )
+                drawCircle(Color.White.copy(alpha = 0.75f), r * 0.12f, center - Offset(r * 0.5f, r * 0.58f))
             },
         contentAlignment = Alignment.Center
     ) {
@@ -272,10 +302,16 @@ fun LastCallText(lastCall: Int?, caller: String?, modifier: Modifier = Modifier)
             pop.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = 320f))
         }
     }
+    val shape = RoundedCornerShape(18.dp)
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 10.dp),
+            .padding(top = 10.dp)
+            .shadow(elevation = 4.dp, shape = shape)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(NavyTop, NavyBottom)))
+            .border(1.dp, GoldRim, shape)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (lastCall != null && caller != null) {
@@ -294,19 +330,20 @@ fun LastCallText(lastCall: Int?, caller: String?, modifier: Modifier = Modifier)
                 Text(
                     text = "$caller called",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = PwGoldDark
                 )
                 Text(
                     text = "${bingoLetterFor(lastCall)}-$lastCall",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold),
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = Color.White
                 )
             }
         } else {
             Text(
                 text = "No numbers called yet",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = PwGoldDark,
+                modifier = Modifier.padding(vertical = 8.dp)
             )
         }
     }
@@ -375,15 +412,14 @@ fun BingoCardView(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(elevation = if (compact) 4.dp else 10.dp, shape = shape)
+            .shadow(elevation = if (compact) 4.dp else 12.dp, shape = shape)
             .clip(shape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.surfaceVariant)
-                )
-            )
-            .border(1.5.dp, Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark)), shape)
-            .padding(if (compact) 6.dp else 10.dp),
+            .background(Brush.verticalGradient(listOf(NavyTop, NavyBottom)))
+            .border(if (compact) 1.5.dp else 2.dp, GoldRim, shape)
+            .padding(if (compact) 3.dp else 5.dp)
+            // A fine inner gold rule, set in from the rim.
+            .border(0.75.dp, PwGoldDark.copy(alpha = 0.45f), RoundedCornerShape(if (compact) 11.dp else 16.dp))
+            .padding(if (compact) 4.dp else 7.dp),
         verticalArrangement = Arrangement.spacedBy(gap)
     ) {
         if (showHeader) {
@@ -395,7 +431,9 @@ fun BingoCardView(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(Brush.verticalGradient(listOf(lerp(color, Color.White, 0.2f), lerp(color, Color.Black, 0.15f))))
+                            .background(Brush.verticalGradient(listOf(lerp(color, Color.White, 0.25f), lerp(color, Color.Black, 0.2f))))
+                            .background(Brush.verticalGradient(0f to Color.White.copy(alpha = 0.25f), 0.5f to Color.Transparent))
+                            .border(1.dp, GoldRim, RoundedCornerShape(10.dp))
                             .padding(vertical = 4.dp),
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.titleMedium,
@@ -438,9 +476,6 @@ private fun BingoCell(
 ) {
     val tappable = onClick != null
     val shape = RoundedCornerShape(if (compact) 6.dp else 10.dp)
-    val face = MaterialTheme.colorScheme.surface
-    val edge = MaterialTheme.colorScheme.outline
-    val callable = MaterialTheme.colorScheme.secondary
 
     // The daub stamps down with a little overshoot when a number is called;
     // numbers already marked when the card first appears are just shown marked.
@@ -464,16 +499,26 @@ private fun BingoCell(
                 scaleX = pressScale
                 scaleY = pressScale
             }
+            .shadow(elevation = if (compact) 1.dp else 3.dp, shape = shape)
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(face, lerp(face, edge, 0.45f))))
-            .border(1.dp, if (tappable) callable.copy(alpha = 0.7f) else edge, shape)
+            // A glossy ivory tile; once daubed it turns navy so the gold stamp stands out.
+            .drawBehind {
+                val d = daub.value.coerceIn(0f, 1f)
+                drawRect(Brush.verticalGradient(listOf(lerp(IvoryTop, NavyTop, d), lerp(IvoryBottom, NavyBottom, d))))
+                drawRect(Brush.verticalGradient(0f to Color.White.copy(alpha = 0.3f * (1f - d) + 0.08f * d), 0.5f to Color.Transparent))
+            }
+            .border(
+                width = if (tappable) 1.5.dp else 1.dp,
+                color = if (tappable) PwGoldLight else PwGoldDark.copy(alpha = 0.55f),
+                shape = shape
+            )
             .drawBehind {
                 val d = daub.value
                 if (d > 0f) drawDaub(progress = d)
                 if (linePulse != null) {
                     drawCircle(
                         color = Color.White.copy(alpha = 0.5f + 0.5f * linePulse.value),
-                        radius = size.minDimension * 0.4f,
+                        radius = size.minDimension * 0.44f,
                         style = Stroke(width = size.minDimension * (0.05f + 0.03f * linePulse.value))
                     )
                 }
@@ -496,8 +541,8 @@ private fun BingoCell(
             Text(
                 text = number.toString(),
                 style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.titleMedium,
-                fontWeight = if (isMarked || tappable) FontWeight.Bold else FontWeight.Medium,
-                color = if (isMarked) PwGoldInk else MaterialTheme.colorScheme.onSurface
+                fontWeight = if (isMarked || tappable) FontWeight.ExtraBold else FontWeight.SemiBold,
+                color = if (isMarked) PwGoldInk else NavyInk
             )
         }
     }
