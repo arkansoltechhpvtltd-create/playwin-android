@@ -7,6 +7,7 @@ import com.example.playwin.core.domain.carrom.CarromPhysics
 import com.example.playwin.core.domain.carrom.CarromRules
 import com.example.playwin.core.domain.carrom.Coin
 import com.example.playwin.core.domain.carrom.CoinColor
+import com.example.playwin.core.domain.carrom.STRIKER_ID
 import com.example.playwin.core.domain.carrom.Vec2
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
@@ -15,6 +16,7 @@ import com.example.playwin.core.domain.model.Room
 import com.example.playwin.core.domain.model.RoomStatus
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.feature.game.carrom.CARROM_TURN_SECONDS
+import com.example.playwin.feature.game.carrom.slideStriker
 import com.example.playwin.feature.game.online.OnlineMatchController
 import com.example.playwin.feature.game.online.OnlineMatchState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -36,9 +38,23 @@ import javax.inject.Inject
 @Serializable
 data class CarromRoomCoin(val id: Int, val x: Float, val y: Float, val p: Boolean = false)
 
-/** The shot that produced the stored position, so the other player can watch it play out. */
+/**
+ * The shot that produced the stored position, so the other player can watch it
+ * play out. [sx] is where along the baseline the shooter slid the striker
+ * before shooting; null (or absent, from older shots) means its centre.
+ */
 @Serializable
-data class CarromRoomShot(val seq: Int, val shooter: Int, val dx: Float, val dy: Float, val power: Float)
+data class CarromRoomShot(
+    val seq: Int,
+    val shooter: Int,
+    val dx: Float,
+    val dy: Float,
+    val power: Float,
+    val sx: Float? = null
+) {
+    /** [coins] as they stood when this shot was taken: with the striker slid to [sx]. */
+    fun startingFrom(coins: List<Coin>): List<Coin> = sx?.let { slideStriker(coins, it) } ?: coins
+}
 
 /**
  * What online carrom stores in `rooms.board_state`: where every piece came to
@@ -118,6 +134,9 @@ class CarromOnlineViewModel @Inject constructor(
     private var animation = Animation.NONE
     private var replayTarget: List<Coin>? = null
     private var pendingShot: CarromRoomShot? = null
+
+    /** Where I've slid the striker along my baseline this turn; null while it sits at the centre. */
+    private var parkedStrikerX: Float? = null
     private val pocketedThisShot = mutableListOf<Int>()
     private var lastSeenState: CarromRoomState? = null
     private var clockJob: Job? = null
@@ -140,8 +159,24 @@ class CarromOnlineViewModel @Inject constructor(
         pocketedThisShot.clear()
         animation = Animation.MY_SHOT
         _isAnimating.value = true
-        pendingShot = CarromRoomShot(nextSeq(room), me, direction.x, direction.y, power)
-        _displayCoins.value = CarromRules.launch(room.carromState().toMatch().coins, direction, power)
+        val shot = CarromRoomShot(nextSeq(room), me, direction.x, direction.y, power, sx = parkedStrikerX)
+        pendingShot = shot
+        _displayCoins.value = CarromRules.launch(shot.startingFrom(room.carromState().toMatch().coins), direction, power)
+    }
+
+    /**
+     * Slides the striker along my baseline to [x] before my shot - only
+     * sideways, clamped between the baseline's end circles, never onto a coin.
+     * Ignored unless I could shoot right now. Local until I shoot: the slide
+     * travels with the shot ([CarromRoomShot.sx]) so the replay starts there too.
+     */
+    fun onPlaceStriker(x: Float) {
+        val state = uiState.value
+        val room = state.room ?: return
+        if (!state.isMyTurn || state.isResolving || animation != Animation.NONE) return
+        val coins = slideStriker(room.carromState().toMatch().coins, x) ?: return
+        parkedStrikerX = coins.first { it.id == STRIKER_ID }.position.x
+        _displayCoins.value = coins
     }
 
     /** Advances whatever is moving by one rendered frame; called from the screen's frame clock. */
@@ -191,6 +226,8 @@ class CarromOnlineViewModel @Inject constructor(
     private fun onStoredState(stored: CarromRoomState) {
         val previous = lastSeenState
         lastSeenState = stored
+        // A new position (after any shot or a timed-out turn) re-spots the striker at the centre.
+        if (animation != Animation.MY_SHOT) parkedStrikerX = null
         val me = uiState.value.myPlayerNumber
         val shot = stored.shot
         val isNewOpponentShot = shot != null && shot.shooter != me && previous != null &&
@@ -203,7 +240,7 @@ class CarromOnlineViewModel @Inject constructor(
                 animation = Animation.REPLAY
                 _isAnimating.value = true
                 replayTarget = stored.toMatch().coins
-                _displayCoins.value = CarromRules.launch(previous.toMatch().coins, Vec2(shot.dx, shot.dy), shot.power)
+                _displayCoins.value = CarromRules.launch(shot.startingFrom(previous.toMatch().coins), Vec2(shot.dx, shot.dy), shot.power)
             }
             else -> {
                 animation = Animation.NONE

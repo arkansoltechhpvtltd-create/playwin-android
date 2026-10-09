@@ -43,7 +43,7 @@ fun CarromOnlineRoute(
             TurnBanner(
                 text = when {
                     isAnimating -> "…"
-                    state.isMyTurn -> "Your shot - drag back from the striker"
+                    state.isMyTurn -> "Your shot - slide the striker, then drag back"
                     else -> "Opponent is aiming"
                 } + if (stored.fouled) " (foul on previous shot)" else "",
                 secondsLeft = secondsLeft,
@@ -54,6 +54,7 @@ fun CarromOnlineRoute(
                 coins = coins,
                 canAim = state.isMyTurn && !state.isResolving && !isAnimating,
                 onShoot = viewModel::onShoot,
+                onPlaceStriker = viewModel::onPlaceStriker,
                 flipped = me == 2,
                 modifier = Modifier.padding(top = 12.dp)
             )
