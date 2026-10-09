@@ -52,18 +52,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -289,80 +284,91 @@ private fun WinnerBanner(humanWon: Boolean, modifier: Modifier = Modifier) {
     }
 }
 
-// --- Board geometry: a 15x15 grid with a 52-cell ring track, 4 private home-column
-// stripes converging near the centre, and 4 corner base areas. This is a clean,
-// internally-consistent layout rather than a pixel replica of a physical board.
-// The playable cells are rows/columns 1..14, so everything is drawn shifted by
-// half a cell to sit centred: cell (row, col) is centred at grid point (col, row). ---
+// --- Board geometry: ludo_board.png is a classic 15x15 board - 6x6 yards in the
+// corners (Red top-left, Green top-right, Yellow bottom-right, Blue bottom-left), a
+// cross-shaped track 3 cells wide, each colour's home column down the middle lane of
+// its arm, and the centre. Cells are (row, col), both 0..14 from the top-left, and
+// cell (row, col) is centred at grid point (col + 0.5, row + 0.5). ---
 
 private const val GRID = 15
 
 /**
- * The 52 ring cells in shared-path order, clockwise. Index 0 is (6,1) so that
- * each colour's last ring cell (start + 50) sits beside its home column - Red
- * leaves the ring at (8,1) next to row 7 - instead of 4 cells past it. The home
- * columns run down the board's centre lines, which fall between two ring
- * cells, so each turn-off is the cell just before that line.
+ * The 52 shared-track cells in path order, clockwise, as painted on the board:
+ * index 0 is Red's start square (row 6, col 1), and each colour's start
+ * ([LudoEngine.startIndexFor]) is 13 cells on - Green (1,8), Yellow (8,13),
+ * Blue (13,6). The cell 50 on from a start, where that colour turns off, is
+ * the end of its home lane: Red (7,0), Green (0,7), Yellow (7,14), Blue (14,7).
  */
 private fun ringCells(): List<Pair<Int, Int>> {
     val cells = mutableListOf<Pair<Int, Int>>()
-    for (r in 6 downTo 2) cells += r to 1
-    for (c in 1..14) cells += 1 to c
-    for (r in 2..14) cells += r to 14
-    for (c in 13 downTo 1) cells += 14 to c
-    for (r in 13 downTo 7) cells += r to 1
+    for (c in 1..5) cells += 6 to c // Red's arm, top lane, heading right
+    for (r in 5 downTo 0) cells += r to 6 // up the top arm's left lane
+    cells += 0 to 7
+    for (r in 0..5) cells += r to 8 // down the top arm's right lane
+    for (c in 9..14) cells += 6 to c // along the right arm's top lane
+    cells += 7 to 14
+    for (c in 14 downTo 9) cells += 8 to c // back along its bottom lane
+    for (r in 9..14) cells += r to 8 // down the bottom arm's right lane
+    cells += 14 to 7
+    for (r in 14 downTo 9) cells += r to 6 // up its left lane
+    for (c in 5 downTo 0) cells += 8 to c // along the left arm's bottom lane
+    cells += 7 to 0
+    cells += 6 to 0
     return cells
 }
 
 internal val RING_CELLS = ringCells()
 
-internal fun homeColumnCells(color: LudoColor): List<Pair<Int, Int>> = when (color) {
-    LudoColor.RED -> (2..7).map { 7 to it }
-    LudoColor.GREEN -> (2..7).map { it to 7 }
-    LudoColor.YELLOW -> (12 downTo 7).map { 7 to it }
-    LudoColor.BLUE -> (12 downTo 7).map { it to 7 }
-}
-
-private fun baseTopLeft(color: LudoColor): Pair<Int, Int> = when (color) {
-    LudoColor.RED -> 2 to 2
-    LudoColor.GREEN -> 2 to 9
-    LudoColor.YELLOW -> 9 to 9
-    LudoColor.BLUE -> 9 to 2
-}
-
-private val BASE_SLOT_OFFSETS = listOf(1 to 1, 1 to 3, 3 to 1, 3 to 3)
-
+/** The centre of the board, where every colour's tokens finish. */
 private val HOME_CELL = 7 to 7
 
+/** Each colour's six home steps: five down the middle lane of its arm, then the centre. */
+internal fun homeColumnCells(color: LudoColor): List<Pair<Int, Int>> = when (color) {
+    LudoColor.RED -> (1..5).map { 7 to it }
+    LudoColor.GREEN -> (1..5).map { it to 7 }
+    LudoColor.YELLOW -> (13 downTo 9).map { 7 to it }
+    LudoColor.BLUE -> (13 downTo 9).map { it to 7 }
+} + HOME_CELL
+
+/**
+ * The yard slots: each yard's four painted rings, which aren't on grid-cell
+ * centres. Base tokens are given a stand-in cell in their yard (never a track
+ * cell) that [gridPoint] maps onto the ring, in grid units. Measured from
+ * ludo_board.png (rings at 140/291 and 788/939 px of 1080).
+ */
+private val YARD_NEAR = listOf(1.943f, 4.043f)
+private val YARD_FAR = listOf(10.943f, 13.043f)
+
+private fun yardSlots(color: LudoColor): List<Offset> {
+    val xs = if (color == LudoColor.GREEN || color == LudoColor.YELLOW) YARD_FAR else YARD_NEAR
+    val ys = if (color == LudoColor.YELLOW || color == LudoColor.BLUE) YARD_FAR else YARD_NEAR
+    return ys.flatMap { y -> xs.map { x -> Offset(x, y) } }
+}
+
+/** Stand-in yard cells for base tokens, one per token index, mapped to [yardSlots] by [gridPoint]. */
+private fun yardCell(color: LudoColor, index: Int): Pair<Int, Int> {
+    val top = if (color == LudoColor.YELLOW || color == LudoColor.BLUE) 9 else 0
+    val left = if (color == LudoColor.GREEN || color == LudoColor.YELLOW) 9 else 0
+    return (top + 1 + index / 2 * 3) to (left + 1 + index % 2 * 3)
+}
+
+private val YARD_POINTS: Map<Pair<Int, Int>, Offset> = LudoEngine.PLAYER_ORDER.flatMap { color ->
+    yardSlots(color).mapIndexed { index, point -> yardCell(color, index) to point }
+}.toMap()
+
 private fun cellFor(color: LudoColor, index: Int, position: Int): Pair<Int, Int> = when {
-    position == LudoEngine.IN_BASE -> {
-        val (tr, tc) = baseTopLeft(color)
-        val (or, oc) = BASE_SLOT_OFFSETS[index]
-        (tr + or) to (tc + oc)
-    }
+    position == LudoEngine.IN_BASE -> yardCell(color, index)
     position < LudoEngine.PLAYER_PATH_LENGTH -> RING_CELLS[LudoEngine.globalIndexOf(color, position)]
     else -> homeColumnCells(color)[position - LudoEngine.PLAYER_PATH_LENGTH]
 }
 
 private fun cellFor(token: Token): Pair<Int, Int> = cellFor(token.color, token.index, token.position)
 
-// ludo_board.jpg has no track of its own, only corner bases, a centre medallion and
-// gold-railed channels through the middle, so the grid is laid over it with two
-// visual adjustments: home columns shift half a cell to run down the channels and
-// end on the medallion, and base tokens sit in the image's slot circles.
-
-/** Base-slot rows/columns mapped onto the image's slot circles, in grid units. */
-private val BASE_SLOT_GRID = mapOf(3 to 2.45f, 5 to 3.68f, 10 to 11.3f, 12 to 12.52f)
-
-/** The centre of a cell in grid units (multiply by the cell size for pixels). */
+/** Where a cell is drawn, in grid units (multiply by the cell size for pixels): its centre, or a yard ring. */
 internal fun gridPoint(cell: Pair<Int, Int>): Offset {
+    YARD_POINTS[cell]?.let { return it }
     val (row, col) = cell
-    val slotX = BASE_SLOT_GRID[col]
-    val slotY = BASE_SLOT_GRID[row]
-    if (slotX != null && slotY != null) return Offset(slotX, slotY)
-    val (homeRow, homeCol) = HOME_CELL
-    val inHomeColumn = (row == homeRow && col in 2..12) || (col == homeCol && row in 2..12)
-    return if (inHomeColumn) Offset(col + 0.5f, row + 0.5f) else Offset(col.toFloat(), row.toFloat())
+    return Offset(col + 0.5f, row + 0.5f)
 }
 
 private const val HOP_MILLIS_PER_CELL = 110
@@ -429,37 +435,6 @@ private class TokenMotion(token: Token) {
         )
     }
 }
-
-// Track tiles are drawn to match the board image's navy slate and gold trim in both themes.
-private val TileFace = Color(0xFF2B3447)
-private val TileEdge = Color(0xFF151A24)
-private val TileTrim = Color(0xFFB08A3A)
-private val BoardNavy = Color(0xFF1B2232)
-
-/**
- * Which corner each colour's base square occupies, as (column, row) with 0 = left/top
- * and 1 = right/bottom: [boardCorner] is where the game puts it (next to its start
- * square), [imageCorner] is where ludo_board.jpg painted it. The image's diagonals
- * pair the colours differently from the turn order, so squares are redrawn to fit.
- */
-private fun boardCorner(color: LudoColor): Pair<Int, Int> = when (color) {
-    LudoColor.RED -> 0 to 0
-    LudoColor.GREEN -> 1 to 0
-    LudoColor.YELLOW -> 1 to 1
-    LudoColor.BLUE -> 0 to 1
-}
-
-private fun imageCorner(color: LudoColor): Pair<Int, Int> = when (color) {
-    LudoColor.RED -> 0 to 0
-    LudoColor.YELLOW -> 1 to 0
-    LudoColor.BLUE -> 1 to 1
-    LudoColor.GREEN -> 0 to 1
-}
-
-/** A base square plus a little surrounding background, as fractions of the image's width. */
-private const val BASE_BAND_START = 0.1025f
-private const val BASE_BAND_END = 0.6895f
-private const val BASE_BAND_SIZE = 0.208f
 
 /** How much of ludo_token.png's width the disc itself covers. */
 private const val TOKEN_DISC_FRACTION = 0.724f
@@ -594,7 +569,7 @@ fun LudoBoard(
                 .fillMaxSize()
                 .graphicsLayer()
         ) {
-            if (boardImage != null) drawBoard(image = boardImage, players = game.players)
+            if (boardImage != null) drawBoard(image = boardImage)
         }
 
         Canvas(
@@ -642,172 +617,13 @@ fun LudoBoard(
     }
 }
 
-private fun DrawScope.drawBoard(image: ImageBitmap, players: List<LudoColor>) {
-    val cell = size.width / GRID
-    fun center(rc: Pair<Int, Int>) = gridPoint(rc) * cell
-
+/** The board is ludo_board.png, as painted: its track, yards and home columns are the ones the tokens use. */
+private fun DrawScope.drawBoard(image: ImageBitmap) {
     drawImage(
         image = image,
         dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
         filterQuality = FilterQuality.High
     )
-
-    // Base squares: each colour's square from the image, redrawn in that colour's corner,
-    // and dimmed under a navy scrim when that colour isn't playing.
-    val scale = size.width / image.width
-    fun band(corner: Int) = if (corner == 0) BASE_BAND_START else BASE_BAND_END
-    val bandPx = (BASE_BAND_SIZE * image.width).roundToInt()
-    for (color in LudoEngine.PLAYER_ORDER) {
-        val (sx, sy) = imageCorner(color)
-        val (dx, dy) = boardCorner(color)
-        val dst = Offset(band(dx) * image.width, band(dy) * image.width) * scale
-        val dstSize = IntSize((bandPx * scale).roundToInt(), (bandPx * scale).roundToInt())
-        if ((sx to sy) != (dx to dy)) {
-            drawImage(
-                image = image,
-                srcOffset = IntOffset((band(sx) * image.width).roundToInt(), (band(sy) * image.width).roundToInt()),
-                srcSize = IntSize(bandPx, bandPx),
-                dstOffset = IntOffset(dst.x.roundToInt(), dst.y.roundToInt()),
-                dstSize = dstSize,
-                filterQuality = FilterQuality.High
-            )
-        }
-        if (color !in players) {
-            drawRect(
-                color = BoardNavy.copy(alpha = 0.6f),
-                topLeft = dst,
-                size = Size(dstSize.width.toFloat(), dstSize.height.toFloat())
-            )
-        }
-    }
-
-    // The shared track: slate tiles with gold trim, entry squares in their colour, stars on the other safe squares.
-    val entryColors = LudoEngine.PLAYER_ORDER.associateBy { LudoEngine.startIndexFor(it) }
-    RING_CELLS.forEachIndexed { index, rc ->
-        val entry = entryColors[index]
-        if (entry != null) {
-            val tint = colorFor(entry)
-            drawTile(center(rc), cell, face = lerp(TileFace, tint, 0.8f), edge = lerp(tint, Color.Black, 0.5f))
-            drawCircle(color = Color.White.copy(alpha = 0.85f), radius = cell * 0.16f, center = center(rc))
-        } else {
-            drawTile(center(rc), cell, face = TileFace, edge = TileEdge)
-            if (index in LudoEngine.SAFE_GLOBAL_INDICES) {
-                drawStar(center = center(rc), radius = cell * 0.32f, color = PwGoldLight)
-            }
-        }
-    }
-
-    // Home columns run down the image's railed channels to its medallion, which is home.
-    for (color in LudoEngine.PLAYER_ORDER) {
-        val tint = colorFor(color)
-        homeColumnCells(color).forEach { rc ->
-            if (rc != HOME_CELL) {
-                drawTile(center(rc), cell, face = lerp(TileFace, tint, 0.85f), edge = lerp(tint, Color.Black, 0.5f))
-            }
-        }
-    }
-
-    drawRouteArrows(cell)
-}
-
-private val RouteGold = PwGoldDark.copy(alpha = 0.4f)
-
-/** A route arrow in [color]'s own colour, lightened so it reads on that colour's tiles. */
-private fun routeTint(color: LudoColor) = lerp(colorFor(color), Color.White, 0.5f).copy(alpha = 0.7f)
-
-/**
- * The start and turn-off arrows: the colour itself, barely lightened and fully
- * opaque, drawn bolder and outlined (see [drawChevron]) so they stand out on a
- * coloured start tile and a navy track tile alike.
- */
-private fun routeKeyTint(color: LudoColor) = lerp(colorFor(color), Color.White, 0.2f)
-
-/**
- * The movement route as faint chevrons, each pointing from its square towards
- * the next step a token takes from there - the same cells and [gridPoint]s the
- * tokens hop between. Gold around the shared ring; in a colour's own tint on
- * its start square, on the square where it leaves the ring, and up its home
- * column. Home itself (the medallion) gets none.
- */
-private fun DrawScope.drawRouteArrows(cell: Float) {
-    fun point(rc: Pair<Int, Int>) = gridPoint(rc) * cell
-    val starts = LudoEngine.PLAYER_ORDER.associateBy { LudoEngine.startIndexFor(it) }
-    val exits = LudoEngine.PLAYER_ORDER.associateBy { LudoEngine.globalIndexOf(it, LudoEngine.PLAYER_PATH_LENGTH - 1) }
-
-    RING_CELLS.forEachIndexed { index, rc ->
-        val exitColor = exits[index]
-        if (exitColor != null) {
-            // The last ring square for this colour: its tokens turn off here, into the home column.
-            drawChevron(point(rc), point(homeColumnCells(exitColor).first()), cell, routeKeyTint(exitColor), bold = true)
-        } else {
-            val next = RING_CELLS[(index + 1) % RING_CELLS.size]
-            val startColor = starts[index]
-            if (startColor != null) {
-                drawChevron(point(rc), point(next), cell, routeKeyTint(startColor), bold = true)
-            } else {
-                drawChevron(point(rc), point(next), cell, RouteGold)
-            }
-        }
-    }
-    for (color in LudoEngine.PLAYER_ORDER) {
-        homeColumnCells(color).zipWithNext { rc, next -> drawChevron(point(rc), point(next), cell, routeTint(color)) }
-    }
-}
-
-/**
- * A small open chevron centred on [from], pointing towards [towards]. A [bold]
- * one is a little larger and thicker, over a dark outline.
- */
-private fun DrawScope.drawChevron(from: Offset, towards: Offset, cell: Float, color: Color, bold: Boolean = false) {
-    val delta = towards - from
-    val length = delta.getDistance()
-    if (length == 0f) return
-    val dir = delta / length
-    val across = Offset(-dir.y, dir.x)
-    val size = if (bold) 1.2f else 1f
-    val tip = from + dir * (cell * 0.16f * size)
-    val tail = from - dir * (cell * 0.1f * size)
-    val wing = cell * 0.17f * size
-    val path = Path().apply {
-        moveTo(tail.x + across.x * wing, tail.y + across.y * wing)
-        lineTo(tip.x, tip.y)
-        lineTo(tail.x - across.x * wing, tail.y - across.y * wing)
-    }
-    val width = cell * if (bold) 0.1f else 0.07f
-    if (bold) {
-        drawPath(path, Color.Black.copy(alpha = 0.55f), style = Stroke(width = width + cell * 0.07f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-    }
-    drawPath(path, color, style = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round))
-}
-
-/** One raised, rounded track tile centred on [center]: a darker edge below a face with a gold trim. */
-private fun DrawScope.drawTile(center: Offset, cell: Float, face: Color, edge: Color) {
-    val inset = cell * 0.05f
-    val side = cell - inset * 2
-    val topLeft = center - Offset(side / 2f, side / 2f)
-    val corner = CornerRadius(cell * 0.2f)
-    drawRoundRect(color = edge, topLeft = topLeft, size = Size(side, side), cornerRadius = corner)
-    drawRoundRect(color = face, topLeft = topLeft, size = Size(side, side - cell * 0.07f), cornerRadius = corner)
-    drawRoundRect(
-        color = TileTrim.copy(alpha = 0.75f),
-        topLeft = topLeft,
-        size = Size(side, side),
-        cornerRadius = corner,
-        style = Stroke(width = cell * 0.035f)
-    )
-}
-
-private fun DrawScope.drawStar(center: Offset, radius: Float, color: Color) {
-    val path = Path()
-    for (i in 0 until 10) {
-        val r = if (i % 2 == 0) radius else radius * 0.45f
-        val angle = -PI.toFloat() / 2f + i * PI.toFloat() / 5f
-        val x = center.x + cos(angle) * r
-        val y = center.y + sin(angle) * r
-        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-    }
-    path.close()
-    drawPath(path, color)
 }
 
 /**
