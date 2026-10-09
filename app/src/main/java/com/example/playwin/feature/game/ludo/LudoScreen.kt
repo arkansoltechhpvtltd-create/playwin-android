@@ -63,6 +63,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -697,6 +698,78 @@ private fun DrawScope.drawBoard(image: ImageBitmap, players: List<LudoColor>) {
             }
         }
     }
+
+    drawRouteArrows(cell)
+}
+
+private val RouteGold = PwGoldDark.copy(alpha = 0.4f)
+
+/** A route arrow in [color]'s own colour, lightened so it reads on that colour's tiles. */
+private fun routeTint(color: LudoColor) = lerp(colorFor(color), Color.White, 0.5f).copy(alpha = 0.7f)
+
+/**
+ * The start and turn-off arrows: the colour itself, barely lightened and fully
+ * opaque, drawn bolder and outlined (see [drawChevron]) so they stand out on a
+ * coloured start tile and a navy track tile alike.
+ */
+private fun routeKeyTint(color: LudoColor) = lerp(colorFor(color), Color.White, 0.2f)
+
+/**
+ * The movement route as faint chevrons, each pointing from its square towards
+ * the next step a token takes from there - the same cells and [gridPoint]s the
+ * tokens hop between. Gold around the shared ring; in a colour's own tint on
+ * its start square, on the square where it leaves the ring, and up its home
+ * column. Home itself (the medallion) gets none.
+ */
+private fun DrawScope.drawRouteArrows(cell: Float) {
+    fun point(rc: Pair<Int, Int>) = gridPoint(rc) * cell
+    val starts = LudoEngine.PLAYER_ORDER.associateBy { LudoEngine.startIndexFor(it) }
+    val exits = LudoEngine.PLAYER_ORDER.associateBy { LudoEngine.globalIndexOf(it, LudoEngine.PLAYER_PATH_LENGTH - 1) }
+
+    RING_CELLS.forEachIndexed { index, rc ->
+        val exitColor = exits[index]
+        if (exitColor != null) {
+            // The last ring square for this colour: its tokens turn off here, into the home column.
+            drawChevron(point(rc), point(homeColumnCells(exitColor).first()), cell, routeKeyTint(exitColor), bold = true)
+        } else {
+            val next = RING_CELLS[(index + 1) % RING_CELLS.size]
+            val startColor = starts[index]
+            if (startColor != null) {
+                drawChevron(point(rc), point(next), cell, routeKeyTint(startColor), bold = true)
+            } else {
+                drawChevron(point(rc), point(next), cell, RouteGold)
+            }
+        }
+    }
+    for (color in LudoEngine.PLAYER_ORDER) {
+        homeColumnCells(color).zipWithNext { rc, next -> drawChevron(point(rc), point(next), cell, routeTint(color)) }
+    }
+}
+
+/**
+ * A small open chevron centred on [from], pointing towards [towards]. A [bold]
+ * one is a little larger and thicker, over a dark outline.
+ */
+private fun DrawScope.drawChevron(from: Offset, towards: Offset, cell: Float, color: Color, bold: Boolean = false) {
+    val delta = towards - from
+    val length = delta.getDistance()
+    if (length == 0f) return
+    val dir = delta / length
+    val across = Offset(-dir.y, dir.x)
+    val size = if (bold) 1.2f else 1f
+    val tip = from + dir * (cell * 0.16f * size)
+    val tail = from - dir * (cell * 0.1f * size)
+    val wing = cell * 0.17f * size
+    val path = Path().apply {
+        moveTo(tail.x + across.x * wing, tail.y + across.y * wing)
+        lineTo(tip.x, tip.y)
+        lineTo(tail.x - across.x * wing, tail.y - across.y * wing)
+    }
+    val width = cell * if (bold) 0.1f else 0.07f
+    if (bold) {
+        drawPath(path, Color.Black.copy(alpha = 0.55f), style = Stroke(width = width + cell * 0.07f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
+    drawPath(path, color, style = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round))
 }
 
 /** One raised, rounded track tile centred on [center]: a darker edge below a face with a gold trim. */
