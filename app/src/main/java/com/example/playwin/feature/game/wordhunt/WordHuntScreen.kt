@@ -15,6 +15,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
@@ -54,6 +56,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -229,17 +232,45 @@ fun TurnBanner(text: String, secondsLeft: Int, note: String?, isResolving: Boole
                 strokeWidth = 2.dp
             )
         }
-        TurnTimerRing(secondsLeft = secondsLeft, totalSeconds = WORD_HUNT_TURN_SECONDS)
+        // The shared countdown ring, set on a navy plaque with a gold rim to match the grid.
+        Box(
+            modifier = Modifier
+                .shadow(elevation = 3.dp, shape = CircleShape)
+                .clip(CircleShape)
+                .background(Brush.verticalGradient(listOf(NavyTop, NavyBottom)))
+                .border(1.dp, GoldRim, CircleShape)
+                .padding(3.dp)
+        ) {
+            MaterialTheme(
+                colorScheme = MaterialTheme.colorScheme.copy(
+                    primary = PwGoldDark,
+                    onSurface = Color.White,
+                    outline = Color.White.copy(alpha = 0.18f),
+                    error = Color(0xFFFF7A7A)
+                )
+            ) {
+                TurnTimerRing(secondsLeft = secondsLeft, totalSeconds = WORD_HUNT_TURN_SECONDS)
+            }
+        }
     }
 }
+
+// Premium palette: deep navy and gold in both themes. Your finds are gold, your opponent's ruby.
+private val NavyTop = Color(0xFF1C2E56)
+private val NavyBottom = Color(0xFF0A1530)
+private val NavyInk = Color(0xFF14213D)
+private val IvoryTop = Color(0xFFFFFCF4)
+private val IvoryBottom = Color(0xFFEDE1C5)
+private val Ruby = Color(0xFFD02A3C)
+private val GoldRim = Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark))
 
 /** Both scores as chips that count up as points land, above the one-line scoring rule. */
 @Composable
 fun ScoreLine(myScore: Int, theirScore: Int, theirLabel: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth().padding(top = 10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            ScoreChip(label = "You", score = myScore, accent = MaterialTheme.colorScheme.tertiary, modifier = Modifier.weight(1f))
-            ScoreChip(label = theirLabel, score = theirScore, accent = MaterialTheme.colorScheme.secondary, modifier = Modifier.weight(1f))
+            ScoreChip(label = "You", score = myScore, accent = PwGoldDark, modifier = Modifier.weight(1f))
+            ScoreChip(label = theirLabel, score = theirScore, accent = Ruby, modifier = Modifier.weight(1f))
         }
         Text(
             text = "A word scores its length + half the seconds left on your clock.",
@@ -258,21 +289,24 @@ private fun ScoreChip(label: String, score: Int, accent: Color, modifier: Modifi
     val shape = RoundedCornerShape(14.dp)
     Row(
         modifier = modifier
+            .shadow(elevation = 4.dp, shape = shape)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .border(1.dp, accent.copy(alpha = 0.7f), shape)
+            .background(Brush.verticalGradient(listOf(NavyTop, NavyBottom)))
+            .border(1.dp, GoldRim, shape)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(10.dp)
-                .background(accent, RoundedCornerShape(50))
+                .size(12.dp)
+                .shadow(elevation = 2.dp, shape = CircleShape)
+                .background(Brush.verticalGradient(listOf(lerp(accent, Color.White, 0.35f), accent)), CircleShape)
+                .border(1.dp, PwGoldDark, CircleShape)
         )
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = PwGoldDark,
             modifier = Modifier
                 .weight(1f)
                 .padding(start = 8.dp)
@@ -280,7 +314,7 @@ private fun ScoreChip(label: String, score: Int, accent: Color, modifier: Modifi
         Text(
             text = "$shown",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onSurface
+            color = Color.White
         )
     }
 }
@@ -296,11 +330,12 @@ fun WordList(words: List<PlacedWord>, myWords: Set<String>, theirWords: Set<Stri
         words.forEach { placed ->
             val mine = placed.word in myWords
             val theirs = placed.word in theirWords
+            // Still to find: a navy chip with a gold rim. Found: gold (yours) or ruby (theirs), struck through.
             val fill by animateColorAsState(
                 targetValue = when {
-                    mine -> MaterialTheme.colorScheme.tertiary
-                    theirs -> MaterialTheme.colorScheme.secondary
-                    else -> MaterialTheme.colorScheme.surface
+                    mine -> PwGoldDark
+                    theirs -> Ruby
+                    else -> NavyTop
                 },
                 animationSpec = tween(350),
                 label = "wordChipFill"
@@ -309,17 +344,17 @@ fun WordList(words: List<PlacedWord>, myWords: Set<String>, theirWords: Set<Stri
             Text(
                 text = placed.word,
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold,
                 textDecoration = if (mine || theirs) TextDecoration.LineThrough else TextDecoration.None,
                 color = when {
-                    mine -> MaterialTheme.colorScheme.onTertiary
-                    theirs -> MaterialTheme.colorScheme.onSecondary
-                    else -> MaterialTheme.colorScheme.onSurface
+                    mine -> NavyInk
+                    else -> Color.White
                 },
                 modifier = Modifier
+                    .shadow(elevation = 2.dp, shape = shape)
                     .clip(shape)
-                    .background(fill)
-                    .border(1.dp, MaterialTheme.colorScheme.outline, shape)
+                    .background(Brush.verticalGradient(listOf(lerp(fill, Color.White, 0.18f), lerp(fill, Color.Black, 0.18f))))
+                    .border(1.dp, GoldRim, shape)
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             )
         }
@@ -345,11 +380,8 @@ fun LetterGrid(
     val myCells = words.filter { it.word in myWords }.flatMap { it.cells() }.toSet()
     val theirCells = words.filter { it.word in theirWords }.flatMap { it.cells() }.toSet()
 
-    val mineColor = MaterialTheme.colorScheme.tertiary
-    val theirColor = MaterialTheme.colorScheme.secondary
-    val tileFace = MaterialTheme.colorScheme.surface
-    val tileEdge = MaterialTheme.colorScheme.outline
-    val gold = MaterialTheme.colorScheme.primary
+    val mineColor = PwGoldDark
+    val theirColor = Ruby
     val frameShape = RoundedCornerShape(20.dp)
 
     // A found word is struck through with a highlighter that sweeps from its
@@ -380,22 +412,23 @@ fun LetterGrid(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(elevation = 10.dp, shape = frameShape)
+            .shadow(elevation = 12.dp, shape = frameShape)
             .clip(frameShape)
-            .background(
-                Brush.verticalGradient(
-                    listOf(MaterialTheme.colorScheme.surfaceVariant, lerp(MaterialTheme.colorScheme.surfaceVariant, tileEdge, 0.5f))
-                )
-            )
-            .border(1.5.dp, Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark)), frameShape)
-            .padding(8.dp)
+            .background(Brush.verticalGradient(listOf(NavyTop, NavyBottom)))
+            .border(2.dp, GoldRim, frameShape)
+            .padding(4.dp)
+            // A fine inner gold rule, set in from the rim.
+            .border(0.75.dp, PwGoldDark.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+            .padding(5.dp)
     ) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(cols / rows.toFloat())
         ) {
-            // The raised letter tiles never change, so they keep their own layer.
+            val letterSize = with(LocalDensity.current) { (maxWidth / cols * 0.5f).toSp() }
+
+            // The glossy letter tiles never change, so they keep their own layer.
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
@@ -405,11 +438,37 @@ fun LetterGrid(
                 val inset = cell * 0.06f
                 val side = cell - inset * 2
                 val corner = CornerRadius(cell * 0.2f)
+                val rim = cell * 0.035f
                 for (row in 0 until rows) {
                     for (col in 0 until cols) {
                         val topLeft = Offset(col * cell + inset, row * cell + inset)
-                        drawRoundRect(tileEdge, topLeft, Size(side, side), corner)
-                        drawRoundRect(tileFace, topLeft, Size(side, side - cell * 0.07f), corner)
+                        // Shadow, gold edge, ivory face, then a sheen across the top half.
+                        drawRoundRect(Color.Black.copy(alpha = 0.35f), topLeft + Offset(0f, cell * 0.04f), Size(side, side), corner)
+                        drawRoundRect(
+                            brush = Brush.linearGradient(listOf(PwGoldDark, PwGoldLight), start = topLeft, end = topLeft + Offset(side, side)),
+                            topLeft = topLeft,
+                            size = Size(side, side),
+                            cornerRadius = corner
+                        )
+                        val faceTopLeft = topLeft + Offset(rim, rim)
+                        val faceSize = Size(side - rim * 2, side - rim * 2)
+                        drawRoundRect(
+                            brush = Brush.verticalGradient(listOf(IvoryTop, IvoryBottom), startY = faceTopLeft.y, endY = faceTopLeft.y + faceSize.height),
+                            topLeft = faceTopLeft,
+                            size = faceSize,
+                            cornerRadius = CornerRadius(cell * 0.17f)
+                        )
+                        drawRoundRect(
+                            brush = Brush.verticalGradient(
+                                0f to Color.White.copy(alpha = 0.55f),
+                                1f to Color.Transparent,
+                                startY = faceTopLeft.y,
+                                endY = faceTopLeft.y + faceSize.height * 0.5f
+                            ),
+                            topLeft = faceTopLeft,
+                            size = Size(faceSize.width, faceSize.height * 0.5f),
+                            cornerRadius = CornerRadius(cell * 0.17f)
+                        )
                     }
                 }
             }
@@ -436,15 +495,16 @@ fun LetterGrid(
                     )
                 }
 
+                // The first tapped letter: a pulsing gold glow and a gold ring.
                 if (selection != null && selectionPulse != null) {
                     val pulse = selectionPulse.value
                     val center = centerOf(selection.first, selection.second)
-                    drawCircle(gold.copy(alpha = 0.22f + 0.2f * pulse), cell * (0.46f + 0.08f * pulse), center)
+                    drawCircle(PwGoldDark.copy(alpha = 0.35f + 0.25f * pulse), cell * (0.48f + 0.08f * pulse), center)
                     drawCircle(
-                        color = gold,
+                        color = PwGoldLight,
                         radius = cell * 0.42f,
                         center = center,
-                        style = Stroke(width = cell * (0.07f + 0.03f * pulse))
+                        style = Stroke(width = cell * (0.08f + 0.03f * pulse))
                     )
                 }
             }
@@ -457,9 +517,8 @@ fun LetterGrid(
                             val found = cell in myCells || cell in theirCells
                             val letterColor by animateColorAsState(
                                 targetValue = when {
-                                    cell in myCells -> MaterialTheme.colorScheme.onTertiary
-                                    cell in theirCells -> MaterialTheme.colorScheme.onSecondary
-                                    else -> MaterialTheme.colorScheme.onSurface
+                                    cell in theirCells -> Color.White
+                                    else -> NavyInk
                                 },
                                 animationSpec = tween(350),
                                 label = "wordHuntLetter"
@@ -476,7 +535,8 @@ fun LetterGrid(
                                 Text(
                                     text = grid[row][col].toString(),
                                     style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = if (found || selection == cell) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                    fontSize = letterSize,
+                                    fontWeight = if (found || selection == cell) FontWeight.Black else FontWeight.ExtraBold,
                                     textAlign = TextAlign.Center,
                                     color = letterColor
                                 )
