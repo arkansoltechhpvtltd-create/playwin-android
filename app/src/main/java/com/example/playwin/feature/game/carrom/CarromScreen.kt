@@ -1,5 +1,8 @@
 package com.example.playwin.feature.game.carrom
 
+import android.content.res.Resources
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -14,6 +17,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -36,6 +40,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -45,21 +50,24 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.R
 import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
@@ -79,7 +87,10 @@ import com.example.playwin.feature.game.TurnTimerRing
 import com.example.playwin.feature.game.carrom.online.CarromOnlineRoute
 import com.example.playwin.feature.game.online.GameModeSelectScreen
 import com.example.playwin.feature.game.online.PlayMode
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 /** Entry point for Carrom: play the computer, or get paired with a random online player. */
 @Composable
@@ -88,6 +99,9 @@ fun CarromRoute(
     onWin: (couponId: String) -> Unit
 ) {
     var mode by remember { mutableStateOf<PlayMode?>(null) }
+    // Prepares the board artwork while the mode is being picked.
+    val resources = LocalContext.current.resources
+    LaunchedEffect(Unit) { withContext(Dispatchers.Default) { loadBoardImage(resources) } }
     when (mode) {
         null -> GameModeSelectScreen(title = "Carrom", onBack = onBack, onSelectMode = { mode = it })
         PlayMode.COMPUTER -> CarromComputerRoute(onBack = { mode = null }, onWin = onWin)
@@ -296,10 +310,6 @@ private fun ScoreChip(label: String, score: Int, color: CoinColor?, modifier: Mo
     }
 }
 
-private val WoodLight = Color(0xFFF1D7AE)
-private val WoodMid = Color(0xFFE3C090)
-private val WoodDark = Color(0xFFCDA36E)
-private val FrameLight = Color(0xFF6A4022)
 private val FrameDark = Color(0xFF34190B)
 private val LineInk = Color(0xFF3E2412)
 private val LineRed = Color(0xFFB0342C)
@@ -386,23 +396,38 @@ fun CarromBoardView(
         null
     }
     val gold = MaterialTheme.colorScheme.primary
-    val frameShape = RoundedCornerShape(24.dp)
+    val boardImage = rememberBoardImage()
+    val frameShape = RoundedCornerShape(6.dp)
     // Light falls from the top of the *screen*, whichever way the board is turned.
     val lightDir = if (flipped) -1f else 1f
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
             .shadow(elevation = 12.dp, shape = frameShape)
             .clip(frameShape)
-            .background(Brush.linearGradient(listOf(FrameLight, FrameDark, FrameLight)))
-            .border(1.5.dp, Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark)), frameShape)
-            .padding(14.dp)
+            .background(FrameDark)
     ) {
+        // The artwork stays upright when the board is turned for player 2 - it's
+        // symmetrical, and its lighting then still falls from the top of the screen.
+        if (boardImage != null) {
+            Canvas(modifier = Modifier.matchParentSize()) {
+                drawImage(
+                    image = boardImage,
+                    dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
+                    filterQuality = FilterQuality.High
+                )
+            }
+        }
+        // The play area sits exactly on the artwork's playing surface, inside its frame.
+        // The pockets are the artwork's: the physics sinks pieces at the surface's
+        // corners, just in front of the painted pockets.
+        val artPixel = maxWidth / CarromArt.SIZE
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .padding(start = artPixel * CarromArt.SURFACE_X, top = artPixel * CarromArt.SURFACE_Y)
+                .size(artPixel * CarromArt.SURFACE_SIZE)
                 .graphicsLayer { rotationZ = if (flipped) 180f else 0f }
                 .onSizeChanged { canvasSize = it }
                 .pointerInput(canAim, strikerScreenPos) {
@@ -427,16 +452,6 @@ fun CarromBoardView(
                     )
                 }
         ) {
-            // The playing surface never changes, so it keeps its own layer and
-            // is not re-recorded while the pieces move every frame.
-            Canvas(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer()
-            ) {
-                drawCarromSurface()
-            }
-
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val s = size.width / CarromBoard.SIZE
                 fun toScreen(v: Vec2) = Offset(v.x * s, v.y * s)
@@ -534,73 +549,64 @@ fun CarromBoardView(
     }
 }
 
-/** The lacquered plywood surface with its printed markings and the four corner pockets. */
-private fun DrawScope.drawCarromSurface() {
-    val s = size.width / CarromBoard.SIZE
-    val boardCenter = Offset(size.width / 2f, size.height / 2f)
+/**
+ * Where things are in carrom_board.jpg (1024px square). [loadBoardImage] crops
+ * it to the outside of the frame and paints out three stray pieces the artwork
+ * shows on the surface. All in the image's pixels.
+ */
+private object CarromArt {
+    // The crop: the board's frame, without the dark backdrop around it.
+    const val CROP_LEFT = 64
+    const val CROP_TOP = 64
+    const val CROP_SIZE = 896
+    const val SIZE = 896f
 
-    drawRect(
-        brush = Brush.radialGradient(
-            colors = listOf(WoodLight, WoodMid, WoodDark),
-            center = boardCenter,
-            radius = size.width * 0.78f
-        ),
-        size = size
+    // The playing surface inside the frame - the physics board's walls - within the crop.
+    const val SURFACE_X = 99f - CROP_LEFT
+    const val SURFACE_Y = 100f - CROP_TOP
+    const val SURFACE_SIZE = 827.5f
+
+    /** Stray pieces painted on the surface: centre x, centre y, radius, and how far along the same grain rows to take wood from. */
+    val strays = listOf(
+        intArrayOf(409, 656, 17, 60),
+        intArrayOf(606, 652, 19, -70),
+        intArrayOf(427, 356, 18, 55)
     )
-    // A faint inner shadow where the surface meets the raised frame.
-    drawRect(color = Color.Black.copy(alpha = 0.18f), size = size, style = Stroke(width = 10f * s))
-    drawRect(color = LineInk.copy(alpha = 0.5f), size = size, style = Stroke(width = 3f * s))
+}
 
-    // The same baseline and corner arrow, printed on all four sides.
-    val inset = CarromBoard.BASELINE_INSET * s
-    val lane = CarromBoard.STRIKER_RADIUS * s
-    val left = 190f * s
-    val right = size.width - 190f * s
-    for (quarter in 0 until 4) {
-        rotate(degrees = quarter * 90f, pivot = boardCenter) {
-            val y = size.height - inset
-            drawLine(LineInk, Offset(left, y - lane), Offset(right, y - lane), strokeWidth = 2.5f * s)
-            drawLine(LineInk, Offset(left, y + lane), Offset(right, y + lane), strokeWidth = 1.2f * s)
-            listOf(left, right).forEach { x ->
-                drawCircle(LineRed, lane, Offset(x, y))
-                drawCircle(LineInk, lane, Offset(x, y), style = Stroke(width = 2f * s))
-            }
+/** The prepared board, built once per process by [loadBoardImage]. */
+@Volatile
+private var boardImageCache: ImageBitmap? = null
 
-            val arrowStart = Offset(118f * s, size.height - 118f * s)
-            val arrowEnd = Offset(250f * s, size.height - 250f * s)
-            drawLine(LineInk, arrowStart, arrowEnd, strokeWidth = 1.6f * s, cap = StrokeCap.Round)
-            drawArc(
-                color = LineInk,
-                startAngle = 200f,
-                sweepAngle = 230f,
-                useCenter = false,
-                topLeft = arrowEnd - Offset(22f * s, 22f * s),
-                size = Size(44f * s, 44f * s),
-                style = Stroke(width = 1.6f * s)
-            )
-        }
+/** carrom_board.jpg cropped to its frame, with the stray pieces painted out (see [CarromArt]). Keep this off the main thread. */
+private fun loadBoardImage(resources: Resources): ImageBitmap = boardImageCache ?: run {
+    val source = BitmapFactory.decodeResource(resources, R.drawable.carrom_board)
+    val board = Bitmap.createBitmap(CarromArt.CROP_SIZE, CarromArt.CROP_SIZE, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(board)
+    val left = -CarromArt.CROP_LEFT.toFloat()
+    val top = -CarromArt.CROP_TOP.toFloat()
+    canvas.drawBitmap(source, left, top, null)
+    val patch = android.graphics.Path()
+    CarromArt.strays.forEach { (x, y, radius, dx) ->
+        patch.reset()
+        patch.addCircle(x + left, y + top, radius.toFloat(), android.graphics.Path.Direction.CW)
+        canvas.save()
+        canvas.clipPath(patch)
+        canvas.drawBitmap(source, left - dx, top, null)
+        canvas.restore()
     }
+    source.recycle()
+    board.asImageBitmap().also { boardImageCache = it }
+}
 
-    // Centre: the ring that frames the opening cluster, and the queen's red spot.
-    val ring = CarromBoard.COIN_RADIUS * 5.4f * s
-    drawCircle(LineInk, ring, boardCenter, style = Stroke(width = 2.5f * s))
-    drawCircle(LineInk.copy(alpha = 0.6f), ring + 7f * s, boardCenter, style = Stroke(width = 1.2f * s))
-    drawCircle(LineRed.copy(alpha = 0.85f), CarromBoard.COIN_RADIUS * s, boardCenter)
-
-    val pocketRadius = CarromBoard.POCKET_RADIUS * s
-    CarromBoard.corners.forEach { corner ->
-        val center = Offset(corner.x * s, corner.y * s)
-        drawCircle(LineInk.copy(alpha = 0.5f), pocketRadius * 1.14f, center)
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color.Black, Color(0xFF17100A)),
-                center = center,
-                radius = pocketRadius
-            ),
-            radius = pocketRadius,
-            center = center
-        )
+/** The prepared board; null for the frame or two before it's ready if it wasn't preloaded. */
+@Composable
+private fun rememberBoardImage(): ImageBitmap? {
+    val resources = LocalContext.current.resources
+    val image by produceState(initialValue = boardImageCache) {
+        if (value == null) value = withContext(Dispatchers.Default) { loadBoardImage(resources) }
     }
+    return image
 }
 
 /**
