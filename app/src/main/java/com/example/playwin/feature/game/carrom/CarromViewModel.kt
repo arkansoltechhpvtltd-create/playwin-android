@@ -62,6 +62,18 @@ class CarromViewModel @Inject constructor(
         shoot(direction, power)
     }
 
+    /**
+     * Slides the striker along the shooter's baseline to [x] before the shot -
+     * only sideways, clamped between the baseline's end circles. Ignored once
+     * the shot is taken, and it won't push the striker onto a coin.
+     */
+    fun onPlaceStriker(x: Float) {
+        val state = _uiState.value
+        if (!state.canAim) return
+        val coins = slideStriker(state.match.coins, x) ?: return
+        _uiState.update { it.copy(match = it.match.copy(coins = coins), coins = coins) }
+    }
+
     /** Advances the board by one rendered frame; called from the screen's own frame clock. */
     fun onPhysicsTick(dtSeconds: Float) {
         val state = _uiState.value

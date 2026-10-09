@@ -42,6 +42,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -90,6 +91,7 @@ import com.example.playwin.feature.game.online.PlayMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** Entry point for Carrom: play the computer, or get paired with a random online player. */
@@ -131,6 +133,7 @@ private fun CarromComputerRoute(
         uiState = uiState,
         onBack = onBack,
         onShoot = viewModel::onShoot,
+        onPlaceStriker = viewModel::onPlaceStriker,
         onPlayAgain = viewModel::onPlayAgain
     )
 }
@@ -142,7 +145,8 @@ fun CarromScreen(
     onBack: () -> Unit,
     onShoot: (direction: Vec2, power: Float) -> Unit,
     onPlayAgain: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onPlaceStriker: ((x: Float) -> Unit)? = null
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -164,7 +168,7 @@ fun CarromScreen(
                 else -> TurnBanner(
                     text = when {
                         uiState.isComputerThinking -> "Computer is lining up a shot…"
-                        uiState.currentPlayer == CARROM_HUMAN -> "Your shot - drag back from the striker"
+                        uiState.currentPlayer == CARROM_HUMAN -> "Your shot - slide the striker, then drag back"
                         else -> "Computer's shot"
                     } + buildString {
                         if (uiState.lastTurnTimedOut) append(" (previous turn timed out)")
@@ -179,7 +183,8 @@ fun CarromScreen(
                 CarromBoardView(
                     coins = uiState.coins,
                     canAim = uiState.canAim,
-                    onShoot = onShoot
+                    onShoot = onShoot,
+                    onPlaceStriker = onPlaceStriker
                 )
                 if (humanWon) {
                     CelebrationBurst(
@@ -337,12 +342,20 @@ private class SinkingPiece(val id: Int, val from: Vec2, val pocket: Vec2) {
     val progress = Animatable(0f)
 }
 
+/** What a drag on the board is doing, decided by its first movement. */
+private enum class DragMode { UNDECIDED, SLIDE, AIM }
+
+/** How far from the striker's centre, in striker radii, a drag still counts as grabbing it. */
+private const val STRIKER_GRAB_RADII = 2.5f
+
 /**
- * The board. Drag back from the striker to aim; release to shoot. With
- * [flipped] the board is turned 180° so a top-baseline player (online
- * player 2) shoots "up" from the bottom of their screen - aiming still
- * reports directions in board space, since the rotation applies to touch
- * input as well as drawing.
+ * The board. Drag back from the striker to aim; release to shoot. When
+ * [onPlaceStriker] is given, a drag that starts on the striker and moves
+ * sideways slides it along the baseline instead (the caller keeps it on the
+ * line and in bounds). With [flipped] the board is turned 180° so a
+ * top-baseline player (online player 2) shoots "up" from the bottom of their
+ * screen - aiming still reports directions in board space, since the
+ * rotation applies to touch input as well as drawing.
  */
 @Composable
 fun CarromBoardView(
@@ -350,7 +363,8 @@ fun CarromBoardView(
     canAim: Boolean,
     onShoot: (Vec2, Float) -> Unit,
     modifier: Modifier = Modifier,
-    flipped: Boolean = false
+    flipped: Boolean = false,
+    onPlaceStriker: ((x: Float) -> Unit)? = null
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var dragCurrent by remember { mutableStateOf<Offset?>(null) }
@@ -359,8 +373,14 @@ fun CarromBoardView(
     val striker = coins.firstOrNull { it.id == STRIKER_ID && !it.pocketed }
     val strikerScreenPos = striker?.let { Offset(it.position.x * scale, it.position.y * scale) }
 
+    // The gesture below outlives recompositions, so it reads these through state.
+    val currentStriker = rememberUpdatedState(striker)
+    val currentStrikerScreenPos = rememberUpdatedState(strikerScreenPos)
+    val currentScale = rememberUpdatedState(scale)
+    val currentOnShoot = rememberUpdatedState(onShoot)
+    val currentPlaceStriker = rememberUpdatedState(onPlaceStriker)
+
     val maxDragPx = canvasSize.width * 0.4f
-    val minDragPx = canvasSize.width * 0.02f
 
     // Spot pieces that were on the board last frame and are pocketed now, and let them sink.
     val sinking = remember { mutableStateListOf<SinkingPiece>() }
@@ -430,25 +450,58 @@ fun CarromBoardView(
                 .size(artPixel * CarromArt.SURFACE_SIZE)
                 .graphicsLayer { rotationZ = if (flipped) 180f else 0f }
                 .onSizeChanged { canvasSize = it }
-                .pointerInput(canAim, strikerScreenPos) {
+                // Keyed on canAim only: the striker moves while it's being slid, and
+                // restarting the gesture on every move would cancel the drag.
+                .pointerInput(canAim) {
                     if (!canAim) return@pointerInput
+                    var dragStart = Offset.Zero
+                    var strikerStartX = 0f
+                    var mode = DragMode.UNDECIDED
+                    fun reset() {
+                        dragCurrent = null
+                        mode = DragMode.UNDECIDED
+                    }
                     detectDragGestures(
-                        onDragStart = { offset -> dragCurrent = offset },
-                        onDrag = { change, _ -> dragCurrent = change.position },
+                        onDragStart = { offset ->
+                            dragStart = offset
+                            strikerStartX = currentStriker.value?.position?.x ?: 0f
+                            mode = DragMode.UNDECIDED
+                        },
+                        onDrag = { change, dragAmount ->
+                            if (mode == DragMode.UNDECIDED) {
+                                // A drag that starts on the striker and heads sideways slides it
+                                // along the baseline; anything else aims, as before.
+                                val place = currentPlaceStriker.value
+                                val strikerAt = currentStrikerScreenPos.value
+                                val grabRadius = CarromBoard.STRIKER_RADIUS * currentScale.value * STRIKER_GRAB_RADII
+                                val onStriker = strikerAt != null && (dragStart - strikerAt).getDistance() <= grabRadius
+                                mode = if (place != null && onStriker && abs(dragAmount.x) > abs(dragAmount.y)) DragMode.SLIDE else DragMode.AIM
+                            }
+                            when (mode) {
+                                DragMode.SLIDE -> {
+                                    val s = currentScale.value
+                                    if (s > 0f) currentPlaceStriker.value?.invoke(strikerStartX + (change.position.x - dragStart.x) / s)
+                                }
+                                else -> dragCurrent = change.position
+                            }
+                        },
                         onDragEnd = {
-                            val start = strikerScreenPos
+                            val start = currentStrikerScreenPos.value
                             val end = dragCurrent
-                            if (start != null && end != null) {
+                            // Shot thresholds from this element's own size (maxDragPx above is for drawing).
+                            val maxDrag = size.width * 0.4f
+                            val minDrag = size.width * 0.02f
+                            if (mode == DragMode.AIM && start != null && end != null) {
                                 val pullDistance = (end - start).getDistance()
-                                if (pullDistance > minDragPx && maxDragPx > 0f) {
+                                if (pullDistance > minDrag && maxDrag > 0f) {
                                     val direction = Vec2(start.x - end.x, start.y - end.y).normalizedOrZero()
-                                    val power = (pullDistance / maxDragPx).coerceIn(0f, 1f)
-                                    onShoot(direction, power)
+                                    val power = (pullDistance / maxDrag).coerceIn(0f, 1f)
+                                    currentOnShoot.value(direction, power)
                                 }
                             }
-                            dragCurrent = null
+                            reset()
                         },
-                        onDragCancel = { dragCurrent = null }
+                        onDragCancel = { reset() }
                     )
                 }
         ) {
