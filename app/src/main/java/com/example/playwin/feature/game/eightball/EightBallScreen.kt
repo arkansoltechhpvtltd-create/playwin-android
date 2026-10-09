@@ -1,5 +1,14 @@
 package com.example.playwin.feature.game.eightball
 
+import android.content.res.Resources
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.Shader
+import android.graphics.Rect as AndroidRect
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -13,6 +22,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -20,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
@@ -35,6 +46,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -45,9 +57,11 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -56,6 +70,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
@@ -66,6 +81,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.R
 import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
@@ -84,7 +100,10 @@ import com.example.playwin.feature.game.TurnTimerRing
 import com.example.playwin.feature.game.eightball.online.EightBallOnlineRoute
 import com.example.playwin.feature.game.online.GameModeSelectScreen
 import com.example.playwin.feature.game.online.PlayMode
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 /** Entry point for 8-Ball: play the computer, or get paired with a random online player. */
 @Composable
@@ -93,6 +112,9 @@ fun EightBallRoute(
     onWin: (couponId: String) -> Unit
 ) {
     var mode by remember { mutableStateOf<PlayMode?>(null) }
+    // Builds the table artwork while the mode is being picked.
+    val resources = LocalContext.current.resources
+    LaunchedEffect(Unit) { withContext(Dispatchers.Default) { loadTableImage(resources) } }
     when (mode) {
         null -> GameModeSelectScreen(title = "8-Ball", onBack = onBack, onSelectMode = { mode = it })
         PlayMode.COMPUTER -> EightBallComputerRoute(onBack = { mode = null }, onWin = onWin)
@@ -274,10 +296,6 @@ fun GroupLegend(myGroup: BallGroup?, modifier: Modifier = Modifier) {
     }
 }
 
-private val FeltLight = Color(0xFF1F7A5C)
-private val FeltMid = Color(0xFF14604A)
-private val FeltDark = Color(0xFF0B3F30)
-private val RailLight = Color(0xFF6E4424)
 private val RailDark = Color(0xFF341A0B)
 private val BallIvory = Color(0xFFF7F4EA)
 private val CueMaple = Color(0xFFE2BE84)
@@ -298,8 +316,107 @@ private val ballColors = mapOf(
 
 private fun colorForBall(id: Int): Color = ballColors[id] ?: ballColors.getValue(id - 8)
 
-/** The rail thickness around the felt; the pockets are cut into it at the corners. */
-private val RAIL = 14.dp
+/**
+ * Where things are in eightball_table.jpg, a near-square table with eight pockets.
+ * The physics table is 2:1 with only the four corner pockets, so [loadTableImage]
+ * reshapes it: cropped to the outside of the rails, with the band of columns holding
+ * the top and bottom middle pockets cut out, and the band of rows holding the two
+ * side pockets cut out. All in the image's pixels.
+ */
+private object TableArt {
+    // The outside of the rails.
+    const val LEFT = 148
+    const val TOP = 94
+    const val RIGHT = 882
+    const val BOTTOM = 930
+
+    // The cushion noses, which the balls bounce off: the edges of the physics table.
+    const val FELT_LEFT = 216
+    const val FELT_TOP = 168
+    const val FELT_RIGHT = 812
+
+    // Columns [CUT_LEFT, CUT_RIGHT) and rows [CUT_TOP, CUT_BOTTOM) are dropped.
+    const val CUT_LEFT = 482
+    const val CUT_RIGHT = 548
+    const val CUT_TOP = 300
+    const val CUT_BOTTOM = 724
+
+    /**
+     * The row cut is cross-faded over this many rows either side of it rather than
+     * butted: the artwork is lit from the top, so a hard seam shows across the felt.
+     */
+    const val FADE = 100
+
+    // The reshaped image, and the felt within it (exactly 2:1, like the physics table).
+    const val WIDTH = RIGHT - LEFT - (CUT_RIGHT - CUT_LEFT)
+    const val HEIGHT = BOTTOM - TOP - (CUT_BOTTOM - CUT_TOP)
+    const val FELT_X = FELT_LEFT - LEFT
+    const val FELT_Y = FELT_TOP - TOP
+    const val FELT_WIDTH = FELT_RIGHT - FELT_LEFT - (CUT_RIGHT - CUT_LEFT)
+
+    /** Rounds the frame off with the chrome corner caps, as a percentage of the table's height. */
+    const val CORNER_PERCENT = 7
+}
+
+/** The reshaped table, built once per process by [loadTableImage]. */
+@Volatile
+private var tableImageCache: ImageBitmap? = null
+
+/** Builds the reshaped table from eightball_table.jpg (see [TableArt]). Keep this off the main thread. */
+private fun loadTableImage(resources: Resources): ImageBitmap = tableImageCache ?: run {
+    val source = BitmapFactory.decodeResource(resources, R.drawable.eightball_table)
+    val table = Bitmap.createBitmap(TableArt.WIDTH, TableArt.HEIGHT, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(table)
+    // Rows [srcTop, srcBottom) of both column halves, either side of the column cut.
+    fun drawRows(srcTop: Int, srcBottom: Int, dstTop: Int) {
+        val dstBottom = dstTop + srcBottom - srcTop
+        val leftWidth = TableArt.CUT_LEFT - TableArt.LEFT
+        canvas.drawBitmap(
+            source,
+            AndroidRect(TableArt.LEFT, srcTop, TableArt.CUT_LEFT, srcBottom),
+            AndroidRect(0, dstTop, leftWidth, dstBottom),
+            null
+        )
+        canvas.drawBitmap(
+            source,
+            AndroidRect(TableArt.CUT_RIGHT, srcTop, TableArt.RIGHT, srcBottom),
+            AndroidRect(leftWidth, dstTop, TableArt.WIDTH, dstBottom),
+            null
+        )
+    }
+    val fadeTop = TableArt.CUT_TOP - TableArt.FADE - TableArt.TOP
+    val fadeBottom = TableArt.CUT_TOP + TableArt.FADE - TableArt.TOP
+    drawRows(TableArt.TOP, TableArt.CUT_TOP + TableArt.FADE, dstTop = 0)
+    // The lower half goes on top, faded in across the band either side of the cut.
+    val layer = canvas.saveLayer(null, null)
+    drawRows(TableArt.CUT_BOTTOM - TableArt.FADE, TableArt.BOTTOM, dstTop = fadeTop)
+    canvas.drawRect(
+        0f,
+        fadeTop.toFloat(),
+        TableArt.WIDTH.toFloat(),
+        fadeBottom.toFloat(),
+        Paint().apply {
+            shader = LinearGradient(
+                0f, fadeTop.toFloat(), 0f, fadeBottom.toFloat(),
+                android.graphics.Color.TRANSPARENT, android.graphics.Color.BLACK, Shader.TileMode.CLAMP
+            )
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+        }
+    )
+    canvas.restoreToCount(layer)
+    source.recycle()
+    table.asImageBitmap().also { tableImageCache = it }
+}
+
+/** The reshaped table; null for the frame or two before it's ready if it wasn't preloaded. */
+@Composable
+private fun rememberTableImage(): ImageBitmap? {
+    val resources = LocalContext.current.resources
+    val image by produceState(initialValue = tableImageCache) {
+        if (value == null) value = withContext(Dispatchers.Default) { loadTableImage(resources) }
+    }
+    return image
+}
 
 /** A ball that has just dropped: it rolls from where it was into the pocket, shrinking away. */
 private class SinkingBall(val id: Int, val from: Vec2, val pocket: Vec2) {
@@ -374,20 +491,32 @@ fun PoolTable(
         }
     }
     val stripeClip = remember { Path() }
-    val frameShape = RoundedCornerShape(24.dp)
+    val tableImage = rememberTableImage()
+    val frameShape = RoundedCornerShape(TableArt.CORNER_PERCENT)
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
+            .aspectRatio(TableArt.WIDTH / TableArt.HEIGHT.toFloat())
             .shadow(elevation = 12.dp, shape = frameShape)
             .clip(frameShape)
-            .background(Brush.verticalGradient(listOf(RailLight, RailDark, RailLight)))
-            .border(1.5.dp, Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark)), frameShape)
-            .padding(RAIL)
+            .background(RailDark)
     ) {
+        if (tableImage != null) {
+            Canvas(modifier = Modifier.matchParentSize()) {
+                drawImage(
+                    image = tableImage,
+                    dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
+                    filterQuality = FilterQuality.High
+                )
+            }
+        }
+        // The play area sits on the artwork's felt, between the cushion noses.
+        val artPixel = maxWidth / TableArt.WIDTH
         Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .padding(start = artPixel * TableArt.FELT_X, top = artPixel * TableArt.FELT_Y)
+                .width(artPixel * TableArt.FELT_WIDTH)
                 .aspectRatio(2f)
                 .onSizeChanged { canvasSize = it }
                 .pointerInput(canAim, cueScreenPos) {
@@ -412,14 +541,14 @@ fun PoolTable(
                     )
                 }
         ) {
-            // The felt, cushions, rail sights and pockets never change, so they
-            // keep their own layer and aren't re-recorded while balls roll.
+            // The markings never change, so they keep their own layer and
+            // aren't re-recorded while balls roll.
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer()
             ) {
-                drawTableSurface(rail = RAIL.toPx())
+                drawTableMarkings()
             }
 
             Canvas(modifier = Modifier.fillMaxSize()) {
@@ -515,24 +644,12 @@ fun PoolTable(
 }
 
 /**
- * The felt with its cushions and markings, the gold sights set into the rail
- * (drawn just outside the felt, which this canvas doesn't clip to), and the
- * four corner pockets.
+ * The head string and spots on the artwork's felt. The pockets come from the
+ * artwork: the physics sinks balls at the felt's corners, in the jaws just in
+ * front of the painted pockets.
  */
-private fun DrawScope.drawTableSurface(rail: Float) {
+private fun DrawScope.drawTableMarkings() {
     val s = size.width / EightBallTable.WIDTH
-
-    drawRect(
-        brush = Brush.radialGradient(
-            colors = listOf(FeltLight, FeltMid, FeltDark),
-            center = Offset(size.width / 2f, size.height / 2f),
-            radius = size.width * 0.62f
-        ),
-        size = size
-    )
-    // Cushions: a darker lip all round with a lit edge where it meets the rail.
-    drawRect(color = Color.Black.copy(alpha = 0.28f), size = size, style = Stroke(width = 16f * s))
-    drawRect(color = Color.White.copy(alpha = 0.12f), size = size, style = Stroke(width = 2f * s))
 
     // Head string and the two spots.
     val headX = EightBallTable.CUE_START_X * s
@@ -541,35 +658,6 @@ private fun DrawScope.drawTableSurface(rail: Float) {
     drawLine(marking, Offset(headX, 8f * s), Offset(headX, size.height - 8f * s), strokeWidth = 1.5f * s)
     drawCircle(marking, 4f * s, Offset(headX, centerY))
     drawCircle(marking, 4f * s, Offset(EightBallTable.RACK_APEX_X * s, centerY))
-
-    // Rail sights.
-    val sight = rail * 0.16f
-    for (i in 1..7) {
-        if (i == 4) continue
-        val x = size.width * i / 8f
-        drawCircle(PwGoldDark, sight, Offset(x, -rail / 2f))
-        drawCircle(PwGoldDark, sight, Offset(x, size.height + rail / 2f))
-    }
-    for (i in 1..3) {
-        val y = size.height * i / 4f
-        drawCircle(PwGoldDark, sight, Offset(-rail / 2f, y))
-        drawCircle(PwGoldDark, sight, Offset(size.width + rail / 2f, y))
-    }
-
-    val pocketRadius = EightBallTable.POCKET_RADIUS * s
-    EightBallTable.corners.forEach { corner ->
-        val center = Offset(corner.x * s, corner.y * s)
-        drawCircle(PwGoldLight.copy(alpha = 0.7f), pocketRadius * 1.12f, center)
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color.Black, Color(0xFF1A130D)),
-                center = center,
-                radius = pocketRadius
-            ),
-            radius = pocketRadius,
-            center = center
-        )
-    }
 }
 
 /**
