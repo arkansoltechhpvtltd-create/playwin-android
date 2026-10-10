@@ -118,6 +118,79 @@ class LudoEngineTest {
     }
 
     @Test
+    fun `capturing an opponent grants another roll`() {
+        // Same capture as above (RED local 1 + 3 -> global 4, onto BLUE), with a non-six roll.
+        val tokens = tokensWith((LudoColor.RED to 0) to 1, (LudoColor.BLUE to 0) to 17)
+        val state = LudoState(tokens = tokens, currentPlayerIndex = 0, diceValue = 3, hasRolled = true)
+        val result = LudoEngine.applyMove(state, LudoColor.RED, 0)
+
+        assertEquals(LudoEngine.IN_BASE, result.tokens.first { it.color == LudoColor.BLUE && it.index == 0 }.position)
+        assertEquals(0, result.currentPlayerIndex)
+        assertEquals(null, result.diceValue)
+        assertFalse(result.hasRolled)
+    }
+
+    @Test
+    fun `the computer also rolls again after a capture`() {
+        // 1v1: YELLOW (the computer, index 1) local 1 + 3 lands on global 30 ((26 + 4) % 52), where RED's local 30 sits.
+        val tokens = LudoEngine.initialState(LudoEngine.TWO_PLAYER).tokens.map {
+            when {
+                it.color == LudoColor.YELLOW && it.index == 0 -> it.copy(position = 1)
+                it.color == LudoColor.RED && it.index == 0 -> it.copy(position = 30)
+                else -> it
+            }
+        }
+        val state = LudoState(tokens = tokens, currentPlayerIndex = 1, players = LudoEngine.TWO_PLAYER, diceValue = 3)
+
+        assertFalse(30 in LudoEngine.SAFE_GLOBAL_INDICES)
+        val result = LudoEngine.applyMove(state, LudoColor.YELLOW, 0)
+
+        assertEquals(LudoEngine.IN_BASE, result.tokens.first { it.color == LudoColor.RED && it.index == 0 }.position)
+        assertEquals(1, result.currentPlayerIndex)
+    }
+
+    @Test
+    fun `moving a token home grants another roll`() {
+        val tokens = tokensWith((LudoColor.RED to 0) to LudoEngine.FINISH_LOCAL_POSITION - 3)
+        val state = LudoState(tokens = tokens, currentPlayerIndex = 0, diceValue = 3)
+        val result = LudoEngine.applyMove(state, LudoColor.RED, 0)
+
+        assertEquals(LudoEngine.FINISH_LOCAL_POSITION, result.tokens.first { it.color == LudoColor.RED && it.index == 0 }.position)
+        assertEquals(0, result.currentPlayerIndex)
+    }
+
+    @Test
+    fun `a move short of home without a capture still passes the turn`() {
+        // Into the home column, but not to the finish.
+        val tokens = tokensWith((LudoColor.RED to 0) to LudoEngine.FINISH_LOCAL_POSITION - 5)
+        val state = LudoState(tokens = tokens, currentPlayerIndex = 0, diceValue = 3)
+        assertEquals(1, LudoEngine.applyMove(state, LudoColor.RED, 0).currentPlayerIndex)
+    }
+
+    @Test
+    fun `landing on an opponent on a safe cell does not grant another roll`() {
+        val tokens = tokensWith((LudoColor.RED to 0) to 5, (LudoColor.GREEN to 0) to 47)
+        val state = LudoState(tokens = tokens, currentPlayerIndex = 0, diceValue = 3)
+        assertEquals(1, LudoEngine.applyMove(state, LudoColor.RED, 0).currentPlayerIndex)
+    }
+
+    @Test
+    fun `a six that also captures still grants just one roll`() {
+        // RED local 1 + 6 -> global 7 (not safe); BLUE local 20 -> (39 + 20) % 52 == 7.
+        val tokens = tokensWith((LudoColor.RED to 0) to 1, (LudoColor.BLUE to 0) to 20)
+        val state = LudoState(tokens = tokens, currentPlayerIndex = 0, diceValue = 6, hasRolled = true)
+
+        assertFalse(7 in LudoEngine.SAFE_GLOBAL_INDICES)
+        val result = LudoEngine.applyMove(state, LudoColor.RED, 0)
+
+        assertEquals(LudoEngine.IN_BASE, result.tokens.first { it.color == LudoColor.BLUE && it.index == 0 }.position)
+        // One fresh roll for the same player: back to an un-rolled state, nothing banked.
+        assertEquals(0, result.currentPlayerIndex)
+        assertEquals(null, result.diceValue)
+        assertFalse(result.hasRolled)
+    }
+
+    @Test
     fun `a player wins only when all four tokens have reached the finish position`() {
         val allHome = List(4) { LudoEngine.FINISH_LOCAL_POSITION }
         val notAllHome = List(3) { LudoEngine.FINISH_LOCAL_POSITION } + listOf(10)

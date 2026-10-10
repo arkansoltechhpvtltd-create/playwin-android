@@ -2,8 +2,9 @@ package com.example.playwin.core.domain.ludo
 
 /**
  * Pure-Kotlin Ludo rules: the shared 52-cell path, four private 6-cell home
- * columns, dice rolls, the need for a 6 to leave base, an extra roll on a 6,
- * capturing an opponent on a non-safe cell, and exact-count finishing. No
+ * columns, dice rolls, the need for a 6 to leave base, capturing an opponent
+ * on a non-safe cell, exact-count finishing, and an extra roll for a 6, a
+ * capture, or bringing a token home. No
  * Android dependency - exercised directly by unit tests.
  */
 object LudoEngine {
@@ -65,6 +66,7 @@ object LudoEngine {
         val newPosition = if (token.position == IN_BASE) 0 else token.position + dice
 
         var newTokens = state.tokens.map { if (it === token) it.copy(position = newPosition) else it }
+        var captured = false
 
         if (newPosition < PLAYER_PATH_LENGTH) {
             val landedGlobal = globalIndexOf(color, newPosition)
@@ -72,6 +74,7 @@ object LudoEngine {
                 newTokens = newTokens.map { other ->
                     val onSharedPath = other.position in 0 until PLAYER_PATH_LENGTH
                     if (other.color != color && onSharedPath && globalIndexOf(other.color, other.position) == landedGlobal) {
+                        captured = true
                         other.copy(position = IN_BASE)
                     } else {
                         other
@@ -80,7 +83,9 @@ object LudoEngine {
             }
         }
 
-        val nextPlayerIndex = if (dice == 6) state.currentPlayerIndex else (state.currentPlayerIndex + 1) % state.players.size
+        // A 6, a capture, or bringing a token home each earn one more roll; several at once still earn just one.
+        val extraRoll = dice == 6 || captured || newPosition == FINISH_LOCAL_POSITION
+        val nextPlayerIndex = if (extraRoll) state.currentPlayerIndex else (state.currentPlayerIndex + 1) % state.players.size
         return state.copy(tokens = newTokens, diceValue = null, hasRolled = false, currentPlayerIndex = nextPlayerIndex)
     }
 

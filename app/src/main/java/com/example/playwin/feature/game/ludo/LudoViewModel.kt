@@ -28,7 +28,7 @@ private const val COMPUTER_STEP_MILLIS = 700L
 /**
  * 1v1 Ludo against the computer: the human is [LUDO_HUMAN] (Red, moves
  * first), [LudoBot] plays [LUDO_COMPUTER] (Yellow). Dice rolls, token
- * movement, captures, and the 6-again rule are all delegated to the pure
+ * movement, captures, and the extra-roll rules are all delegated to the pure
  * [LudoEngine]; the *verdict* on whether a move won the game is still
  * confirmed by [GameEngineRepository.resolve], never decided directly here.
  * Only a human win claims a reward.

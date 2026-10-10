@@ -22,7 +22,8 @@ import javax.inject.Inject
  * room writes: the roll (so the opponent sees it), then the token move - or
  * a single write that records the roll and passes, if nothing can move. The
  * room's `current_turn` follows [LudoEngine]'s turn order, including the
- * extra turn on a 6, and the backend rejects a write from anyone else.
+ * extra roll for a 6, a capture or a token reaching home, and the backend
+ * rejects a write from anyone else.
  * Whether a move won is still confirmed by [GameEngineRepository.resolve].
  */
 @HiltViewModel
