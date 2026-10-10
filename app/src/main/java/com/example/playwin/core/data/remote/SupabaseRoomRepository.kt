@@ -24,11 +24,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -41,6 +45,33 @@ import javax.inject.Singleton
 
 private const val TAG = "SupabaseRoom"
 private const val TABLE = "rooms"
+
+/** How long after (re)subscribing to read the room again, to cover changes Realtime didn't relay yet. */
+private const val RESYNC_AFTER_SUBSCRIBE_MILLIS = 2_000L
+
+/**
+ * The latest known state of one room, fed by two sources that can race: live
+ * Realtime updates, and direct re-reads of the row. A live update always wins.
+ * A re-read is applied only if no live update landed while it was in flight -
+ * otherwise it could put back an older board than the one just received.
+ */
+internal class LatestRoom {
+    private val mutex = Mutex()
+    private var liveUpdates = 0
+    val room = MutableStateFlow<Room?>(null)
+
+    suspend fun fromRealtime(update: Room) = mutex.withLock {
+        liveUpdates++
+        room.value = update
+    }
+
+    /** Reads the room with [read] (null if that failed) and applies it unless a live update beat it. */
+    suspend fun reread(read: suspend () -> Room?) {
+        val before = mutex.withLock { liveUpdates }
+        val fresh = read() ?: return
+        mutex.withLock { if (liveUpdates == before) room.value = fresh }
+    }
+}
 
 /** Thrown for expected matchmaking failures so screens can show their message. */
 class RoomException(message: String) : Exception(message)
@@ -56,8 +87,10 @@ private data class RoomMoveUpdate(
     @SerialName("winner_id") val winnerId: String?
 )
 
+// No default value here: the client's Json leaves defaults out (encodeDefaults = false), and a
+// default here once made this write an empty `{}` that silently changed nothing.
 @Serializable
-private data class RoomAbandonUpdate(val status: String = "abandoned")
+internal data class RoomAbandonUpdate(val status: String)
 
 @Serializable
 private data class RoomRow(
@@ -145,15 +178,16 @@ private class SupabaseRoomConnectionImpl(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var listenerJob: Job? = null
+    private var resyncJob: Job? = null
 
-    private val _roomUpdates = MutableStateFlow<Room?>(null)
-    override val roomUpdates: Flow<Room> = _roomUpdates.filterNotNull()
+    private val latest = LatestRoom()
+    override val roomUpdates: Flow<Room> = latest.room.filterNotNull()
 
     override val presentUserIds: Flow<Set<String>> =
         channel.presenceDataFlow<PresenceData>().map { list -> list.map { it.userId }.toSet() }
 
     suspend fun start(selfUserId: String, initial: Room) {
-        _roomUpdates.value = initial
+        latest.room.value = initial
 
         val changeFlow = channel.postgresChangeFlow<PostgresAction.Update>(schema = "public") {
             table = TABLE
@@ -162,13 +196,42 @@ private class SupabaseRoomConnectionImpl(
         listenerJob = scope.launch {
             changeFlow.collect { action ->
                 runCatching { action.decodeRecord<RoomRow>() }
-                    .onSuccess { _roomUpdates.value = it.toDomain() }
+                    .onSuccess { latest.fromRealtime(it.toDomain()) }
                     .onFailure { Log.w(TAG, "Failed to decode room update", it) }
             }
         }
 
+        // Every time the channel (re)subscribes:
+        //  - Announce this player's presence. A join drops it: supabase-kt rejoins the channel
+        //    by itself once presence is first listened to (it joins with presence off until
+        //    then), and the socket rejoins after any network drop - and a presence that isn't
+        //    re-sent leaves the opponent counting this player as gone.
+        //  - Re-read the row, now and once that start-up gap has passed. Realtime only streams
+        //    changes, and misses those made just after SUBSCRIBED (before the server is
+        //    relaying this room) or while the socket was down; a missed move would leave this
+        //    player looking at an old board until the game timed out.
+        resyncJob = scope.launch {
+            channel.status.collectLatest { status ->
+                if (status == RealtimeChannel.Status.SUBSCRIBED) {
+                    runCatching { channel.track(PresenceData(userId = selfUserId)) }
+                        .onFailure { Log.w(TAG, "Failed to track presence in room $roomId", it) }
+                    reread()
+                    delay(RESYNC_AFTER_SUBSCRIBE_MILLIS)
+                    reread()
+                }
+            }
+        }
+
         channel.subscribe(blockUntilSubscribed = true)
-        runCatching { channel.track(PresenceData(userId = selfUserId)) }
+    }
+
+    private suspend fun reread() = latest.reread {
+        runCatching {
+            supabaseClient.from(TABLE)
+                .select { filter { eq("id", roomId) } }
+                .decodeSingleOrNull<RoomRow>()
+                ?.toDomain()
+        }.onFailure { Log.w(TAG, "Failed to re-read room $roomId", it) }.getOrNull()
     }
 
     override suspend fun submitMove(
@@ -196,7 +259,7 @@ private class SupabaseRoomConnectionImpl(
     }
 
     override suspend fun markAbandoned(): Result<Unit> = try {
-        supabaseClient.from(TABLE).update(RoomAbandonUpdate()) {
+        supabaseClient.from(TABLE).update(RoomAbandonUpdate(status = "abandoned")) {
             filter { eq("id", roomId) }
         }
         Result.success(Unit)
@@ -209,6 +272,7 @@ private class SupabaseRoomConnectionImpl(
 
     override suspend fun close() {
         listenerJob?.cancel()
+        resyncJob?.cancel()
         runCatching { channel.untrack() }
         runCatching { supabaseClient.realtime.removeChannel(channel) }
         scope.cancel()
