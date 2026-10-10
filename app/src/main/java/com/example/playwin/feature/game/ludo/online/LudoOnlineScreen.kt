@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.domain.ludo.LudoEngine
 import com.example.playwin.feature.game.ludo.LudoBoard
@@ -44,12 +45,13 @@ fun LudoOnlineRoute(
             myColor?.let {
                 Text(text = "You are ${it.label()}", color = colorFor(it), style = MaterialTheme.typography.bodyMedium)
             }
-            LudoBoard(
-                game = game,
-                movableTokens = movable,
-                onTokenTap = viewModel::onTokenTap,
-                modifier = Modifier.padding(top = 12.dp)
-            )
+            BoardSlot(modifier = Modifier.padding(top = 12.dp)) {
+                LudoBoard(
+                    game = game,
+                    movableTokens = movable,
+                    onTokenTap = viewModel::onTokenTap
+                )
+            }
             val rollText = when {
                 game.diceValue != null -> "Rolled: ${game.diceValue} - tap a token"
                 else -> room.ludoLastRoll()?.let { "Roll dice (last roll: $it)" } ?: "Roll dice"
@@ -70,7 +72,7 @@ fun LudoOnlineRoute(
             )
         },
         finishedBoard = { room ->
-            LudoBoard(game = room.ludoState(), movableTokens = emptyList(), onTokenTap = {})
+            BoardSlot { LudoBoard(game = room.ludoState(), movableTokens = emptyList(), onTokenTap = {}) }
         }
     )
 }

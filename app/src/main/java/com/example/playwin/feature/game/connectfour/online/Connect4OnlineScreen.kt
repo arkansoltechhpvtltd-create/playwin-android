@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.connectfour.Connect4Board
 import com.example.playwin.feature.game.online.OnlineMatchEffects
 import com.example.playwin.feature.game.online.OnlineMatchScreen
@@ -29,13 +30,16 @@ fun Connect4OnlineRoute(
         onBack = onBack,
         onPlayComputer = onPlayComputer,
         activeContent = { room ->
-            Connect4Board(
-                board = room.connect4Board(),
-                enabled = state.isMyTurn && !state.isResolving,
-                onColumnClick = viewModel::onColumnClick,
-                modifier = Modifier.padding(top = 16.dp)
-            )
+            BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
+                Connect4Board(
+                    board = room.connect4Board(),
+                    enabled = state.isMyTurn && !state.isResolving,
+                    onColumnClick = viewModel::onColumnClick
+                )
+            }
         },
-        finishedBoard = { room -> Connect4Board(board = room.connect4Board(), enabled = false, onColumnClick = {}) }
+        finishedBoard = { room ->
+            BoardSlot { Connect4Board(board = room.connect4Board(), enabled = false, onColumnClick = {}) }
+        }
     )
 }

@@ -93,6 +93,7 @@ import com.example.playwin.core.domain.eightball.CUE_BALL_ID
 import com.example.playwin.core.domain.eightball.EightBallTable
 import com.example.playwin.core.domain.eightball.Vec2
 import com.example.playwin.core.domain.eightball.ballGroupOf
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.CelebrationBurst
 import com.example.playwin.feature.game.GameStatusBanner
 import com.example.playwin.feature.game.PhysicsFrameClock
@@ -187,7 +188,7 @@ fun EightBallScreen(
                 )
             }
 
-            Box(modifier = Modifier.padding(top = 16.dp)) {
+            BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
                 PoolTable(
                     balls = uiState.balls,
                     canAim = uiState.canAim,

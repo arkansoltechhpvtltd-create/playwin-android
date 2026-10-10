@@ -53,6 +53,7 @@ import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import com.example.playwin.core.designsystem.theme.PwGoldDark
 import com.example.playwin.core.designsystem.theme.PwGoldLight
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.GameStatusBanner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -122,12 +123,13 @@ fun Twenty48Screen(
                 StatChip(label = "Best tile", value = uiState.board.flatten().max().toString(), modifier = Modifier.weight(1f))
             }
 
-            Board(
-                board = uiState.board,
-                enabled = !uiState.hasWon && !uiState.isGameOver,
-                onSwipe = onSwipe,
-                modifier = Modifier.padding(top = 16.dp)
-            )
+            BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
+                Board(
+                    board = uiState.board,
+                    enabled = !uiState.hasWon && !uiState.isGameOver,
+                    onSwipe = onSwipe
+                )
+            }
 
             if (uiState.isGameOver) {
                 PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))

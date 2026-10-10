@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.PhysicsFrameClock
 import com.example.playwin.feature.game.eightball.GroupLegend
 import com.example.playwin.feature.game.eightball.PoolTable
@@ -49,16 +50,19 @@ fun EightBallOnlineRoute(
                 isBusy = isAnimating || state.isResolving,
                 modifier = Modifier.padding(top = 8.dp)
             )
-            PoolTable(
-                balls = balls,
-                canAim = state.isMyTurn && !state.isResolving && !isAnimating,
-                onShoot = viewModel::onShoot,
-                modifier = Modifier.padding(top = 12.dp)
-            )
+            BoardSlot(modifier = Modifier.padding(top = 12.dp)) {
+                PoolTable(
+                    balls = balls,
+                    canAim = state.isMyTurn && !state.isResolving && !isAnimating,
+                    onShoot = viewModel::onShoot
+                )
+            }
             GroupLegend(myGroup = stored.toMatch().playerGroups[me], modifier = Modifier.padding(top = 12.dp))
         },
         finishedBoard = { room ->
-            PoolTable(balls = room.eightBallState().toMatch().balls, canAim = false, onShoot = { _, _ -> })
+            BoardSlot {
+                PoolTable(balls = room.eightBallState().toMatch().balls, canAim = false, onShoot = { _, _ -> })
+            }
         }
     )
 }

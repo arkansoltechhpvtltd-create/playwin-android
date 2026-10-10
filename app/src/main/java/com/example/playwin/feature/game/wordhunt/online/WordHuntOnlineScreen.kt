@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.core.domain.wordhunt.WordHuntBoard
 import com.example.playwin.core.domain.wordhunt.WordHuntScoring
 import com.example.playwin.feature.game.online.OnlineMatchEffects
@@ -56,16 +57,17 @@ fun WordHuntOnlineRoute(
                 theirLabel = "Opponent"
             )
             WordList(puzzle.words, myWords, theirWords, modifier = Modifier.padding(top = 12.dp))
-            LetterGrid(
-                grid = puzzle.grid,
-                words = puzzle.words,
-                myWords = myWords,
-                theirWords = theirWords,
-                selection = selection,
-                enabled = state.isMyTurn && !state.isResolving,
-                onCellTap = viewModel::onCellTap,
-                modifier = Modifier.padding(top = 16.dp)
-            )
+            BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
+                LetterGrid(
+                    grid = puzzle.grid,    
+                    words = puzzle.words,
+                    myWords = myWords,
+                    theirWords = theirWords,
+                    selection = selection,
+                    enabled = state.isMyTurn && !state.isResolving,
+                    onCellTap = viewModel::onCellTap
+                )
+            }
         },
         finishedBoard = { room ->
             val me = state.myPlayerNumber ?: 1
@@ -76,16 +78,17 @@ fun WordHuntOnlineRoute(
                 theirScore = WordHuntScoring.total(stored.claimsOf(3 - me)),
                 theirLabel = "Opponent"
             )
-            LetterGrid(
-                grid = puzzle.grid,
-                words = puzzle.words,
-                myWords = stored.claimsOf(me).map { it.word }.toSet(),
-                theirWords = stored.claimsOf(3 - me).map { it.word }.toSet(),
-                selection = null,
-                enabled = false,
-                onCellTap = { _, _ -> },
-                modifier = Modifier.padding(top = 12.dp)
-            )
+            BoardSlot(modifier = Modifier.padding(top = 12.dp)) {
+                LetterGrid(
+                    grid = puzzle.grid,    
+                    words = puzzle.words,
+                    myWords = stored.claimsOf(me).map { it.word }.toSet(),
+                    theirWords = stored.claimsOf(3 - me).map { it.word }.toSet(),
+                    selection = null,
+                    enabled = false,
+                    onCellTap = { _, _ -> }
+                )
+            }
         }
     )
 }

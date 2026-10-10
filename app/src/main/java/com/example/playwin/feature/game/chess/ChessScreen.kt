@@ -87,6 +87,7 @@ import com.example.playwin.core.domain.chess.ChessPosition
 import com.example.playwin.core.domain.chess.PieceColor
 import com.example.playwin.core.domain.chess.PieceType
 import com.example.playwin.core.domain.chess.Square
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.CelebrationBurst
 import com.example.playwin.feature.game.GameStatusBanner
 import com.example.playwin.feature.game.chess.online.ChessOnlineRoute
@@ -173,7 +174,7 @@ fun ChessScreen(
                 else -> TurnBanner(uiState)
             }
 
-            Box(modifier = Modifier.padding(top = 16.dp)) {
+            BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
                 ChessBoard(
                     position = uiState.position,
                     selectedSquare = uiState.selectedSquare,

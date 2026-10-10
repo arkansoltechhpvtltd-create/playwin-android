@@ -86,6 +86,7 @@ import com.example.playwin.core.domain.ludo.LudoColor
 import com.example.playwin.core.domain.ludo.LudoEngine
 import com.example.playwin.core.domain.ludo.LudoState
 import com.example.playwin.core.domain.ludo.Token
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.CelebrationBurst
 import com.example.playwin.feature.game.GameStatusBanner
 import com.example.playwin.feature.game.TurnTimerRing
@@ -178,13 +179,14 @@ fun LudoScreen(
                 TurnBanner(uiState)
             }
 
-            LudoBoard(
-                game = uiState.game,
-                movableTokens = uiState.movableTokens,
-                onTokenTap = onTokenTap,
-                modifier = Modifier.padding(top = 16.dp),
-                celebrate = uiState.winner == LUDO_HUMAN
-            )
+            BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
+                LudoBoard(
+                    game = uiState.game,
+                    movableTokens = uiState.movableTokens,
+                    onTokenTap = onTokenTap,
+                    celebrate = uiState.winner == LUDO_HUMAN
+                )
+            }
 
             Row(
                 modifier = Modifier

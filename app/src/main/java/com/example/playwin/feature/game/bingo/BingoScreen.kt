@@ -16,11 +16,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -82,6 +84,7 @@ import com.example.playwin.core.domain.bingo.BINGO_LETTERS
 import com.example.playwin.core.domain.bingo.BINGO_SIZE
 import com.example.playwin.core.domain.bingo.BingoRules
 import com.example.playwin.core.domain.bingo.bingoLetterFor
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.CelebrationBurst
 import com.example.playwin.feature.game.GameStatusBanner
 import com.example.playwin.feature.game.bingo.online.BingoOnlineRoute
@@ -141,76 +144,123 @@ fun BingoScreen(
         modifier = modifier.fillMaxSize(),
         topBar = { PwTopBar(title = "Bingo · vs Computer", onBack = onBack) }
     ) { innerPadding ->
-        Column(
+        // On a tall screen the computer's card sits beside the controls. On a short one the play
+        // area (status, calls, your card, controls) still exactly fits the screen, and the
+        // called-number history and the computer's card wait just below it, peeking up, for a scroll.
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            val humanWon = uiState.winner == BingoSide.HUMAN
-            val banner = when {
-                humanWon -> "Bingo! Claiming your coupon…"
-                uiState.winner == BingoSide.COMPUTER -> "The computer got bingo first"
-                uiState.turn == BingoSide.HUMAN -> "Your call - tap a number on your card"
-                else -> "Computer is calling…"
-            }
-            val gold = MaterialTheme.colorScheme.primary
-            GameStatusBanner(accent = if (uiState.turn == BingoSide.HUMAN || humanWon) gold else PwGameBingo) {
-                if (humanWon) {
-                    Icon(
-                        imageVector = Icons.Filled.EmojiEvents,
-                        contentDescription = null,
-                        tint = gold,
-                        modifier = Modifier
-                            .padding(end = 12.dp)
-                            .size(26.dp)
-                    )
-                }
-                Text(
-                    text = banner,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            LastCallText(uiState.lastCall, uiState.lastCaller?.let { if (it == BingoSide.HUMAN) "You" else "Computer" })
-
-            CalledNumbersRow(uiState.called, modifier = Modifier.padding(top = 8.dp))
-
-            Box(modifier = Modifier.padding(top = 16.dp)) {
-                BingoCardView(
-                    card = uiState.myCard,
-                    called = uiState.called,
-                    onCall = if (uiState.canCall) onCallNumber else null
-                )
-                if (humanWon) {
-                    CelebrationBurst(
-                        colors = listOf(PwGoldDark, PwGoldLight, Color.White) + LETTER_COLORS,
-                        modifier = Modifier.matchParentSize()
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier.padding(top = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+            val roomy = maxHeight >= BINGO_ROOMY_HEIGHT
+            val playAreaHeight = if (roomy) maxHeight else maxHeight - BINGO_PEEK
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState(), enabled = !roomy),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                OutlinedButton(onClick = onCallRandom, enabled = uiState.canCall) { Text("Call a random number") }
-                if (uiState.isResolving) {
-                    CircularProgressIndicator(modifier = Modifier.padding(start = 12.dp).size(18.dp), strokeWidth = 2.dp)
+                Column(
+                    modifier = Modifier
+                        .height(playAreaHeight)
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    val humanWon = uiState.winner == BingoSide.HUMAN
+                    val banner = when {
+                        humanWon -> "Bingo! Claiming your coupon…"
+                        uiState.winner == BingoSide.COMPUTER -> "The computer got bingo first"
+                        uiState.turn == BingoSide.HUMAN -> "Your call - tap a number on your card"
+                        else -> "Computer is calling…"
+                    }
+                    val gold = MaterialTheme.colorScheme.primary
+                    GameStatusBanner(accent = if (uiState.turn == BingoSide.HUMAN || humanWon) gold else PwGameBingo) {
+                        if (humanWon) {
+                            Icon(
+                                imageVector = Icons.Filled.EmojiEvents,
+                                contentDescription = null,
+                                tint = gold,
+                                modifier = Modifier
+                                    .padding(end = 12.dp)
+                                    .size(26.dp)
+                            )
+                        }
+                        Text(
+                            text = banner,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    LastCallText(uiState.lastCall, uiState.lastCaller?.let { if (it == BingoSide.HUMAN) "You" else "Computer" })
+
+                    if (roomy) CalledNumbersRow(uiState.called, modifier = Modifier.padding(top = 8.dp))
+
+                    BoardSlot(modifier = Modifier.padding(top = if (roomy) 16.dp else 10.dp)) {
+                        BingoCardView(
+                            card = uiState.myCard,
+                            called = uiState.called,
+                            onCall = if (uiState.canCall) onCallNumber else null
+                        )
+                        if (humanWon) {
+                            CelebrationBurst(
+                                colors = listOf(PwGoldDark, PwGoldLight, Color.White) + LETTER_COLORS,
+                                modifier = Modifier.matchParentSize()
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedButton(onClick = onCallRandom, enabled = uiState.canCall) { Text("Call a random number") }
+                                if (uiState.isResolving) {
+                                    CircularProgressIndicator(modifier = Modifier.padding(start = 12.dp).size(18.dp), strokeWidth = 2.dp)
+                                }
+                            }
+                            if (uiState.winner == BingoSide.COMPUTER) {
+                                PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 12.dp))
+                            }
+                        }
+                        if (roomy) {
+                            OpponentCard(
+                                label = "Computer's card",
+                                card = uiState.computerCard,
+                                called = uiState.called,
+                                cardWidth = 112.dp,
+                                modifier = Modifier.padding(start = 12.dp)
+                            )
+                        }
+                    }
                 }
-            }
-
-            OpponentCard(label = "Computer's card", card = uiState.computerCard, called = uiState.called)
-
-            if (uiState.winner == BingoSide.COMPUTER) {
-                PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
+                if (!roomy) {
+                    // The called-number history moves down here too; the last call still shows up top.
+                    CalledNumbersRow(uiState.called, modifier = Modifier.padding(horizontal = 16.dp))
+                    OpponentCard(
+                        label = "Computer's card",
+                        card = uiState.computerCard,
+                        called = uiState.called,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 16.dp)
+                    )
+                }
             }
         }
     }
 }
+
+/** Below this height the computer's card (and the called history) move to just below the play area. */
+private val BINGO_ROOMY_HEIGHT = 700.dp
+
+/** How much of what's below the play area peeks up under it, as a hint to scroll. */
+private val BINGO_PEEK = 24.dp
 
 /** One jewel tone per BINGO column, shared by the header tabs and the called balls. */
 private val LETTER_COLORS = listOf(PwGameGrid, PwGameFourInARow, PwGoldLight, PwGameWordHunt, PwGameBingo)
@@ -350,15 +400,21 @@ fun LastCallText(lastCall: Int?, caller: String?, modifier: Modifier = Modifier)
 }
 
 @Composable
-fun OpponentCard(label: String, card: List<List<Int>>, called: List<Int>, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.padding(top = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+fun OpponentCard(
+    label: String,
+    card: List<List<Int>>,
+    called: List<Int>,
+    modifier: Modifier = Modifier,
+    cardWidth: Dp = 180.dp
+) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(text = label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         BingoCardView(
             card = card,
             called = called,
             onCall = null,
             showHeader = false,
-            modifier = Modifier.width(180.dp).padding(top = 6.dp)
+            modifier = Modifier.width(cardWidth).padding(top = 6.dp)
         )
     }
 }

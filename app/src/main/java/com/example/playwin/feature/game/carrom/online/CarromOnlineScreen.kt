@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.carrom.CarromBoardView
 import com.example.playwin.feature.game.PhysicsFrameClock
 import com.example.playwin.feature.game.carrom.ScoreLegend
@@ -50,14 +51,15 @@ fun CarromOnlineRoute(
                 isBusy = isAnimating || state.isResolving,
                 modifier = Modifier.padding(top = 8.dp)
             )
-            CarromBoardView(
-                coins = coins,
-                canAim = state.isMyTurn && !state.isResolving && !isAnimating,
-                onShoot = viewModel::onShoot,
-                onPlaceStriker = viewModel::onPlaceStriker,
-                flipped = me == 2,
-                modifier = Modifier.padding(top = 12.dp)
-            )
+            BoardSlot(modifier = Modifier.padding(top = 12.dp)) {
+                CarromBoardView(
+                    coins = coins,
+                    canAim = state.isMyTurn && !state.isResolving && !isAnimating,
+                    onShoot = viewModel::onShoot,
+                    onPlaceStriker = viewModel::onPlaceStriker,
+                    flipped = me == 2
+                )
+            }
             ScoreLegend(
                 myColor = match.playerColors[me],
                 myScore = match.scores.getValue(me),
@@ -69,7 +71,7 @@ fun CarromOnlineRoute(
         finishedBoard = { room ->
             val me = state.myPlayerNumber ?: 1
             val match = room.carromState().toMatch()
-            CarromBoardView(coins = match.coins, canAim = false, onShoot = { _, _ -> }, flipped = me == 2)
+            BoardSlot { CarromBoardView(coins = match.coins, canAim = false, onShoot = { _, _ -> }, flipped = me == 2) }
             ScoreLegend(
                 myColor = match.playerColors[me],
                 myScore = match.scores.getValue(me),

@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -106,7 +104,9 @@ fun OnlineMatchEffects(
 /**
  * The shared online screen: sign-in gate, searching, no-opponent-found,
  * abandoned and finished states are identical for every game; only the live
- * board ([activeContent]) and the final board ([finishedBoard]) differ.
+ * board ([activeContent]) and the final board ([finishedBoard]) differ. Both
+ * are laid out in a column of fixed height, so a game puts its board in a
+ * [com.example.playwin.feature.game.BoardSlot] to have it fit the screen.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -117,7 +117,7 @@ fun OnlineMatchScreen(
     onBack: () -> Unit,
     onPlayComputer: () -> Unit,
     activeContent: @Composable ColumnScope.(Room) -> Unit,
-    finishedBoard: @Composable (Room) -> Unit,
+    finishedBoard: @Composable ColumnScope.(Room) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -154,8 +154,8 @@ fun OnlineMatchScreen(
                     )
                     OnlinePhase.ROOM -> state.room?.let { room ->
                         when (room.status) {
-                            RoomStatus.ACTIVE -> ActiveContent(state, room, controller::leaveRoom, activeContent)
-                            RoomStatus.FINISHED -> FinishedContent(state, room, controller::leaveRoom, finishedBoard)
+                            RoomStatus.ACTIVE -> ActiveContent(state, room, controller::leaveRoom, activeContent, Modifier.weight(1f))
+                            RoomStatus.FINISHED -> FinishedContent(state, room, controller::leaveRoom, finishedBoard, Modifier.weight(1f))
                             RoomStatus.WAITING, RoomStatus.ABANDONED -> AbandonedContent(controller::leaveRoom)
                         }
                     }
@@ -259,7 +259,7 @@ private fun ActiveContent(
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+        modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
@@ -293,7 +293,7 @@ private fun FinishedContent(
     state: OnlineMatchState,
     room: Room,
     onLeaveRoom: () -> Unit,
-    board: @Composable (Room) -> Unit,
+    board: @Composable ColumnScope.(Room) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val text = when {
@@ -302,7 +302,7 @@ private fun FinishedContent(
         else -> "Opponent wins this round"
     }
     Column(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {

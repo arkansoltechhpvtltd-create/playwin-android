@@ -8,6 +8,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,14 +35,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 
 // The small pieces of "chrome" every game screen shares around its board, so
-// the turn line, the countdown and the win burst look the same in each game.
+// the turn line, the countdown, the win burst and how the board fits the
+// screen are the same in each game.
 
 /** A raised pill that carries the turn / result line, tinted from the left by [accent]. */
 @Composable
@@ -152,6 +158,44 @@ fun CelebrationBurst(colors: List<Color>, modifier: Modifier = Modifier) {
                     cornerRadius = CornerRadius(w * 0.25f)
                 )
             }
+        }
+    }
+}
+
+/**
+ * The board's place on a game screen: all the height left in the screen's
+ * column once the status line above and the controls below are laid out, so
+ * the board can never push them off screen. The board is laid out at the full
+ * width it's given; if that would make it taller than the space left, it's
+ * scaled down evenly - keeping its shape - until it fits, and centred. Taps
+ * and drags still land where they're drawn.
+ */
+@Composable
+fun ColumnScope.BoardSlot(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    Box(
+        modifier = modifier
+            .weight(1f)
+            .fillMaxWidth(),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(modifier = Modifier.scaleToFitHeight(), content = content)
+    }
+}
+
+private fun Modifier.scaleToFitHeight(): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+    val scale = if (constraints.hasBoundedHeight && placeable.height > constraints.maxHeight) {
+        constraints.maxHeight / placeable.height.toFloat()
+    } else {
+        1f
+    }
+    val width = (placeable.width * scale).roundToInt()
+    val height = (placeable.height * scale).roundToInt()
+    layout(width, height) {
+        // Scaled about its centre, so it's centred in the shrunken footprint.
+        placeable.placeWithLayer((width - placeable.width) / 2, (height - placeable.height) / 2) {
+            scaleX = scale
+            scaleY = scale
         }
     }
 }

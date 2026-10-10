@@ -72,6 +72,7 @@ import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.wordhunt.PlacedWord
 import com.example.playwin.core.domain.wordhunt.WORD_HUNT_TURN_SECONDS
 import com.example.playwin.core.domain.wordhunt.cells
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.CelebrationBurst
 import com.example.playwin.feature.game.GameStatusBanner
 import com.example.playwin.feature.game.TurnTimerRing
@@ -182,7 +183,7 @@ fun WordHuntScreen(
                 modifier = Modifier.padding(top = 12.dp)
             )
 
-            Box(modifier = Modifier.padding(top = 16.dp)) {
+            BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
                 LetterGrid(
                     grid = uiState.grid,
                     words = uiState.words,

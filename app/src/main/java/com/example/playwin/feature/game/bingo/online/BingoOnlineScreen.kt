@@ -1,14 +1,19 @@
 package com.example.playwin.feature.game.bingo.online
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.bingo.BingoCardView
 import com.example.playwin.feature.game.bingo.CalledNumbersRow
 import com.example.playwin.feature.game.bingo.LastCallText
@@ -43,22 +48,35 @@ fun BingoOnlineRoute(
                 caller = bingo.lastCaller?.let { if (it == me) "You" else "Opponent" }
             )
             CalledNumbersRow(bingo.called, modifier = Modifier.padding(top = 8.dp))
-            BingoCardView(
-                card = bingoCardFor(room, me),
-                called = bingo.called,
-                onCall = if (canCall) viewModel::onCallNumber else null,
-                modifier = Modifier.padding(top = 12.dp)
-            )
-            OutlinedButton(
-                onClick = viewModel::onCallRandom,
-                enabled = canCall,
-                modifier = Modifier.padding(top = 12.dp)
-            ) { Text("Call a random number") }
-            OpponentCard(label = "Opponent's card", card = bingoCardFor(room, 3 - me), called = bingo.called)
+            BoardSlot(modifier = Modifier.padding(top = 12.dp)) {
+                BingoCardView(
+                    card = bingoCardFor(room, me),
+                    called = bingo.called,
+                    onCall = if (canCall) viewModel::onCallNumber else null
+                )
+            }
+            // As vs the computer: the button and the opponent's card share a row, so the card gets the height.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    OutlinedButton(onClick = viewModel::onCallRandom, enabled = canCall) { Text("Call a random number") }
+                }
+                OpponentCard(
+                    label = "Opponent's card",
+                    card = bingoCardFor(room, 3 - me),
+                    called = bingo.called,
+                    cardWidth = 112.dp,
+                    modifier = Modifier.padding(start = 12.dp)
+                )
+            }
         },
         finishedBoard = { room ->
             val me = state.myPlayerNumber ?: 1
-            BingoCardView(card = bingoCardFor(room, me), called = room.bingoState().called, onCall = null)
+            BoardSlot { BingoCardView(card = bingoCardFor(room, me), called = room.bingoState().called, onCall = null) }
         }
     )
 }

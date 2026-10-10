@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.core.domain.chess.ChessEngine
 import com.example.playwin.core.domain.chess.PieceColor
 import com.example.playwin.feature.game.chess.ChessBoard
@@ -48,25 +49,28 @@ fun ChessOnlineRoute(
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (inCheck) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
             )
-            ChessBoard(
-                position = position,
-                selectedSquare = selection.square,
-                legalTargets = selection.moves.map { it.to },
-                enabled = state.isMyTurn && !state.isResolving,
-                onSquareTap = viewModel::onSquareTap,
-                flipped = myColor == PieceColor.BLACK,
-                modifier = Modifier.padding(top = 12.dp)
-            )
+            BoardSlot(modifier = Modifier.padding(top = 12.dp)) {
+                ChessBoard(
+                    position = position,    
+                    selectedSquare = selection.square,
+                    legalTargets = selection.moves.map { it.to },
+                    enabled = state.isMyTurn && !state.isResolving,
+                    onSquareTap = viewModel::onSquareTap,
+                    flipped = myColor == PieceColor.BLACK
+                )
+            }
         },
         finishedBoard = { room ->
-            ChessBoard(
-                position = room.chessPosition(),
-                selectedSquare = null,
-                legalTargets = emptyList(),
-                enabled = false,
-                onSquareTap = {},
-                flipped = state.myPlayerNumber == 2
-            )
+            BoardSlot {
+                ChessBoard(
+                    position = room.chessPosition(),    
+                    selectedSquare = null,
+                    legalTargets = emptyList(),
+                    enabled = false,
+                    onSquareTap = {},
+                    flipped = state.myPlayerNumber == 2
+                )
+            }
         }
     )
 }

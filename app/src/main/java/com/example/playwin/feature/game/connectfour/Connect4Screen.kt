@@ -69,6 +69,7 @@ import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import com.example.playwin.core.designsystem.theme.PwGoldDark
 import com.example.playwin.core.designsystem.theme.PwGoldLight
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.CelebrationBurst
 import com.example.playwin.feature.game.GameStatusBanner
 import com.example.playwin.feature.game.TurnTimerRing
@@ -142,7 +143,7 @@ fun Connect4Screen(
                 else -> TurnBanner(uiState)
             }
 
-            Box(modifier = Modifier.padding(top = 16.dp)) {
+            BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
                 Connect4Board(
                     board = uiState.board,
                     enabled = uiState.currentPlayer == CONNECT4_HUMAN && !uiState.isGameOver && !uiState.isResolving,

@@ -81,6 +81,7 @@ import com.example.playwin.core.domain.carrom.QUEEN_ID
 import com.example.playwin.core.domain.carrom.STRIKER_ID
 import com.example.playwin.core.domain.carrom.Vec2
 import com.example.playwin.core.domain.carrom.coinColorOf
+import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.CelebrationBurst
 import com.example.playwin.feature.game.GameStatusBanner
 import com.example.playwin.feature.game.PhysicsFrameClock
@@ -179,7 +180,7 @@ fun CarromScreen(
                 )
             }
 
-            Box(modifier = Modifier.padding(top = 16.dp)) {
+            BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
                 CarromBoardView(
                     coins = uiState.coins,
                     canAim = uiState.canAim,
