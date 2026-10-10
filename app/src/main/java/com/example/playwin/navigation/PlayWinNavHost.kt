@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -75,7 +76,9 @@ fun PlayWinNavHost(
         NavHost(
             navController = navController,
             startDestination = TopLevelDestination.Lobby.route,
-            modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding()),
+            // Only the bottom bar needs room made for it. Screens without it (a game, the result) run edge to
+            // edge under the navigation bar and pad their own content clear of it.
+            modifier = Modifier.padding(bottom = if (showBottomBar) innerPadding.calculateBottomPadding() else 0.dp),
             enterTransition = {
                 fadeIn(tween(TRANSITION_MILLIS)) + slideInHorizontally(tween(TRANSITION_MILLIS)) { it / 8 }
             },

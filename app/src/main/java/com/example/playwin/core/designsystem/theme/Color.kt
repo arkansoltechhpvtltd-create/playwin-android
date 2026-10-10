@@ -69,3 +69,14 @@ val PwGameWordHunt = Color(0xFF1F7A6C)
 val PwGameChess = Color(0xFF545866)
 val PwGameLudo = Color(0xFFB5451F)
 val PwGameCards = Color(0xFF2E7D4F)
+
+// ---------------------------------------------------------------------------
+// Game table — the deep navy scene every game screen is played on: a
+// gradient from the darkest navy at the top to a slightly lighter one at the
+// bottom, with raised navy surfaces and gold hairlines on top of it.
+// ---------------------------------------------------------------------------
+val PwTableNavyTop = Color(0xFF081226)
+val PwTableNavyBottom = Color(0xFF172B55)
+val PwTableSurface = Color(0xFF15264B)
+val PwTableSurfaceRaised = Color(0xFF1D3262)
+val PwTableTextMuted = Color(0xFFB4BED3)

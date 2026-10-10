@@ -99,3 +99,29 @@ fun PlayWinTheme(
         )
     }
 }
+
+/** The navy-and-gold scheme for game screens; [background] is clear so the table gradient shows through. */
+private val GameTableColorScheme = DarkColorScheme.copy(
+    background = Color.Transparent,
+    surface = PwTableSurface,
+    surfaceVariant = PwTableSurfaceRaised,
+    onSurfaceVariant = PwTableTextMuted,
+    outline = PwGoldDark.copy(alpha = 0.4f)
+)
+
+/**
+ * The theme every game screen is played in, whatever the app's light/dark
+ * setting: deep navy surfaces, gold accents and light text, meant to sit on
+ * the game table gradient.
+ */
+@Composable
+fun PwGameTableTheme(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalPwIsDarkTheme provides true) {
+        MaterialTheme(
+            colorScheme = GameTableColorScheme,
+            typography = PwTypography,
+            shapes = PwShapes,
+            content = content
+        )
+    }
+}

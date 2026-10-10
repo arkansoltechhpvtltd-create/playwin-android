@@ -1,5 +1,6 @@
 package com.example.playwin.feature.game
 
+import android.app.Activity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -13,19 +14,23 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -36,8 +41,15 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import com.example.playwin.core.designsystem.theme.LocalPwIsDarkTheme
+import com.example.playwin.core.designsystem.theme.PwGameTableTheme
+import com.example.playwin.core.designsystem.theme.PwGoldDark
+import com.example.playwin.core.designsystem.theme.PwTableNavyBottom
+import com.example.playwin.core.designsystem.theme.PwTableNavyTop
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -178,7 +190,22 @@ fun ColumnScope.BoardSlot(modifier: Modifier = Modifier, content: @Composable Bo
             .fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
-        Box(modifier = Modifier.scaleToFitHeight(), content = content)
+        Box(
+            modifier = Modifier
+                .scaleToFitHeight()
+                .drawBehind {
+                    // A soft gold glow the board sits in, so it reads as lit on the table rather than pasted on.
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(PwGoldDark.copy(alpha = 0.16f), Color.Transparent),
+                            center = center,
+                            radius = size.maxDimension * 0.75f
+                        ),
+                        radius = size.maxDimension * 0.75f
+                    )
+                },
+            content = content
+        )
     }
 }
 
@@ -196,6 +223,53 @@ private fun Modifier.scaleToFitHeight(): Modifier = layout { measurable, constra
         placeable.placeWithLayer((width - placeable.width) / 2, (height - placeable.height) / 2) {
             scaleX = scale
             scaleY = scale
+        }
+    }
+}
+
+/**
+ * Every game screen's frame: the deep navy table gradient fills the whole
+ * window edge to edge - behind the status and navigation bars too - and the
+ * screen is themed navy and gold ([PwGameTableTheme]) so its banners, panels
+ * and buttons belong to the same scene. Content is padded clear of the bars
+ * exactly as with a plain [Scaffold].
+ */
+@Composable
+fun GameScaffold(
+    topBar: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable (PaddingValues) -> Unit
+) {
+    LightSystemBarIcons()
+    PwGameTableTheme {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(Brush.verticalGradient(listOf(PwTableNavyTop, PwTableNavyBottom)))
+        ) {
+            Scaffold(
+                topBar = topBar,
+                containerColor = Color.Transparent,
+                contentColor = MaterialTheme.colorScheme.onBackground,
+                content = content
+            )
+        }
+    }
+}
+
+/** Light status/navigation bar icons while a game screen is up, since the table behind them is dark. */
+@Composable
+private fun LightSystemBarIcons() {
+    val view = LocalView.current
+    val appIsDark = LocalPwIsDarkTheme.current
+    DisposableEffect(view, appIsDark) {
+        val window = (view.context as? Activity)?.window ?: return@DisposableEffect onDispose {}
+        val controller = WindowCompat.getInsetsController(window, view)
+        controller.isAppearanceLightStatusBars = false
+        controller.isAppearanceLightNavigationBars = false
+        onDispose {
+            controller.isAppearanceLightStatusBars = !appIsDark
+            controller.isAppearanceLightNavigationBars = !appIsDark
         }
     }
 }

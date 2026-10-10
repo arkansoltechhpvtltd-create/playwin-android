@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,7 +40,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -77,6 +77,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.playwin.feature.game.GameScaffold
 import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
@@ -143,7 +144,7 @@ fun RummyScreen(
         scroll.animateScrollTo(scroll.maxValue)
     }
 
-    Scaffold(
+    GameScaffold(
         modifier = modifier.fillMaxSize(),
         topBar = { PwTopBar(title = "Rummy · vs Computer", onBack = onBack) }
     ) { innerPadding ->
@@ -157,110 +158,114 @@ fun RummyScreen(
 
             // The table, the hand and (once the round is over) the computer's cards scroll
             // between the fixed status line and buttons whenever they don't all fit.
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(scroll)
-                    .padding(horizontal = 16.dp) // inside the scroll, so shadows aren't clipped at the sides
-            ) {
-                Text(
-                    text = "Wild joker: ${rankLabel(uiState.game.wildRank)} (any suit) + printed jokers",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+            // Centred in its space when it all fits, so there's no dead band above the buttons.
+            BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scroll)
+                        .heightIn(min = maxHeight)
+                        .padding(horizontal = 16.dp), // inside the scroll, so shadows aren't clipped at the sides
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "Wild joker: ${rankLabel(uiState.game.wildRank)} (any suit) + printed jokers",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
 
-                // The table: deck, discard pile and the computer's hand on green felt.
-                val drawPulse = if (uiState.canDraw) rememberDrawPulse() else null
-                val feltShape = RoundedCornerShape(20.dp)
-                Box(modifier = Modifier.padding(top = 12.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .shadow(elevation = 10.dp, shape = feltShape)
-                            .clip(feltShape)
-                            .background(Brush.verticalGradient(listOf(FeltLight, FeltDark)))
-                            .border(1.5.dp, Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark)), feltShape)
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(20.dp)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            FeltLabel("Deck (${uiState.game.shoe.size})")
-                            DeckStack(
-                                modifier = Modifier.padding(top = 6.dp),
-                                enabled = uiState.canDraw,
-                                pulse = drawPulse,
-                                onClick = onDrawFromShoe
-                            )
-                        }
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            FeltLabel("Discard")
-                            val top = uiState.game.discardPile.lastOrNull()
-                            Box(modifier = Modifier.padding(top = 6.dp)) {
-                                if (top != null) {
-                                    // Keyed by card, so each new discard lands with its own entrance.
-                                    key(top.id) {
-                                        CardView(
-                                            card = top,
-                                            isWild = isWild(top, uiState.game.wildRank),
-                                            isSelected = false,
-                                            onClick = if (uiState.canDraw) onDrawFromDiscard else null,
-                                            pulse = drawPulse
+                    // The table: deck, discard pile and the computer's hand on green felt.
+                    val drawPulse = if (uiState.canDraw) rememberDrawPulse() else null
+                    val feltShape = RoundedCornerShape(20.dp)
+                    Box(modifier = Modifier.padding(top = 12.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(elevation = 10.dp, shape = feltShape)
+                                .clip(feltShape)
+                                .background(Brush.verticalGradient(listOf(FeltLight, FeltDark)))
+                                .border(1.5.dp, Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark)), feltShape)
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(20.dp)
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                FeltLabel("Deck (${uiState.game.shoe.size})")
+                                DeckStack(
+                                    modifier = Modifier.padding(top = 6.dp),
+                                    enabled = uiState.canDraw,
+                                    pulse = drawPulse,
+                                    onClick = onDrawFromShoe
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                FeltLabel("Discard")
+                                val top = uiState.game.discardPile.lastOrNull()
+                                Box(modifier = Modifier.padding(top = 6.dp)) {
+                                    if (top != null) {
+                                        // Keyed by card, so each new discard lands with its own entrance.
+                                        key(top.id) {
+                                            CardView(
+                                                card = top,
+                                                isWild = isWild(top, uiState.game.wildRank),
+                                                isSelected = false,
+                                                onClick = if (uiState.canDraw) onDrawFromDiscard else null,
+                                                pulse = drawPulse
+                                            )
+                                        }
+                                    } else {
+                                        EmptyPileSlot()
+                                    }
+                                }
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                FeltLabel("Computer's hand")
+                                OpponentFan(count = uiState.game.botHand.size, modifier = Modifier.padding(top = 6.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                                    Text(
+                                        text = "${uiState.game.botHand.size} cards",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = Color.White.copy(alpha = 0.85f)
+                                    )
+                                    if (uiState.isBotThinking) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.padding(start = 6.dp).size(12.dp),
+                                            strokeWidth = 2.dp,
+                                            color = PwGoldDark
                                         )
                                     }
-                                } else {
-                                    EmptyPileSlot()
                                 }
                             }
                         }
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            FeltLabel("Computer's hand")
-                            OpponentFan(count = uiState.game.botHand.size, modifier = Modifier.padding(top = 6.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                                Text(
-                                    text = "${uiState.game.botHand.size} cards",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = Color.White.copy(alpha = 0.85f)
-                                )
-                                if (uiState.isBotThinking) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.padding(start = 6.dp).size(12.dp),
-                                        strokeWidth = 2.dp,
-                                        color = PwGoldDark
-                                    )
-                                }
-                            }
+                        if (uiState.hasWon) {
+                            CelebrationBurst(
+                                colors = listOf(PwGoldDark, PwGoldLight, Color.White, SuitRed),
+                                modifier = Modifier.matchParentSize()
+                            )
                         }
                     }
-                    if (uiState.hasWon) {
-                        CelebrationBurst(
-                            colors = listOf(PwGoldDark, PwGoldLight, Color.White, SuitRed),
-                            modifier = Modifier.matchParentSize()
+
+                    Text(
+                        text = "Your hand (drag to rearrange; tap a card, then Discard or Declare)",
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(top = 18.dp)
+                    )
+                    DraggableHand(
+                        hand = uiState.arrangedHand,
+                        wildRank = uiState.game.wildRank,
+                        selectedCardId = uiState.selectedCard?.id,
+                        onCardTap = if (uiState.canDiscard) onCardTap else null,
+                        onMoveCard = onMoveCard,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
+
+                    uiState.revealedOpponentHand?.let { cards ->
+                        RevealedOpponentHand(
+                            cards = cards,
+                            wildRank = uiState.game.wildRank,
+                            modifier = Modifier.padding(top = 20.dp)
                         )
                     }
-                }
-
-                Text(
-                    text = "Your hand (drag to rearrange; tap a card, then Discard or Declare)",
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(top = 18.dp)
-                )
-                DraggableHand(
-                    hand = uiState.arrangedHand,
-                    wildRank = uiState.game.wildRank,
-                    selectedCardId = uiState.selectedCard?.id,
-                    onCardTap = if (uiState.canDiscard) onCardTap else null,
-                    onMoveCard = onMoveCard,
-                    modifier = Modifier.padding(top = 12.dp)
-                )
-
-                uiState.revealedOpponentHand?.let { cards ->
-                    RevealedOpponentHand(
-                        cards = cards,
-                        wildRank = uiState.game.wildRank,
-                        modifier = Modifier.padding(top = 20.dp)
-                    )
                 }
             }
 
