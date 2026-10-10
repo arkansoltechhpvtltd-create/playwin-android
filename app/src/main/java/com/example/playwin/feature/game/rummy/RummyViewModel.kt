@@ -59,6 +59,14 @@ class RummyViewModel @Inject constructor(
         _uiState.update { it.copy(selectedCard = if (it.selectedCard?.id == card.id) null else card) }
     }
 
+    /** Moves a card within the player's on-screen arrangement; what they hold is unchanged. */
+    fun onMoveCard(fromIndex: Int, toIndex: Int) {
+        _uiState.update { state ->
+            val ids = state.arrangedHand.map { it.id }
+            state.copy(handOrder = HandArrangement.move(ids, fromIndex, toIndex))
+        }
+    }
+
     fun onConfirmDiscard() {
         val state = _uiState.value
         val card = state.selectedCard ?: return
@@ -123,9 +131,13 @@ class RummyViewModel @Inject constructor(
             GameSnapshot.Rummy(declaredHand = turn.declaredHand, wildRank = turn.state.wildRank)
         )
         if (outcome == GameOutcome.WIN) {
-            _uiState.update { it.copy(computerDeclared = true, isResolving = false, isBotThinking = false) }
+            _uiState.update {
+                it.copy(computerDeclared = true, computerDeclaredHand = turn.declaredHand, isResolving = false, isBotThinking = false)
+            }
         } else {
-            _uiState.update { it.copy(hasWon = true, isResolving = false, isBotThinking = false) }
+            _uiState.update {
+                it.copy(hasWon = true, computerDeclaredHand = turn.declaredHand, isResolving = false, isBotThinking = false)
+            }
             val coupon = rewardsRepository.claimReward(GameId.RUMMY)
             couponsRepository.addCoupon(coupon)
             _uiState.update { it.copy(wonCouponId = coupon.id) }

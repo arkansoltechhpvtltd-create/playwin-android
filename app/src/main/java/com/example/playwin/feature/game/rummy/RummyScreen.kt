@@ -3,6 +3,8 @@ package com.example.playwin.feature.game.rummy
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -12,18 +14,23 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Star
@@ -40,7 +47,12 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,8 +68,12 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -75,6 +91,8 @@ import com.example.playwin.core.domain.rummy.isWild
 import com.example.playwin.feature.game.CelebrationBurst
 import com.example.playwin.feature.game.GameStatusBanner
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @Composable
 fun RummyRoute(
@@ -85,7 +103,9 @@ fun RummyRoute(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(uiState.wonCouponId) {
-        uiState.wonCouponId?.let(onWin)
+        val couponId = uiState.wonCouponId ?: return@LaunchedEffect
+        delay(REVEAL_HOLD_MILLIS) // let the player see the computer's revealed hand first
+        onWin(couponId)
     }
 
     RummyScreen(
@@ -94,6 +114,7 @@ fun RummyRoute(
         onDrawFromShoe = viewModel::onDrawFromShoe,
         onDrawFromDiscard = viewModel::onDrawFromDiscard,
         onCardTap = viewModel::onCardTap,
+        onMoveCard = viewModel::onMoveCard,
         onConfirmDiscard = viewModel::onConfirmDiscard,
         onDeclare = viewModel::onDeclare,
         onPlayAgain = viewModel::onPlayAgain
@@ -108,11 +129,20 @@ fun RummyScreen(
     onDrawFromShoe: () -> Unit,
     onDrawFromDiscard: () -> Unit,
     onCardTap: (Card) -> Unit,
+    onMoveCard: (fromIndex: Int, toIndex: Int) -> Unit,
     onConfirmDiscard: () -> Unit,
     onDeclare: () -> Unit,
     onPlayAgain: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val scroll = rememberScrollState()
+    // Bring the revealed hand into view when the round ends.
+    LaunchedEffect(uiState.isGameOver) {
+        if (!uiState.isGameOver) return@LaunchedEffect
+        delay(120) // the panel has to be laid out before maxValue covers it
+        scroll.animateScrollTo(scroll.maxValue)
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = { PwTopBar(title = "Rummy · vs Computer", onBack = onBack) }
@@ -121,6 +151,7 @@ fun RummyScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .verticalScroll(scroll)
                 .padding(16.dp)
         ) {
             StatusBanner(uiState)
@@ -203,33 +234,18 @@ fun RummyScreen(
             }
 
             Text(
-                text = "Your hand (tap a card, then Discard or Declare)",
+                text = "Your hand (drag to rearrange; tap a card, then Discard or Declare)",
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(top = 18.dp)
             )
-            // Cards present on the first frame are dealt in one after another;
-            // a card drawn later just pops in.
-            val dealt = remember { booleanArrayOf(false) }
-            FlowRow(
-                modifier = Modifier.padding(top = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                uiState.game.playerHand
-                    .sortedWith(compareBy({ it.sortSuit() }, { it.sortRank() }))
-                    .forEachIndexed { index, card ->
-                        key(card.id) {
-                            CardView(
-                                card = card,
-                                isWild = isWild(card, uiState.game.wildRank),
-                                isSelected = uiState.selectedCard?.id == card.id,
-                                onClick = if (uiState.canDiscard) { { onCardTap(card) } } else null,
-                                entranceDelayMillis = if (dealt[0]) 0 else index * 40
-                            )
-                        }
-                    }
-            }
-            SideEffect { dealt[0] = true }
+            DraggableHand(
+                hand = uiState.arrangedHand,
+                wildRank = uiState.game.wildRank,
+                selectedCardId = uiState.selectedCard?.id,
+                onCardTap = if (uiState.canDiscard) onCardTap else null,
+                onMoveCard = onMoveCard,
+                modifier = Modifier.padding(top = 12.dp)
+            )
 
             Row(
                 modifier = Modifier
@@ -252,22 +268,24 @@ fun RummyScreen(
                 )
             }
 
-            if (uiState.isGameOver) {
+            uiState.revealedOpponentHand?.let { cards ->
+                RevealedOpponentHand(
+                    cards = cards,
+                    wildRank = uiState.game.wildRank,
+                    modifier = Modifier.padding(top = 20.dp)
+                )
+            }
+
+            // A win moves on to the reward screen by itself; Play again is for the other endings.
+            if (uiState.isGameOver && !uiState.hasWon) {
                 PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 16.dp))
             }
         }
     }
 }
 
-private fun Card.sortSuit(): Int = when (this) {
-    is Card.PrintedJoker -> 4
-    is Card.Standard -> suit.ordinal
-}
-
-private fun Card.sortRank(): Int = when (this) {
-    is Card.PrintedJoker -> 0
-    is Card.Standard -> rank.order
-}
+/** How long a win stays on screen, with the computer's hand revealed, before moving on to the reward. */
+private const val REVEAL_HOLD_MILLIS = 3_500L
 
 @Composable
 private fun StatusBanner(uiState: RummyUiState) {
@@ -569,6 +587,170 @@ private fun OpponentFan(count: Int, modifier: Modifier = Modifier) {
     }
 }
 
+private val HAND_GAP = 6.dp
+private val HAND_ROW_GAP = 10.dp
+
+/**
+ * The player's hand, wrapped into rows of equal slots. Dragging a card lifts
+ * it under the finger while the others slide aside to open its new slot; on
+ * release it settles there and the move is committed through [onMoveCard].
+ * Only the on-screen order changes. Tapping still selects a card.
+ *
+ * Cards present on the first frame are dealt in one after another; a card
+ * drawn later just pops in.
+ */
+@Composable
+private fun DraggableHand(
+    hand: List<Card>,
+    wildRank: Rank,
+    selectedCardId: Int?,
+    onCardTap: ((Card) -> Unit)?,
+    onMoveCard: (fromIndex: Int, toIndex: Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val dealt = remember { booleanArrayOf(false) }
+    val scope = rememberCoroutineScope()
+    // The card being moved, and the slot it would drop into. It stays set after
+    // release until the committed hand arrives, so nothing flickers back.
+    var draggedId by remember { mutableStateOf<Int?>(null) }
+    var fingerDown by remember { mutableStateOf(false) }
+    var dropIndex by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(hand) {
+        if (!fingerDown) draggedId = null
+    }
+
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val density = LocalDensity.current
+        val grid = with(density) {
+            val stepX = (CARD_WIDTH + HAND_GAP).toPx()
+            HandGrid(
+                perRow = ((constraints.maxWidth + HAND_GAP.toPx()) / stepX).toInt().coerceAtLeast(1),
+                stepX = stepX,
+                stepY = (CARD_HEIGHT + HAND_ROW_GAP).toPx()
+            )
+        }
+        val latestHand by rememberUpdatedState(hand)
+        val latestGrid by rememberUpdatedState(grid)
+        val latestOnMoveCard by rememberUpdatedState(onMoveCard)
+
+        val draggedFrom = draggedId?.let { id -> hand.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
+        val shown = if (draggedFrom != null) HandArrangement.move(hand, draggedFrom, dropIndex) else hand
+        val rows = ((hand.size + grid.perRow - 1) / grid.perRow).coerceAtLeast(1)
+
+        Box(modifier = Modifier.fillMaxWidth().height(CARD_HEIGHT * rows + HAND_ROW_GAP * (rows - 1))) {
+            shown.forEachIndexed { index, card ->
+                key(card.id) {
+                    val slot = IntOffset(grid.slotX(index).roundToInt(), grid.slotY(index).roundToInt())
+                    val following = card.id == draggedId && fingerDown
+                    val position = remember { Animatable(slot, IntOffset.VectorConverter) }
+                    LaunchedEffect(slot, following) {
+                        if (!following) position.animateTo(slot, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow))
+                    }
+                    val dragLift by animateFloatAsState(
+                        targetValue = if (following) 1f else 0f,
+                        animationSpec = spring(dampingRatio = 0.7f, stiffness = 500f),
+                        label = "rummyDragLift"
+                    )
+                    CardView(
+                        card = card,
+                        isWild = isWild(card, wildRank),
+                        isSelected = selectedCardId == card.id,
+                        onClick = onCardTap?.let { tap -> { tap(card) } },
+                        entranceDelayMillis = if (dealt[0]) 0 else index * 40,
+                        modifier = Modifier
+                            .zIndex(if (card.id == draggedId) 1f else 0f)
+                            .offset { position.value }
+                            .graphicsLayer {
+                                scaleX = 1f + 0.1f * dragLift
+                                scaleY = 1f + 0.1f * dragLift
+                                shadowElevation = 14.dp.toPx() * dragLift
+                                shape = CardShape
+                            }
+                            .pointerInput(card.id) {
+                                var x = 0f
+                                var y = 0f
+                                detectDragGestures(
+                                    onDragStart = {
+                                        x = position.value.x.toFloat()
+                                        y = position.value.y.toFloat()
+                                        dropIndex = latestHand.indexOfFirst { it.id == card.id }
+                                        draggedId = card.id
+                                        fingerDown = true
+                                    },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        x += amount.x
+                                        y += amount.y
+                                        scope.launch { position.snapTo(IntOffset(x.roundToInt(), y.roundToInt())) }
+                                        dropIndex = latestGrid.nearestSlot(x, y, latestHand.size)
+                                    },
+                                    onDragEnd = {
+                                        fingerDown = false
+                                        val from = latestHand.indexOfFirst { it.id == card.id }
+                                        if (from >= 0 && from != dropIndex) latestOnMoveCard(from, dropIndex) else draggedId = null
+                                    },
+                                    onDragCancel = {
+                                        fingerDown = false
+                                        draggedId = null
+                                    }
+                                )
+                            }
+                    )
+                }
+            }
+        }
+    }
+    SideEffect { dealt[0] = true }
+}
+
+/** The computer's hand, face up, shown only once the round is over: navy with a gold frame. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RevealedOpponentHand(cards: List<Card>, wildRank: Rank, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(elevation = 10.dp, shape = shape)
+            .clip(shape)
+            .background(Brush.linearGradient(listOf(PwBrandGradientStart, RevealNavy)))
+            .border(1.5.dp, Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark)), shape)
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "COMPUTER'S HAND",
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp),
+            color = PwGoldDark
+        )
+        Text(
+            text = "The ${cards.size} cards it was holding",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.White.copy(alpha = 0.75f),
+            modifier = Modifier.padding(top = 2.dp)
+        )
+        FlowRow(
+            modifier = Modifier.padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(HAND_GAP),
+            verticalArrangement = Arrangement.spacedBy(HAND_ROW_GAP)
+        ) {
+            cards.forEachIndexed { index, card ->
+                key(card.id) {
+                    CardView(
+                        card = card,
+                        isWild = isWild(card, wildRank),
+                        isSelected = false,
+                        onClick = null,
+                        entranceDelayMillis = index * 50
+                    )
+                }
+            }
+        }
+    }
+}
+
+private val RevealNavy = Color(0xFF14233F)
+
 @Composable
 private fun EmptyPileSlot(modifier: Modifier = Modifier) {
     Box(
@@ -590,6 +772,7 @@ private fun RummyScreenPreview() {
             onDrawFromShoe = {},
             onDrawFromDiscard = {},
             onCardTap = {},
+            onMoveCard = { _, _ -> },
             onConfirmDiscard = {},
             onDeclare = {},
             onPlayAgain = {}
