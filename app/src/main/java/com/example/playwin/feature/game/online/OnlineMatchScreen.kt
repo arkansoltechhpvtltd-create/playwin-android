@@ -139,24 +139,26 @@ fun OnlineMatchScreen(
             if (!state.canPlayOnline) {
                 CenteredMessage(
                     title = "Sign in to play online",
-                    body = "Guest sessions can play vs the computer, but online matches need a real account so we know who's who."
+                    body = "Guest sessions can play vs the computer, but online matches need a real account so we know who's who.",
+                    modifier = Modifier.weight(1f)
                 )
             } else {
                 when (state.phase) {
-                    OnlinePhase.IDLE -> IdleContent(onFindRandomPlayer = controller::findRandomPlayer)
-                    OnlinePhase.SEARCHING -> SearchingContent(state.searchSecondsElapsed, controller::cancelSearch)
+                    OnlinePhase.IDLE -> IdleContent(onFindRandomPlayer = controller::findRandomPlayer, modifier = Modifier.weight(1f))
+                    OnlinePhase.SEARCHING -> SearchingContent(state.searchSecondsElapsed, controller::cancelSearch, Modifier.weight(1f))
                     OnlinePhase.NO_OPPONENT_FOUND -> NoOpponentContent(
                         onFindRandomPlayer = controller::findRandomPlayer,
                         onPlayComputer = {
                             controller.exit()
                             onPlayComputer()
-                        }
+                        },
+                        modifier = Modifier.weight(1f)
                     )
                     OnlinePhase.ROOM -> state.room?.let { room ->
                         when (room.status) {
                             RoomStatus.ACTIVE -> ActiveContent(state, room, controller::leaveRoom, activeContent, Modifier.weight(1f))
                             RoomStatus.FINISHED -> FinishedContent(state, room, controller::leaveRoom, finishedBoard, Modifier.weight(1f))
-                            RoomStatus.WAITING, RoomStatus.ABANDONED -> AbandonedContent(controller::leaveRoom)
+                            RoomStatus.WAITING, RoomStatus.ABANDONED -> AbandonedContent(controller::leaveRoom, Modifier.weight(1f))
                         }
                     }
                 }

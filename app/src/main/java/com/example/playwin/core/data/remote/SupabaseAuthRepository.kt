@@ -5,6 +5,7 @@ import com.example.playwin.core.domain.repository.AuthRepository
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.exception.AuthRestException
+import io.github.jan.supabase.exceptions.RestException
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.status.SessionStatus
 import io.github.jan.supabase.auth.user.UserInfo
@@ -24,6 +25,7 @@ class AuthException(message: String) : Exception(message)
 
 private const val DISPLAY_NAME_KEY = "display_name"
 private const val IS_ADULT_KEY = "is_adult"
+private const val NETWORK_ERROR_MESSAGE = "Couldn't reach the server - check your internet connection and try again"
 
 /**
  * Real, network-backed [AuthRepository] implementation, calling Supabase Auth
@@ -121,9 +123,17 @@ class SupabaseAuthRepository @Inject constructor(
         }
     }
 
-    /** [AuthRestException.message] dumps the full request (URL, headers) for debugging; [errorDescription] is the clean server message. */
-    private fun friendlyMessage(e: Exception, fallback: String): String =
-        (e as? AuthRestException)?.errorDescription ?: e.message ?: fallback
+    /**
+     * What to show for a failed auth call. [AuthRestException.message] dumps the
+     * full request (URL, headers) for debugging, and a network failure's message
+     * is just as raw, so only the server's own [AuthRestException.errorDescription]
+     * is ever shown as-is.
+     */
+    private fun friendlyMessage(e: Exception, fallback: String): String = when (e) {
+        is AuthRestException -> e.errorDescription
+        is RestException -> fallback
+        else -> NETWORK_ERROR_MESSAGE
+    }
 
     override suspend fun logout() {
         if (guestUser.value != null) {

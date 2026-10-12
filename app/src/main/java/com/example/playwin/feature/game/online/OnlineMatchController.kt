@@ -208,9 +208,8 @@ class OnlineMatchController(
             status = status,
             winnerId = winnerPlayer?.let(current::playerId)
         )
-        result.onFailure { e ->
-            showError(e.message ?: "That move wasn't accepted - it may not be your turn")
-        }
+        // The exception is a raw network or database error (it can dump the request), so it's never shown.
+        result.onFailure { showError("That move didn't go through - check your connection, or it may not be your turn") }
         return result
     }
 
