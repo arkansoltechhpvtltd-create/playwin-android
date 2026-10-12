@@ -56,4 +56,18 @@ class CarromBotTest {
         assertEquals(1f, shot.direction.length, 0.001f)
         assertTrue(shot.power in 0.1f..1f)
     }
+
+    @Test
+    fun `with nothing makeable it still drives the striker into a coin`() {
+        // A stray black coin up by player 2's baseline that no cut from the striker can pot - the
+        // old fallback fired at the empty centre and missed it, turn after turn.
+        val coin = Vec2(703.8f, 153.2f)
+        val match = matchWith(17 to coin).let { m ->
+            m.copy(currentPlayer = 2, coins = CarromRules.respotStriker(m.coins, 2))
+        }
+        assertTrue(CarromBot.candidates(match).isEmpty())
+        val shot = CarromBot.chooseShot(match, Random(0), aimErrorDegrees = 0.0)
+        val after = play(match, shot).coins.first { it.id == 17 }
+        assertTrue(after.pocketed || (after.position - coin).length > 1f)
+    }
 }

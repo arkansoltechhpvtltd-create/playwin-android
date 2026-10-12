@@ -28,7 +28,7 @@ object CarromBot {
 
     fun chooseShot(match: CarromMatch, random: Random = Random, aimErrorDegrees: Double = DEFAULT_AIM_ERROR_DEGREES): Shot {
         val best = candidates(match)
-            .ifEmpty { listOf(breakShot(match)) }
+            .ifEmpty { directHits(match) }
             .maxBy { evaluate(match, it) + random.nextDouble(0.0, 0.01) }
         if (aimErrorDegrees <= 0.0) return best
 
@@ -78,10 +78,15 @@ object CarromBot {
             .flatMap { (aim, _) -> POWERS.map { Shot(aim, it) } }
     }
 
-    /** Nothing makeable: drive straight at the middle of the board to break the pack up. */
-    private fun breakShot(match: CarromMatch): Shot {
+    /**
+     * Nothing makeable: drive straight at a coin instead - the pack on the
+     * break, a stray coin later - so the shot always moves something. Every
+     * coin is tried, so a hit that pots the opponent's coin can lose out.
+     */
+    internal fun directHits(match: CarromMatch): List<Shot> {
         val striker = match.coins.first { it.id == STRIKER_ID }
-        val centre = Vec2(CarromBoard.SIZE / 2f, CarromBoard.SIZE / 2f)
-        return Shot((centre - striker.position).normalizedOrZero(), 1f)
+        return match.coins
+            .filter { it.id != STRIKER_ID && !it.pocketed }
+            .flatMap { coin -> POWERS.map { Shot((coin.position - striker.position).normalizedOrZero(), it) } }
     }
 }
