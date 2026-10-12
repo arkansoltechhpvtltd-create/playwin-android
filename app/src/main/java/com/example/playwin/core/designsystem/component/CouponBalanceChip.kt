@@ -33,7 +33,7 @@ fun CouponBalanceChip(
         },
         label = {
             Text(
-                text = "$count coupons",
+                text = if (count == 1) "1 coupon" else "$count coupons",
                 style = MaterialTheme.typography.labelLarge
             )
         },

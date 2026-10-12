@@ -61,6 +61,9 @@ import com.example.playwin.core.designsystem.component.SectionHeader
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import com.example.playwin.core.designsystem.theme.PwSpacing
 
+/** The Responsible gaming section (daily limit, self-exclusion): off until both are enforced. */
+private const val SHOW_RESPONSIBLE_GAMING = false
+
 @Composable
 fun ProfileRoute(
     viewModel: ProfileViewModel = hiltViewModel()
@@ -207,61 +210,65 @@ fun ProfileScreen(
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = PwSpacing.lg)
-            ) {
-                SectionHeader(title = "Responsible gaming")
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = MaterialTheme.shapes.medium,
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            // Hidden until self-exclusion and the daily limit are actually enforced - a
+            // responsible-gaming control that does nothing is worse than none.
+            if (SHOW_RESPONSIBLE_GAMING) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = PwSpacing.lg)
                 ) {
-                    Column(modifier = Modifier.padding(PwSpacing.md)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row {
-                                Icon(imageVector = Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null)
-                                Text(
-                                    text = "Playtime today",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    modifier = Modifier.padding(start = PwSpacing.sm)
-                                )
+                    SectionHeader(title = "Responsible gaming")
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Column(modifier = Modifier.padding(PwSpacing.md)) {
+                            uiState.playtimeTodayMinutes?.let { playtime ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = PwSpacing.md),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row {
+                                        Icon(imageVector = Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null)
+                                        Text(
+                                            text = "Playtime today",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            modifier = Modifier.padding(start = PwSpacing.sm)
+                                        )
+                                    }
+                                    Text(
+                                        text = "$playtime min",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
-                            Text(
-                                text = "${uiState.playtimeTodayMinutes} min",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+    
+                            DailyLimitDropdown(
+                                selectedMinutes = uiState.dailyLimitMinutes,
+                                onSelect = onDailyLimitChange,
+                                modifier = Modifier.fillMaxWidth()
                             )
-                        }
-
-                        DailyLimitDropdown(
-                            selectedMinutes = uiState.dailyLimitMinutes,
-                            onSelect = onDailyLimitChange,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = PwSpacing.md)
-                        )
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = PwSpacing.sm),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(text = "Self-exclusion", style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    text = "Temporarily block yourself from playing",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+    
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = PwSpacing.sm),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(text = "Self-exclusion", style = MaterialTheme.typography.bodyLarge)
+                                    Text(
+                                        text = "Temporarily block yourself from playing",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(checked = uiState.selfExclusionEnabled, onCheckedChange = onSelfExclusionChange)
                             }
-                            Switch(checked = uiState.selfExclusionEnabled, onCheckedChange = onSelfExclusionChange)
                         }
                     }
                 }

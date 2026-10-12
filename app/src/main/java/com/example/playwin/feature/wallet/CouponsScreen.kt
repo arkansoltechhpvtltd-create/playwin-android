@@ -1,7 +1,19 @@
 package com.example.playwin.feature.wallet
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ConfirmationNumber
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -45,9 +57,40 @@ fun CouponsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(PwSpacing.sm)
         ) {
+            if (!uiState.isLoading && uiState.coupons.isEmpty()) {
+                item { EmptyCoupons(modifier = Modifier.fillParentMaxHeight(0.7f)) }
+            }
             items(uiState.coupons, key = { it.id }) { coupon ->
                 CouponCard(coupon = coupon, onRedeem = { onRedeem(coupon.id) })
             }
         }
+    }
+}
+
+@Composable
+private fun EmptyCoupons(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxWidth().padding(horizontal = PwSpacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = Icons.Filled.ConfirmationNumber,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(56.dp)
+        )
+        Text(
+            text = "No coupons yet",
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(top = PwSpacing.md)
+        )
+        Text(
+            text = "Win any game to earn one.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = PwSpacing.xs)
+        )
     }
 }

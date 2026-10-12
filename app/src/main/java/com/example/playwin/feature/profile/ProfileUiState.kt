@@ -8,7 +8,8 @@ data class ProfileUiState(
     val isEditingName: Boolean = false,
     val editedName: String = "",
     val nameError: String? = null,
-    val playtimeTodayMinutes: Int = 0,
+    /** Null until playtime is actually tracked, so no made-up figure is ever shown. */
+    val playtimeTodayMinutes: Int? = null,
     val darkModeEnabled: Boolean = false,
     val notificationsEnabled: Boolean = true,
     val soundEnabled: Boolean = true,

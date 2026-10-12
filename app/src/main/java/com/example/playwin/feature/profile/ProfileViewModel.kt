@@ -21,9 +21,6 @@ private data class NameEditState(
     val error: String? = null
 )
 
-/** A fixed mock stat - there's no real playtime tracking in this build yet. */
-private const val MOCK_PLAYTIME_TODAY_MINUTES = 42
-
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val authRepository: AuthRepository,
@@ -45,7 +42,6 @@ class ProfileViewModel @Inject constructor(
             isEditingName = editState.isEditing,
             editedName = editState.editedName,
             nameError = editState.error,
-            playtimeTodayMinutes = MOCK_PLAYTIME_TODAY_MINUTES,
             darkModeEnabled = settings.darkModeEnabled,
             notificationsEnabled = settings.notificationsEnabled,
             soundEnabled = settings.soundEnabled,
