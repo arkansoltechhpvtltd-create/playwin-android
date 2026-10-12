@@ -9,7 +9,7 @@ enum class GameId {
     EIGHT_BALL,
     CARROM,
     CONNECT_FOUR,
-    BINGO,
+    SUDOKU,
     WORD_HUNT,
     CHESS,
     LUDO,

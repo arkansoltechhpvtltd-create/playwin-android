@@ -10,7 +10,7 @@ enum class GameIconKey {
     BILLIARDS,
     CARROM,
     FOUR_IN_A_ROW,
-    BINGO,
+    SUDOKU,
     WORD_HUNT,
     CHESS,
     LUDO,

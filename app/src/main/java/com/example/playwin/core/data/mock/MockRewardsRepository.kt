@@ -49,7 +49,7 @@ class MockRewardsRepository @Inject constructor() : RewardsRepository {
         GameId.EIGHT_BALL -> "8-Ball"
         GameId.CARROM -> "Carrom"
         GameId.CONNECT_FOUR -> "Connect 4"
-        GameId.BINGO -> "Bingo"
+        GameId.SUDOKU -> "Sudoku"
         GameId.WORD_HUNT -> "Word Hunt"
         GameId.CHESS -> "Chess"
         GameId.LUDO -> "Ludo"

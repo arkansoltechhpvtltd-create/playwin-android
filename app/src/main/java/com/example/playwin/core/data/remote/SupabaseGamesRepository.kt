@@ -51,7 +51,7 @@ private val PRESENTATION: Map<GameId, Pair<String, GameIconKey>> = mapOf(
     GameId.EIGHT_BALL to ("Pocket them all" to GameIconKey.BILLIARDS),
     GameId.CARROM to ("Strike & pot" to GameIconKey.CARROM),
     GameId.CONNECT_FOUR to ("4 in a row wins" to GameIconKey.FOUR_IN_A_ROW),
-    GameId.BINGO to ("Mark & call" to GameIconKey.BINGO),
+    GameId.SUDOKU to ("Fill the grid" to GameIconKey.SUDOKU),
     GameId.WORD_HUNT to ("Find the words" to GameIconKey.WORD_HUNT),
     GameId.CHESS to ("Outsmart them" to GameIconKey.CHESS),
     GameId.LUDO to ("Race home first" to GameIconKey.LUDO),

@@ -23,7 +23,7 @@ class MockCouponsRepository @Inject constructor() : CouponsRepository {
                 id = "seed-1",
                 partnerName = "Brew & Bean Cafe",
                 discountText = "30% off",
-                source = "Won in Bingo",
+                source = "Won in Sudoku",
                 expiry = "Expires 30 Sep 2026",
                 code = "BREW30WIN",
                 status = CouponStatus.WON

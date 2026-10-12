@@ -64,11 +64,14 @@ sealed interface GameSnapshot {
     ) : GameSnapshot
 
     /**
-     * @param daubed 5 rows x 5 columns, true where the player has daubed that
-     * square (the free center square is always true).
+     * A Sudoku grid the player believes is finished.
+     *
+     * @param givens the puzzle as dealt, 81 cells row by row, 0 = empty.
+     * @param grid the player's grid, 81 cells row by row, 0 = still empty.
      */
-    data class Bingo(
-        val daubed: List<List<Boolean>>
+    data class Sudoku(
+        val givens: List<Int>,
+        val grid: List<Int>
     ) : GameSnapshot
 
     /**

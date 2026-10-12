@@ -8,6 +8,7 @@ import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.rummy.RummyValidator
+import com.example.playwin.core.domain.sudoku.SudokuRules
 import com.example.playwin.core.domain.wordhunt.WordHuntScoring
 import kotlinx.coroutines.delay
 import javax.inject.Inject
@@ -31,7 +32,7 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
             is GameSnapshot.TwentyFortyEight -> resolveTwentyFortyEight(snapshot)
             is GameSnapshot.EightBall -> resolveEightBall(snapshot)
             is GameSnapshot.Carrom -> resolveCarrom(snapshot)
-            is GameSnapshot.Bingo -> resolveBingo(snapshot)
+            is GameSnapshot.Sudoku -> resolveSudoku(snapshot)
             is GameSnapshot.WordHunt -> resolveWordHunt(snapshot)
             is GameSnapshot.Chess -> resolveChess(snapshot)
             is GameSnapshot.Ludo -> resolveLudo(snapshot)
@@ -97,16 +98,10 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
         }
     }
 
-    private fun resolveBingo(snapshot: GameSnapshot.Bingo): GameOutcome {
-        val grid = snapshot.daubed
-        val size = grid.size
-
-        val rowWin = grid.any { row -> row.all { it } }
-        val colWin = (0 until size).any { c -> (0 until size).all { r -> grid[r][c] } }
-        val diagWin = (0 until size).all { i -> grid[i][i] } || (0 until size).all { i -> grid[i][size - 1 - i] }
-
-        return if (rowWin || colWin || diagWin) GameOutcome.WIN else GameOutcome.IN_PROGRESS
-    }
+    private fun resolveSudoku(snapshot: GameSnapshot.Sudoku): GameOutcome =
+        // Re-checked from the raw cells: every given kept, all 81 filled, no repeats.
+        // A full grid that breaks a rule just isn't solved yet - the player can fix it.
+        if (SudokuRules.isSolved(snapshot.givens, snapshot.grid)) GameOutcome.WIN else GameOutcome.IN_PROGRESS
 
     private fun resolveWordHunt(snapshot: GameSnapshot.WordHunt): GameOutcome {
         val claimedWords = (snapshot.myClaims + snapshot.opponentClaims).map { it.word }

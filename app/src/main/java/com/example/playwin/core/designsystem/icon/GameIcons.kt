@@ -2,7 +2,7 @@ package com.example.playwin.core.designsystem.icon
 
 import androidx.annotation.DrawableRes
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Casino
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Extension
@@ -18,7 +18,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.playwin.R
 import com.example.playwin.core.designsystem.image.artworkPainter
 import com.example.playwin.core.designsystem.theme.PwGameBilliards
-import com.example.playwin.core.designsystem.theme.PwGameBingo
+import com.example.playwin.core.designsystem.theme.PwGameSudoku
 import com.example.playwin.core.designsystem.theme.PwGameCards
 import com.example.playwin.core.designsystem.theme.PwGameCarrom
 import com.example.playwin.core.designsystem.theme.PwGameChess
@@ -38,7 +38,7 @@ fun GameIconKey.toImageVector(): ImageVector = when (this) {
     GameIconKey.BILLIARDS -> Icons.Filled.Circle
     GameIconKey.CARROM -> Icons.Filled.ViewModule
     GameIconKey.FOUR_IN_A_ROW -> Icons.Filled.SportsEsports
-    GameIconKey.BINGO -> Icons.Filled.Casino
+    GameIconKey.SUDOKU -> Icons.Filled.Apps
     GameIconKey.WORD_HUNT -> Icons.Filled.TextFields
     GameIconKey.CHESS -> Icons.Filled.Extension
     GameIconKey.LUDO -> Icons.Filled.EmojiEvents
@@ -51,7 +51,7 @@ fun GameIconKey.toAccentColor(): Color = when (this) {
     GameIconKey.BILLIARDS -> PwGameBilliards
     GameIconKey.CARROM -> PwGameCarrom
     GameIconKey.FOUR_IN_A_ROW -> PwGameFourInARow
-    GameIconKey.BINGO -> PwGameBingo
+    GameIconKey.SUDOKU -> PwGameSudoku
     GameIconKey.WORD_HUNT -> PwGameWordHunt
     GameIconKey.CHESS -> PwGameChess
     GameIconKey.LUDO -> PwGameLudo
@@ -65,7 +65,7 @@ fun GameIconKey.badgeRes(): Int? = when (this) {
     GameIconKey.BILLIARDS -> R.drawable.eightball_logo
     GameIconKey.CARROM -> R.drawable.carrom_logo
     GameIconKey.FOUR_IN_A_ROW -> R.drawable.connect4_logo
-    GameIconKey.BINGO -> R.drawable.bingo_logo
+    GameIconKey.SUDOKU -> R.drawable.sudoku_logo
     GameIconKey.WORD_HUNT -> R.drawable.wordhunt_logo
     GameIconKey.CHESS -> R.drawable.chess_logo
     GameIconKey.LUDO -> R.drawable.ludo_logo
