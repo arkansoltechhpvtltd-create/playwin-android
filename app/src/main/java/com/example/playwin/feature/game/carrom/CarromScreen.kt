@@ -1,7 +1,5 @@
 package com.example.playwin.feature.game.carrom
 
-import android.content.res.Resources
-import android.graphics.BitmapFactory
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -38,27 +36,27 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -88,11 +86,8 @@ import com.example.playwin.feature.game.TurnTimerRing
 import com.example.playwin.feature.game.carrom.online.CarromOnlineRoute
 import com.example.playwin.feature.game.online.GameModeSelectScreen
 import com.example.playwin.feature.game.online.PlayMode
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 /** Entry point for Carrom: play the computer, or get paired with a random online player. */
 @Composable
@@ -101,9 +96,6 @@ fun CarromRoute(
     onWin: (couponId: String) -> Unit
 ) {
     var mode by remember { mutableStateOf<PlayMode?>(null) }
-    // Prepares the board artwork while the mode is being picked.
-    val resources = LocalContext.current.resources
-    LaunchedEffect(Unit) { withContext(Dispatchers.Default) { loadBoardImage(resources) } }
     when (mode) {
         null -> GameModeSelectScreen(title = "Carrom", onBack = onBack, onSelectMode = { mode = it })
         PlayMode.COMPUTER -> CarromComputerRoute(onBack = { mode = null }, onWin = onWin)
@@ -416,7 +408,6 @@ fun CarromBoardView(
         null
     }
     val gold = MaterialTheme.colorScheme.primary
-    val boardImage = rememberBoardImage()
     val frameShape = RoundedCornerShape(6.dp)
     // Light falls from the top of the *screen*, whichever way the board is turned.
     val lightDir = if (flipped) -1f else 1f
@@ -431,15 +422,15 @@ fun CarromBoardView(
     ) {
         // The artwork stays upright when the board is turned for player 2 - it's
         // symmetrical, and its lighting then still falls from the top of the screen.
-        if (boardImage != null) {
-            Canvas(modifier = Modifier.matchParentSize()) {
-                drawImage(
-                    image = boardImage,
-                    dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
-                    filterQuality = FilterQuality.High
-                )
-            }
-        }
+        // Coil decodes carrom_board straight to the size it's drawn at: as a plain
+        // drawable it would otherwise be scaled up by the screen density first.
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current).data(R.drawable.carrom_board).build(),
+            contentDescription = null,
+            contentScale = ContentScale.FillBounds,
+            filterQuality = FilterQuality.High,
+            modifier = Modifier.matchParentSize()
+        )
         // The play area sits exactly on the artwork's playing surface, inside its rail.
         // The pockets and baselines are the artwork's too: CarromBoard measures them
         // off the same image, so nothing here draws them.
@@ -599,25 +590,6 @@ fun CarromBoardView(
             }
         }
     }
-}
-
-/** The board artwork, decoded once per process by [loadBoardImage]. */
-@Volatile
-private var boardImageCache: ImageBitmap? = null
-
-/** carrom_board.png, which is the whole board, frame and pockets included. Keep this off the main thread. */
-private fun loadBoardImage(resources: Resources): ImageBitmap = boardImageCache ?: run {
-    BitmapFactory.decodeResource(resources, R.drawable.carrom_board).asImageBitmap().also { boardImageCache = it }
-}
-
-/** The board artwork; null for the frame or two before it's ready if it wasn't preloaded. */
-@Composable
-private fun rememberBoardImage(): ImageBitmap? {
-    val resources = LocalContext.current.resources
-    val image by produceState(initialValue = boardImageCache) {
-        if (value == null) value = withContext(Dispatchers.Default) { loadBoardImage(resources) }
-    }
-    return image
 }
 
 /**

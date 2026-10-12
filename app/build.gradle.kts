@@ -79,6 +79,7 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
+    implementation(libs.coil.compose)
 
     implementation(platform(libs.supabase.bom))
     implementation(libs.supabase.auth.kt)
