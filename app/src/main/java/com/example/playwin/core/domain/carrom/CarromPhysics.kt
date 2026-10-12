@@ -22,8 +22,12 @@ object CarromBoard {
     const val ART_SURFACE_SIZE = 947f / 1080f
     private const val ART_POCKET_NEAR = 0.111f
     private const val ART_POCKET_FAR = 0.889f
-    /** The black of a painted hole, inside its gold ring (the ring reaches 0.057). */
-    private const val ART_POCKET_RADIUS = 0.053f
+    /**
+     * The catch radius: a piece sinks once its centre is this close to a pocket's
+     * centre, as a fraction of the image. It matches the painted hole (0.036);
+     * tune it here - smaller makes potting harder (0.032 is the next step down).
+     */
+    const val ART_POCKET_RADIUS = 0.036f
     /** The line through the bottom baseline's circles; the top one mirrors it. */
     private const val ART_BASELINE = 868f / 1080f
     /** The baseline's end circles, either side of the centre. */
@@ -31,7 +35,7 @@ object CarromBoard {
 
     private fun fromArt(fraction: Float): Float = (fraction - ART_SURFACE_START) / ART_SURFACE_SIZE * SIZE
 
-    /** A piece sinks once its centre is over the painted hole's black. */
+    /** [ART_POCKET_RADIUS] in board units. */
     const val POCKET_RADIUS = ART_POCKET_RADIUS / ART_SURFACE_SIZE * SIZE
 
     /** From each side's frame to the centre of its painted baseline. */
