@@ -3,6 +3,7 @@ package com.example.playwin.feature.game.chess
 import com.example.playwin.core.domain.chess.ChessEngine
 import com.example.playwin.core.domain.chess.ChessMove
 import com.example.playwin.core.domain.chess.ChessPosition
+import com.example.playwin.core.domain.chess.GameStatus
 import com.example.playwin.core.domain.chess.PieceColor
 import com.example.playwin.core.domain.chess.PieceType
 import com.example.playwin.core.domain.chess.Square
@@ -13,6 +14,8 @@ data class ChessUiState(
     val pendingMoves: List<ChessMove> = emptyList(),
     val winner: Int? = null,
     val isDraw: Boolean = false,
+    /** Why the game was drawn, for the banner; set alongside [isDraw]. */
+    val drawReason: GameStatus? = null,
     val isResolving: Boolean = false,
     val isComputerThinking: Boolean = false,
     val wonCouponId: String? = null,
@@ -45,4 +48,11 @@ fun promotionFor(position: ChessPosition, moves: List<ChessMove>, to: Square): P
     val promotions = moves.filter { it.to == to && it.promotion != null }
     val first = promotions.firstOrNull() ?: return null
     return PendingPromotion(first.from, to, position.sideToMove, promotions.mapNotNull { it.promotion })
+}
+
+/** The banner for a drawn game. */
+fun drawBannerText(reason: GameStatus?): String = when (reason) {
+    GameStatus.INSUFFICIENT_MATERIAL -> "Draw - neither side can checkmate"
+    GameStatus.FIFTY_MOVE_RULE -> "Draw - 50 moves without a capture or pawn move"
+    else -> "Stalemate - it's a draw!"
 }

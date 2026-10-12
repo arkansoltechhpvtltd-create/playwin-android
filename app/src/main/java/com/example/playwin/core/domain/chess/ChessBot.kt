@@ -37,7 +37,7 @@ object ChessBot {
         val after = ChessEngine.applyMove(position, move)
         when (ChessEngine.gameStatus(after)) {
             GameStatus.CHECKMATE -> return MATE
-            GameStatus.STALEMATE -> return -MATE / 2
+            GameStatus.STALEMATE, GameStatus.INSUFFICIENT_MATERIAL, GameStatus.FIFTY_MOVE_RULE -> return -MATE / 2
             GameStatus.IN_PROGRESS -> Unit
         }
 

@@ -20,6 +20,9 @@ object ChessEngine {
     private val ORTHOGONAL_DIRECTIONS = listOf(-1 to 0, 1 to 0, 0 to -1, 0 to 1)
     private val ALL_DIRECTIONS = DIAGONAL_DIRECTIONS + ORTHOGONAL_DIRECTIONS
 
+    /** Fifty moves each, in half-moves. */
+    private const val FIFTY_MOVES = 100
+
     /** What a pawn may become on the last rank, strongest first. */
     val PROMOTION_PIECES = listOf(PieceType.QUEEN, PieceType.ROOK, PieceType.BISHOP, PieceType.KNIGHT)
 
@@ -77,14 +80,33 @@ object ChessEngine {
         legalMovesFrom(position, from).firstOrNull { it.to == to && it.promotion == promotion }
 
     fun gameStatus(position: ChessPosition): GameStatus {
-        if (legalMoves(position).isNotEmpty()) return GameStatus.IN_PROGRESS
-        return if (isInCheck(position, position.sideToMove)) GameStatus.CHECKMATE else GameStatus.STALEMATE
+        // Mate (or stalemate) on the move that would otherwise draw still stands.
+        if (legalMoves(position).isEmpty()) {
+            return if (isInCheck(position, position.sideToMove)) GameStatus.CHECKMATE else GameStatus.STALEMATE
+        }
+        if (hasInsufficientMaterial(position)) return GameStatus.INSUFFICIENT_MATERIAL
+        if (position.halfmoveClock >= FIFTY_MOVES) return GameStatus.FIFTY_MOVE_RULE
+        return GameStatus.IN_PROGRESS
+    }
+
+    /**
+     * True when no sequence of moves can checkmate: king against king, king and
+     * one knight or bishop against king, or kings with bishops all on one colour.
+     */
+    fun hasInsufficientMaterial(position: ChessPosition): Boolean {
+        val others = position.board.flatMapIndexed { row, rank ->
+            rank.mapIndexedNotNull { col, piece -> piece?.takeIf { it.type != PieceType.KING }?.let { it to (row + col) % 2 } }
+        }
+        if (others.any { (piece, _) -> piece.type != PieceType.KNIGHT && piece.type != PieceType.BISHOP }) return false
+        if (others.size <= 1) return true
+        return others.all { (piece, _) -> piece.type == PieceType.BISHOP } && others.map { it.second }.toSet().size == 1
     }
 
     /** Applies a move (assumed legal) and returns the resulting position, side to move flipped. */
     fun applyMove(position: ChessPosition, move: ChessMove): ChessPosition {
         val board = position.board.map { it.toMutableList() }.toMutableList()
         val moving = board[move.from.row][move.from.col] ?: error("No piece at ${move.from}")
+        val resetsClock = moving.type == PieceType.PAWN || board[move.to.row][move.to.col] != null
 
         if (move.isEnPassant) {
             // The captured pawn sits beside the mover, not on the destination square.
@@ -137,7 +159,8 @@ object ChessEngine {
             whiteCanCastleQueenSide = whiteQueenSide,
             blackCanCastleKingSide = blackKingSide,
             blackCanCastleQueenSide = blackQueenSide,
-            enPassantTarget = newEnPassantTarget
+            enPassantTarget = newEnPassantTarget,
+            halfmoveClock = if (resetsClock) 0 else position.halfmoveClock + 1
         )
     }
 

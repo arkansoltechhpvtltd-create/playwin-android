@@ -135,7 +135,9 @@ class ChessViewModel @Inject constructor(
                     }
                 }
 
-                GameOutcome.DRAW -> _uiState.update { it.copy(isDraw = true, isResolving = false) }
+                GameOutcome.DRAW -> _uiState.update {
+                    it.copy(isDraw = true, drawReason = ChessEngine.gameStatus(newPosition), isResolving = false)
+                }
 
                 GameOutcome.LOSE, GameOutcome.IN_PROGRESS -> {
                     _uiState.update { it.copy(isResolving = false) }

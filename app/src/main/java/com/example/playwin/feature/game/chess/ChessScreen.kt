@@ -166,7 +166,7 @@ fun ChessScreen(
         ) {
             val humanWon = uiState.winner == 1
             when {
-                uiState.isDraw -> StatusBanner(text = "Stalemate - it's a draw!")
+                uiState.isDraw -> StatusBanner(text = drawBannerText(uiState.drawReason))
                 uiState.winner != null -> StatusBanner(
                     text = if (humanWon) "Checkmate - you win! Claiming your coupon…" else "Checkmate - the computer wins",
                     trophy = humanWon

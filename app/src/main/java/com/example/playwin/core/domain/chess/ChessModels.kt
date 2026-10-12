@@ -28,7 +28,20 @@ data class ChessMove(
     val isEnPassant: Boolean = false
 )
 
-enum class GameStatus { IN_PROGRESS, CHECKMATE, STALEMATE }
+/** Where a game stands. Every status but [IN_PROGRESS] ends it; all but [CHECKMATE] are draws. */
+enum class GameStatus {
+    IN_PROGRESS,
+    CHECKMATE,
+    STALEMATE,
+
+    /** Neither side has the pieces left to ever give checkmate. */
+    INSUFFICIENT_MATERIAL,
+
+    /** 50 moves each with no capture or pawn move. */
+    FIFTY_MOVE_RULE;
+
+    val isDraw: Boolean get() = this == STALEMATE || this == INSUFFICIENT_MATERIAL || this == FIFTY_MOVE_RULE
+}
 
 /** An immutable snapshot of a game: the board plus everything needed to generate legal moves. */
 data class ChessPosition(
@@ -38,7 +51,9 @@ data class ChessPosition(
     val whiteCanCastleQueenSide: Boolean = true,
     val blackCanCastleKingSide: Boolean = true,
     val blackCanCastleQueenSide: Boolean = true,
-    val enPassantTarget: Square? = null
+    val enPassantTarget: Square? = null,
+    /** Half-moves since the last capture or pawn move, for the fifty-move rule. */
+    val halfmoveClock: Int = 0
 ) {
     fun pieceAt(square: Square): ChessPiece? = board[square.row][square.col]
 }

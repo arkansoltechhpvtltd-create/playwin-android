@@ -3,8 +3,8 @@ package com.example.playwin.core.domain.chess
 /**
  * Converts a [ChessPosition] to and from FEN (Forsyth-Edwards Notation), the
  * standard one-line text form of a chess position - used to store online
- * games in the room row. Move counters aren't tracked by [ChessPosition], so
- * they're written as "0 1" and ignored on read.
+ * games in the room row. The halfmove clock round-trips; the fullmove number
+ * isn't tracked by [ChessPosition], so it's written as 1 and ignored on read.
  */
 object ChessFen {
 
@@ -32,7 +32,7 @@ object ChessFen {
             if (position.blackCanCastleQueenSide) append('q')
         }.ifEmpty { "-" }
         val enPassant = position.enPassantTarget?.let { "${'a' + it.col}${it.row + 1}" } ?: "-"
-        return "$placement $side $castling $enPassant 0 1"
+        return "$placement $side $castling $enPassant ${position.halfmoveClock} 1"
     }
 
     /** Parses [fen], or returns null if it isn't a well-formed position. */
@@ -58,7 +58,8 @@ object ChessFen {
             whiteCanCastleQueenSide = 'Q' in castling,
             blackCanCastleKingSide = 'k' in castling,
             blackCanCastleQueenSide = 'q' in castling,
-            enPassantTarget = if (enPassant == "-") null else Square(enPassant[1].digitToInt() - 1, enPassant[0] - 'a')
+            enPassantTarget = if (enPassant == "-") null else Square(enPassant[1].digitToInt() - 1, enPassant[0] - 'a'),
+            halfmoveClock = fields.getOrNull(4)?.toIntOrNull()?.coerceAtLeast(0) ?: 0
         )
     }.getOrNull()
 
