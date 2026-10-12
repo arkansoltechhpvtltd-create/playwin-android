@@ -60,7 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.feature.game.GameScaffold
 import com.example.playwin.core.designsystem.component.PrimaryButton
@@ -388,11 +388,12 @@ fun LetterGrid(
     // A found word is struck through with a highlighter that sweeps from its
     // first letter to its last; words already found when the grid first
     // appears are simply shown highlighted.
-    val sweeps = remember { HashMap<String, Animatable<Float, *>>() }
+    val sweeps = HashMap<String, Animatable<Float, *>>()
     words.forEach { placed ->
         key(placed.word) {
             val found = placed.word in myWords || placed.word in theirWords
-            val sweep = sweeps.getOrPut(placed.word) { Animatable(if (found) 1f else 0f) }
+            val sweep = remember { Animatable(if (found) 1f else 0f) }
+            sweeps[placed.word] = sweep
             LaunchedEffect(found) {
                 if (found) sweep.animateTo(1f, tween(450, easing = FastOutSlowInEasing)) else sweep.snapTo(0f)
             }

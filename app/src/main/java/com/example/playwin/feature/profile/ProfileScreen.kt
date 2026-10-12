@@ -13,18 +13,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.HelpOutline
-import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.TrendingUp
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -52,7 +52,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTextField
@@ -199,7 +199,7 @@ fun ProfileScreen(
                         onCheckedChange = onNotificationsChange
                     )
                     SettingSwitchRow(
-                        icon = Icons.Filled.VolumeUp,
+                        icon = Icons.AutoMirrored.Filled.VolumeUp,
                         title = "Sound",
                         checked = uiState.soundEnabled,
                         onCheckedChange = onSoundChange
@@ -224,7 +224,7 @@ fun ProfileScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row {
-                                Icon(imageVector = Icons.Filled.TrendingUp, contentDescription = null)
+                                Icon(imageVector = Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null)
                                 Text(
                                     text = "Playtime today",
                                     style = MaterialTheme.typography.bodyLarge,
@@ -279,7 +279,7 @@ fun ProfileScreen(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     ListItem(
-                        leadingContent = { Icon(imageVector = Icons.Filled.HelpOutline, contentDescription = null) },
+                        leadingContent = { Icon(imageVector = Icons.AutoMirrored.Filled.HelpOutline, contentDescription = null) },
                         headlineContent = { Text("Help & grievance") },
                         trailingContent = { Icon(imageVector = Icons.Filled.ChevronRight, contentDescription = null) },
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -290,7 +290,7 @@ fun ProfileScreen(
             PrimaryButton(
                 text = "Log out",
                 onClick = onLogoutClick,
-                icon = Icons.Filled.Logout,
+                icon = Icons.AutoMirrored.Filled.Logout,
                 containerColor = MaterialTheme.colorScheme.error,
                 contentColor = MaterialTheme.colorScheme.onError,
                 modifier = Modifier
