@@ -65,6 +65,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -149,6 +154,9 @@ private fun EightBallComputerRoute(
     )
 }
 
+/** The banners keep the usual 16dp side margin; only the table runs wider. */
+private val BannerInset = Modifier.padding(horizontal = 8.dp)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EightBallScreen(
@@ -166,14 +174,14 @@ fun EightBallScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
+                .padding(horizontal = 8.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val foul = if (uiState.endedOnFoul) " on a foul" else ""
             val humanWon = uiState.winner == EIGHT_BALL_HUMAN
             when (uiState.winner) {
-                EIGHT_BALL_HUMAN -> StatusBanner(text = "You win$foul! Claiming your coupon…", trophy = true)
-                EIGHT_BALL_COMPUTER -> StatusBanner(text = "The computer wins$foul")
+                EIGHT_BALL_HUMAN -> StatusBanner(text = "You win$foul! Claiming your coupon…", trophy = true, modifier = BannerInset)
+                EIGHT_BALL_COMPUTER -> StatusBanner(text = "The computer wins$foul", modifier = BannerInset)
                 else -> TurnBanner(
                     text = when {
                         uiState.isComputerThinking -> "Computer is lining up a shot…"
@@ -184,11 +192,12 @@ fun EightBallScreen(
                         if (uiState.fouled) append(" (scratch on previous shot)")
                     },
                     secondsLeft = uiState.secondsLeft.takeIf { uiState.currentPlayer == EIGHT_BALL_HUMAN },
-                    isBusy = uiState.isBallsMoving || uiState.isResolving || uiState.isComputerThinking
+                    isBusy = uiState.isBallsMoving || uiState.isResolving || uiState.isComputerThinking,
+                    modifier = BannerInset
                 )
             }
 
-            BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
+            BoardSlot(modifier = Modifier.padding(top = 10.dp)) {
                 PoolTable(
                     balls = uiState.balls,
                     canAim = uiState.canAim,
@@ -202,7 +211,7 @@ fun EightBallScreen(
                 }
             }
 
-            GroupLegend(myGroup = uiState.playerGroups[EIGHT_BALL_HUMAN], modifier = Modifier.padding(top = 12.dp))
+            GroupLegend(myGroup = uiState.playerGroups[EIGHT_BALL_HUMAN], modifier = Modifier.padding(top = 10.dp))
 
             if (uiState.winner == EIGHT_BALL_COMPUTER) {
                 PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
@@ -483,12 +492,15 @@ fun PoolTable(
         if (scale <= 0f) {
             emptyMap()
         } else {
-            val style = TextStyle(
-                color = Color(0xFF14110C),
-                fontWeight = FontWeight.Bold,
-                fontSize = with(density) { (EightBallTable.BALL_RADIUS * scale * 0.62f).toSp() }
+            // Sized to fill the white number spot: one digit large, two a little narrower so they still fit.
+            fun style(size: Float) = TextStyle(
+                color = BallNumberInk,
+                fontWeight = FontWeight.Black,
+                letterSpacing = (-0.04).em,
+                fontSize = with(density) { (EightBallTable.BALL_RADIUS * scale * size).toSp() },
+                platformStyle = PlatformTextStyle(includeFontPadding = false)
             )
-            (1..15).associateWith { textMeasurer.measure(it.toString(), style) }
+            (1..15).associateWith { textMeasurer.measure(it.toString(), style(if (it < 10) 1.0f else 0.84f)) }
         }
     }
     val stripeClip = remember { Path() }
@@ -497,6 +509,9 @@ fun PoolTable(
 
     BoxWithConstraints(
         modifier = modifier
+            // Stood on end so the long table fills a portrait screen. Everything below,
+            // physics coordinates and touch included, still works in the landscape table.
+            .quarterTurn()
             .fillMaxWidth()
             .aspectRatio(TableArt.WIDTH / TableArt.HEIGHT.toFloat())
             .shadow(elevation = 12.dp, shape = frameShape)
@@ -565,7 +580,8 @@ fun PoolTable(
                         radius = ballRadius * (1f - 0.6f * t),
                         stripeClip = stripeClip,
                         label = null,
-                        alpha = 1f - t
+                        alpha = 1f - t,
+                        turn = BALL_TURN_BACK
                     )
                 }
 
@@ -582,7 +598,7 @@ fun PoolTable(
                             style = Stroke(width = ballRadius * 0.14f)
                         )
                     }
-                    drawBall(id = ball.id, center = center, radius = ballRadius, stripeClip = stripeClip, label = labels[ball.id])
+                    drawBall(id = ball.id, center = center, radius = ballRadius, stripeClip = stripeClip, label = labels[ball.id], turn = BALL_TURN_BACK)
                 }
 
                 val start = cueScreenPos
@@ -663,9 +679,12 @@ private fun DrawScope.drawTableMarkings() {
 
 /**
  * One ball as a lit sphere: a cast shadow, the colour (a band of it on a white
- * ball for stripes), a darkened edge, the number spot and a catch-light. Flat
- * colours only, as every ball is redrawn each physics frame; [stripeClip] is a
- * scratch path reused between balls for the same reason.
+ * ball for stripes), a darkened edge, then the number the standard way - a
+ * white spot in the middle with the number in bold dark ink filling it - and a
+ * catch-light kept clear of the spot. Flat colours only, as every ball is
+ * redrawn each physics frame; [stripeClip] is a scratch path reused between
+ * balls for the same reason. [turn] rotates the ball about its centre, so a
+ * ball on the turned table still reads upright, lit from the top-left.
  */
 private fun DrawScope.drawBall(
     id: Int,
@@ -673,8 +692,9 @@ private fun DrawScope.drawBall(
     radius: Float,
     stripeClip: Path,
     label: TextLayoutResult?,
-    alpha: Float = 1f
-) {
+    alpha: Float = 1f,
+    turn: Float = 0f
+) = rotate(degrees = turn, pivot = center) {
     val color = colorForBall(id).copy(alpha = alpha)
     drawCircle(Color.Black.copy(alpha = 0.35f * alpha), radius, center + Offset(radius * 0.18f, radius * 0.3f))
 
@@ -685,8 +705,8 @@ private fun DrawScope.drawBall(
         clipPath(stripeClip) {
             drawRect(
                 color = color,
-                topLeft = Offset(center.x - radius, center.y - radius * 0.5f),
-                size = Size(radius * 2f, radius)
+                topLeft = Offset(center.x - radius, center.y - radius * 0.62f),
+                size = Size(radius * 2f, radius * 1.24f)
             )
         }
     } else {
@@ -694,18 +714,53 @@ private fun DrawScope.drawBall(
     }
     // Limb darkening: the edge of a sphere turns away from the light.
     drawCircle(Color.Black.copy(alpha = 0.26f * alpha), radius * 0.91f, center, style = Stroke(width = radius * 0.18f))
+    drawCircle(Color.White.copy(alpha = 0.2f * alpha), radius * 0.36f, center - Offset(radius * 0.3f, radius * 0.36f))
 
     if (id != CUE_BALL_ID) {
-        drawCircle(BallIvory.copy(alpha = alpha), radius * 0.46f, center)
+        drawCircle(Color.White.copy(alpha = alpha), radius * NUMBER_SPOT, center)
+        drawCircle(Color.Black.copy(alpha = 0.18f * alpha), radius * NUMBER_SPOT, center, style = Stroke(width = radius * 0.05f))
         if (label != null) {
             drawText(
                 textLayoutResult = label,
-                topLeft = center - Offset(label.size.width / 2f, label.size.height / 2f)
+                topLeft = center - Offset(label.size.width / 2f, label.size.height / 2f),
+                alpha = alpha
             )
         }
     }
-    drawCircle(Color.White.copy(alpha = 0.24f * alpha), radius * 0.36f, center - Offset(radius * 0.3f, radius * 0.36f))
-    drawCircle(Color.White.copy(alpha = 0.8f * alpha), radius * 0.15f, center - Offset(radius * 0.4f, radius * 0.45f))
+    drawCircle(Color.White.copy(alpha = 0.85f * alpha), radius * 0.13f, center - Offset(radius * 0.55f, radius * 0.55f))
+}
+
+/** The white number spot, as a fraction of the ball's radius. */
+private const val NUMBER_SPOT = 0.62f
+
+/** Counters the table's quarter turn, so balls and their numbers stay upright on screen. */
+private const val BALL_TURN_BACK = 90f
+
+private val BallNumberInk = Color(0xFF111111)
+
+/**
+ * Lays its content out on its side - measured with width and height swapped -
+ * and turns it a quarter anticlockwise, so a landscape table stands upright
+ * with its left (head) end at the bottom. Touches are turned with it, so the
+ * content still works in its own landscape coordinates.
+ */
+private fun Modifier.quarterTurn(): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(
+        Constraints(
+            minWidth = constraints.minHeight,
+            maxWidth = constraints.maxHeight,
+            minHeight = constraints.minWidth,
+            maxHeight = constraints.maxWidth
+        )
+    )
+    layout(placeable.height, placeable.width) {
+        placeable.placeWithLayer(
+            x = (placeable.height - placeable.width) / 2,
+            y = (placeable.width - placeable.height) / 2
+        ) {
+            rotationZ = -BALL_TURN_BACK
+        }
+    }
 }
 
 @androidx.compose.ui.tooling.preview.Preview
