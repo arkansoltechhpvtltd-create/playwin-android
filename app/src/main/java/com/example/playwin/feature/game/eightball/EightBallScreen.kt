@@ -500,7 +500,7 @@ fun PoolTable(
                 fontSize = with(density) { (EightBallTable.BALL_RADIUS * scale * size).toSp() },
                 platformStyle = PlatformTextStyle(includeFontPadding = false)
             )
-            (1..15).associateWith { textMeasurer.measure(it.toString(), style(if (it < 10) 1.0f else 0.84f)) }
+            (1..15).associateWith { textMeasurer.measure(it.toString(), style(if (it < 10) 0.98f else 0.8f)) }
         }
     }
     val stripeClip = remember { Path() }
@@ -730,13 +730,13 @@ private fun DrawScope.drawBall(
     drawCircle(Color.White.copy(alpha = 0.85f * alpha), radius * 0.13f, center - Offset(radius * 0.55f, radius * 0.55f))
 }
 
-/** The white number spot, as a fraction of the ball's radius. */
-private const val NUMBER_SPOT = 0.62f
+/** The white number spot: 55% of the ball's diameter. */
+private const val NUMBER_SPOT = 0.55f
 
 /** Counters the table's quarter turn, so balls and their numbers stay upright on screen. */
 private const val BALL_TURN_BACK = 90f
 
-private val BallNumberInk = Color(0xFF111111)
+private val BallNumberInk = Color.Black
 
 /**
  * Lays its content out on its side - measured with width and height swapped -

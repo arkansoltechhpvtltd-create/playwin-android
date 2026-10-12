@@ -9,8 +9,16 @@ import kotlin.math.pow
 object EightBallTable {
     const val WIDTH = 1000f
     const val HEIGHT = 500f
-    const val BALL_RADIUS = 16f
-    const val POCKET_RADIUS = 36f
+    /** About 1/11 of the table's short side - large enough to read the numbers on a phone. */
+    const val BALL_RADIUS = 22f
+
+    /**
+     * A ball drops once its centre is this close to a corner. Kept in proportion to
+     * the ball, so a ball running down the cushion drops as far from the corner,
+     * relative to its size, as it always has.
+     */
+    const val POCKET_RADIUS = BALL_RADIUS * 2.25f
+
     const val CUE_START_X = WIDTH * 0.25f
     const val RACK_APEX_X = WIDTH * 0.72f
     const val CENTER_Y = HEIGHT / 2f
