@@ -11,10 +11,10 @@ const val CARROM_TURN_SECONDS = 20
 
 /**
  * How far the striker may be slid either side of its baseline's centre before
- * a shot, in board units. carrom_board.jpg paints each baseline's end circles
- * 290 units either side of the centre; this keeps a striker radius inside them.
+ * a shot, in board units: up to a striker radius inside the painted baseline's
+ * end circles.
  */
-const val STRIKER_SLIDE_HALF_SPAN = 269f
+const val STRIKER_SLIDE_HALF_SPAN = CarromBoard.BASELINE_HALF_LENGTH - CarromBoard.STRIKER_RADIUS
 
 /**
  * [coins] with the striker slid sideways along its baseline to [x], clamped to

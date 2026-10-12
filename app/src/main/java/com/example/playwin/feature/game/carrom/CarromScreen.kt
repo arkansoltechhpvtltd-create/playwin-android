@@ -1,7 +1,6 @@
 package com.example.playwin.feature.game.carrom
 
 import android.content.res.Resources
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -441,14 +440,13 @@ fun CarromBoardView(
                 )
             }
         }
-        // The play area sits exactly on the artwork's playing surface, inside its frame.
-        // The pockets are the artwork's: the physics sinks pieces at the surface's
-        // corners, just in front of the painted pockets.
-        val artPixel = maxWidth / CarromArt.SIZE
+        // The play area sits exactly on the artwork's playing surface, inside its rail.
+        // The pockets and baselines are the artwork's too: CarromBoard measures them
+        // off the same image, so nothing here draws them.
         Box(
             modifier = Modifier
-                .padding(start = artPixel * CarromArt.SURFACE_X, top = artPixel * CarromArt.SURFACE_Y)
-                .size(artPixel * CarromArt.SURFACE_SIZE)
+                .padding(start = maxWidth * CarromBoard.ART_SURFACE_START, top = maxWidth * CarromBoard.ART_SURFACE_START)
+                .size(maxWidth * CarromBoard.ART_SURFACE_SIZE)
                 .graphicsLayer { rotationZ = if (flipped) 180f else 0f }
                 .onSizeChanged { canvasSize = it }
                 // Keyed on canAim only: the striker moves while it's being slid, and
@@ -603,57 +601,16 @@ fun CarromBoardView(
     }
 }
 
-/**
- * Where things are in carrom_board.jpg (1024px square). [loadBoardImage] crops
- * it to the outside of the frame and paints out three stray pieces the artwork
- * shows on the surface. All in the image's pixels.
- */
-private object CarromArt {
-    // The crop: the board's frame, without the dark backdrop around it.
-    const val CROP_LEFT = 64
-    const val CROP_TOP = 64
-    const val CROP_SIZE = 896
-    const val SIZE = 896f
-
-    // The playing surface inside the frame - the physics board's walls - within the crop.
-    const val SURFACE_X = 99f - CROP_LEFT
-    const val SURFACE_Y = 100f - CROP_TOP
-    const val SURFACE_SIZE = 827.5f
-
-    /** Stray pieces painted on the surface: centre x, centre y, radius, and how far along the same grain rows to take wood from. */
-    val strays = listOf(
-        intArrayOf(409, 656, 17, 60),
-        intArrayOf(606, 652, 19, -70),
-        intArrayOf(427, 356, 18, 55)
-    )
-}
-
-/** The prepared board, built once per process by [loadBoardImage]. */
+/** The board artwork, decoded once per process by [loadBoardImage]. */
 @Volatile
 private var boardImageCache: ImageBitmap? = null
 
-/** carrom_board.jpg cropped to its frame, with the stray pieces painted out (see [CarromArt]). Keep this off the main thread. */
+/** carrom_board.png, which is the whole board, frame and pockets included. Keep this off the main thread. */
 private fun loadBoardImage(resources: Resources): ImageBitmap = boardImageCache ?: run {
-    val source = BitmapFactory.decodeResource(resources, R.drawable.carrom_board)
-    val board = Bitmap.createBitmap(CarromArt.CROP_SIZE, CarromArt.CROP_SIZE, Bitmap.Config.ARGB_8888)
-    val canvas = android.graphics.Canvas(board)
-    val left = -CarromArt.CROP_LEFT.toFloat()
-    val top = -CarromArt.CROP_TOP.toFloat()
-    canvas.drawBitmap(source, left, top, null)
-    val patch = android.graphics.Path()
-    CarromArt.strays.forEach { (x, y, radius, dx) ->
-        patch.reset()
-        patch.addCircle(x + left, y + top, radius.toFloat(), android.graphics.Path.Direction.CW)
-        canvas.save()
-        canvas.clipPath(patch)
-        canvas.drawBitmap(source, left - dx, top, null)
-        canvas.restore()
-    }
-    source.recycle()
-    board.asImageBitmap().also { boardImageCache = it }
+    BitmapFactory.decodeResource(resources, R.drawable.carrom_board).asImageBitmap().also { boardImageCache = it }
 }
 
-/** The prepared board; null for the frame or two before it's ready if it wasn't preloaded. */
+/** The board artwork; null for the frame or two before it's ready if it wasn't preloaded. */
 @Composable
 private fun rememberBoardImage(): ImageBitmap? {
     val resources = LocalContext.current.resources

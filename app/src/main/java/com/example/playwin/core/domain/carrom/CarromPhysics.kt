@@ -12,15 +12,40 @@ object CarromBoard {
     const val SIZE = 800f
     const val COIN_RADIUS = 15f
     const val STRIKER_RADIUS = 21f
-    const val POCKET_RADIUS = 32f
-    const val BASELINE_INSET = 90f
     private const val CENTER = SIZE / 2f
 
+    // Where things are painted on carrom_board.png (1080px square), as fractions
+    // (0..1) of the whole image. The board's walls are the inside of its gold rail;
+    // everything else is mapped through that into board units.
+    /** The playing surface inside the rail: its top-left corner (the art is square and centred) and its size. */
+    const val ART_SURFACE_START = 66.5f / 1080f
+    const val ART_SURFACE_SIZE = 947f / 1080f
+    private const val ART_POCKET_NEAR = 0.111f
+    private const val ART_POCKET_FAR = 0.889f
+    /** The black of a painted hole, inside its gold ring (the ring reaches 0.057). */
+    private const val ART_POCKET_RADIUS = 0.053f
+    /** The line through the bottom baseline's circles; the top one mirrors it. */
+    private const val ART_BASELINE = 868f / 1080f
+    /** The baseline's end circles, either side of the centre. */
+    private const val ART_BASELINE_HALF_LENGTH = 330f / 1080f
+
+    private fun fromArt(fraction: Float): Float = (fraction - ART_SURFACE_START) / ART_SURFACE_SIZE * SIZE
+
+    /** A piece sinks once its centre is over the painted hole's black. */
+    const val POCKET_RADIUS = ART_POCKET_RADIUS / ART_SURFACE_SIZE * SIZE
+
+    /** From each side's frame to the centre of its painted baseline. */
+    const val BASELINE_INSET = SIZE - (ART_BASELINE - ART_SURFACE_START) / ART_SURFACE_SIZE * SIZE
+
+    /** From the centre of a baseline to the centre of either of its end circles. */
+    const val BASELINE_HALF_LENGTH = ART_BASELINE_HALF_LENGTH / ART_SURFACE_SIZE * SIZE
+
+    /** Pocket centres, under the painted holes: top-left, top-right, bottom-left, bottom-right. */
     val corners: List<Vec2> = listOf(
-        Vec2(0f, 0f),
-        Vec2(SIZE, 0f),
-        Vec2(0f, SIZE),
-        Vec2(SIZE, SIZE)
+        Vec2(fromArt(ART_POCKET_NEAR), fromArt(ART_POCKET_NEAR)),
+        Vec2(fromArt(ART_POCKET_FAR), fromArt(ART_POCKET_NEAR)),
+        Vec2(fromArt(ART_POCKET_NEAR), fromArt(ART_POCKET_FAR)),
+        Vec2(fromArt(ART_POCKET_FAR), fromArt(ART_POCKET_FAR))
     )
 
     fun radiusOf(id: Int): Float = if (id == STRIKER_ID) STRIKER_RADIUS else COIN_RADIUS
