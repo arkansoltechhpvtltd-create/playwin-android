@@ -30,18 +30,25 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import javax.inject.Inject
 
-/** What online chess stores in `rooms.board_state`: the position as FEN. A fresh room's `{}` is the start position. */
+/**
+ * What online chess stores in `rooms.board_state`: the position as FEN, plus the
+ * [ChessEngine.repetitionKey] of every earlier position for threefold repetition.
+ * A fresh room's `{}` is the start position.
+ */
 @Serializable
-data class ChessRoomState(val fen: String? = null)
+data class ChessRoomState(val fen: String? = null, val history: List<String> = emptyList())
 
 private val json = Json { ignoreUnknownKeys = true }
 
-fun Room.chessPosition(): ChessPosition =
-    runCatching { json.decodeFromJsonElement<ChessRoomState>(state) }.getOrNull()
-        ?.fen?.let(ChessFen::fromFen)
-        ?: ChessEngine.initialPosition()
+private fun Room.chessRoomState(): ChessRoomState? = runCatching { json.decodeFromJsonElement<ChessRoomState>(state) }.getOrNull()
 
-fun ChessPosition.toRoomJson(): JsonElement = json.encodeToJsonElement(ChessRoomState(ChessFen.toFen(this)))
+fun Room.chessPosition(): ChessPosition = chessRoomState()?.fen?.let(ChessFen::fromFen) ?: ChessEngine.initialPosition()
+
+/** Repetition keys of every position before the current one, oldest first. */
+fun Room.chessHistory(): List<String> = chessRoomState()?.history.orEmpty()
+
+fun ChessPosition.toRoomJson(history: List<String> = emptyList()): JsonElement =
+    json.encodeToJsonElement(ChessRoomState(ChessFen.toFen(this), history))
 
 /** Online the host (player 1) plays White and moves first; the guest plays Black. */
 fun chessColorOf(playerNumber: Int): PieceColor = if (playerNumber == 1) PieceColor.WHITE else PieceColor.BLACK
@@ -91,7 +98,7 @@ class ChessOnlineViewModel @Inject constructor(
         val move = current.moves.firstOrNull { it.to == square }
         if (move != null) {
             _selection.value = ChessSelection()
-            play(position, move, me)
+            play(position, room.chessHistory(), move, me)
             return
         }
 
@@ -117,7 +124,7 @@ class ChessOnlineViewModel @Inject constructor(
         if (!state.isMyTurn || state.isResolving) return
         val position = room.chessPosition()
         val move = ChessEngine.legalMove(position, promotion.from, promotion.to, piece) ?: return
-        play(position, move, me)
+        play(position, room.chessHistory(), move, me)
     }
 
     /** Backs out of a promotion: nothing was played, and the pawn stays where it was. */
@@ -125,11 +132,12 @@ class ChessOnlineViewModel @Inject constructor(
         _selection.value = ChessSelection()
     }
 
-    private fun play(position: ChessPosition, move: ChessMove, me: Int) {
+    private fun play(position: ChessPosition, earlier: List<String>, move: ChessMove, me: Int) {
         controller.runMove {
             val after = ChessEngine.applyMove(position, move)
-            val encoded = after.toRoomJson()
-            when (gameEngineRepository.resolve(GameId.CHESS, GameSnapshot.Chess(after))) {
+            val history = earlier + ChessEngine.repetitionKey(position)
+            val encoded = after.toRoomJson(history)
+            when (gameEngineRepository.resolve(GameId.CHESS, GameSnapshot.Chess(after, history))) {
                 GameOutcome.WIN -> controller.submitMove(encoded, null, RoomStatus.FINISHED, winnerPlayer = me)
                 GameOutcome.DRAW -> controller.submitMove(encoded, null, RoomStatus.FINISHED)
                 GameOutcome.LOSE, GameOutcome.IN_PROGRESS -> controller.submitMove(encoded, nextTurnPlayer = 3 - me)

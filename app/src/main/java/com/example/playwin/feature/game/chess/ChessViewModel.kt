@@ -116,16 +116,24 @@ class ChessViewModel @Inject constructor(
     }
 
     private fun playMove(move: ChessMove) {
-        val position = _uiState.value.position
+        val state = _uiState.value
+        val position = state.position
         val mover = position.sideToMove
         val newPosition = ChessEngine.applyMove(position, move)
+        val history = state.earlierPositions + ChessEngine.repetitionKey(position)
 
         _uiState.update {
-            it.copy(position = newPosition, selectedSquare = null, pendingMoves = emptyList(), isResolving = true)
+            it.copy(
+                position = newPosition,
+                earlierPositions = history,
+                selectedSquare = null,
+                pendingMoves = emptyList(),
+                isResolving = true
+            )
         }
 
         viewModelScope.launch {
-            when (gameEngineRepository.resolve(GameId.CHESS, GameSnapshot.Chess(newPosition))) {
+            when (gameEngineRepository.resolve(GameId.CHESS, GameSnapshot.Chess(newPosition, history))) {
                 GameOutcome.WIN -> {
                     _uiState.update { it.copy(winner = if (mover == PieceColor.WHITE) 1 else 2, isResolving = false) }
                     if (mover == CHESS_HUMAN) {
@@ -136,7 +144,7 @@ class ChessViewModel @Inject constructor(
                 }
 
                 GameOutcome.DRAW -> _uiState.update {
-                    it.copy(isDraw = true, drawReason = ChessEngine.gameStatus(newPosition), isResolving = false)
+                    it.copy(isDraw = true, drawReason = ChessEngine.gameStatus(newPosition, history), isResolving = false)
                 }
 
                 GameOutcome.LOSE, GameOutcome.IN_PROGRESS -> {

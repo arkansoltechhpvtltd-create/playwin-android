@@ -35,11 +35,9 @@ object ChessBot {
     internal fun score(position: ChessPosition, move: ChessMove): Double {
         val me = position.sideToMove
         val after = ChessEngine.applyMove(position, move)
-        when (ChessEngine.gameStatus(after)) {
-            GameStatus.CHECKMATE -> return MATE
-            GameStatus.STALEMATE, GameStatus.INSUFFICIENT_MATERIAL, GameStatus.FIFTY_MOVE_RULE -> return -MATE / 2
-            GameStatus.IN_PROGRESS -> Unit
-        }
+        val status = ChessEngine.gameStatus(after)
+        if (status == GameStatus.CHECKMATE) return MATE
+        if (status.isDraw) return -MATE / 2
 
         var score = capturedValue(position, move).toDouble()
         if (move.promotion != null) score += value(move.promotion) - value(PieceType.PAWN)

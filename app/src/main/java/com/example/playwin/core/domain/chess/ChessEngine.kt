@@ -5,7 +5,8 @@ import kotlin.math.abs
 /**
  * A complete, pure-Kotlin chess rules engine: legal move generation for every
  * piece (including castling, en passant, and promotion to any of
- * [PROMOTION_PIECES]), check, checkmate, and stalemate detection. A pseudo-legal move is only included in
+ * [PROMOTION_PIECES]), check, checkmate, stalemate, and the draws (insufficient
+ * material, fifty moves, threefold repetition). A pseudo-legal move is only included in
  * [legalMoves] if playing it would not leave the mover's own king in check.
  *
  * This has no Android dependency and is exercised directly by unit tests -
@@ -79,14 +80,36 @@ object ChessEngine {
     fun legalMove(position: ChessPosition, from: Square, to: Square, promotion: PieceType? = null): ChessMove? =
         legalMovesFrom(position, from).firstOrNull { it.to == to && it.promotion == promotion }
 
-    fun gameStatus(position: ChessPosition): GameStatus {
+    /**
+     * Where the game stands at [position]. [earlierPositions] are the
+     * [repetitionKey]s of every position before it in this game, oldest
+     * first, for the threefold-repetition draw (applied automatically, as
+     * online play does, rather than waiting for a claim).
+     */
+    fun gameStatus(position: ChessPosition, earlierPositions: List<String> = emptyList()): GameStatus {
         // Mate (or stalemate) on the move that would otherwise draw still stands.
         if (legalMoves(position).isEmpty()) {
             return if (isInCheck(position, position.sideToMove)) GameStatus.CHECKMATE else GameStatus.STALEMATE
         }
         if (hasInsufficientMaterial(position)) return GameStatus.INSUFFICIENT_MATERIAL
+        if (earlierPositions.isNotEmpty()) {
+            val key = repetitionKey(position)
+            if (earlierPositions.count { it == key } + 1 >= 3) return GameStatus.THREEFOLD_REPETITION
+        }
         if (position.halfmoveClock >= FIFTY_MOVES) return GameStatus.FIFTY_MOVE_RULE
         return GameStatus.IN_PROGRESS
+    }
+
+    /**
+     * What makes two positions "the same" for repetition (FIDE 9.2): the
+     * pieces, the side to move, castling rights, and an en passant capture -
+     * which only counts if one is actually playable, not merely because a
+     * pawn just moved two squares.
+     */
+    fun repetitionKey(position: ChessPosition): String {
+        val enPassantMatters = position.enPassantTarget != null && legalMoves(position).any { it.isEnPassant }
+        val keyed = position.copy(enPassantTarget = position.enPassantTarget.takeIf { enPassantMatters }, halfmoveClock = 0)
+        return ChessFen.toFen(keyed).split(" ").take(4).joinToString(" ")
     }
 
     /**

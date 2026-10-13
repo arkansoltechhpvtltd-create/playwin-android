@@ -94,10 +94,14 @@ sealed interface GameSnapshot {
     /**
      * The full board position after a move, handed to
      * [com.example.playwin.core.domain.chess.ChessEngine.gameStatus] to
-     * authoritatively confirm checkmate/stalemate - never decided by the UI.
+     * authoritatively confirm checkmate/stalemate and the draws - never decided by the UI.
+     *
+     * @param earlierPositions [com.example.playwin.core.domain.chess.ChessEngine.repetitionKey]
+     * of every earlier position in the game, oldest first, for threefold repetition.
      */
     data class Chess(
-        val position: ChessPosition
+        val position: ChessPosition,
+        val earlierPositions: List<String> = emptyList()
     ) : GameSnapshot
 
     /**

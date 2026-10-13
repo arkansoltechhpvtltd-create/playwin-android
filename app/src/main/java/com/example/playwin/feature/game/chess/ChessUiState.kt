@@ -10,6 +10,8 @@ import com.example.playwin.core.domain.chess.Square
 
 data class ChessUiState(
     val position: ChessPosition = ChessEngine.initialPosition(),
+    /** [ChessEngine.repetitionKey] of every position before [position], oldest first. */
+    val earlierPositions: List<String> = emptyList(),
     val selectedSquare: Square? = null,
     val pendingMoves: List<ChessMove> = emptyList(),
     val winner: Int? = null,
@@ -54,5 +56,6 @@ fun promotionFor(position: ChessPosition, moves: List<ChessMove>, to: Square): P
 fun drawBannerText(reason: GameStatus?): String = when (reason) {
     GameStatus.INSUFFICIENT_MATERIAL -> "Draw - neither side can checkmate"
     GameStatus.FIFTY_MOVE_RULE -> "Draw - 50 moves without a capture or pawn move"
+    GameStatus.THREEFOLD_REPETITION -> "Draw - the same position three times"
     else -> "Stalemate - it's a draw!"
 }

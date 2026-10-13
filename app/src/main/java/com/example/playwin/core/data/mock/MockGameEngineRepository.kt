@@ -124,10 +124,11 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
     private fun resolveChess(snapshot: GameSnapshot.Chess): GameOutcome {
         // Checkmate and draws are re-derived here from the full rules engine,
         // never trusted from the client - the mover wins on checkmate.
-        return when (ChessEngine.gameStatus(snapshot.position)) {
-            GameStatus.CHECKMATE -> GameOutcome.WIN
-            GameStatus.STALEMATE, GameStatus.INSUFFICIENT_MATERIAL, GameStatus.FIFTY_MOVE_RULE -> GameOutcome.DRAW
-            GameStatus.IN_PROGRESS -> GameOutcome.IN_PROGRESS
+        val status = ChessEngine.gameStatus(snapshot.position, snapshot.earlierPositions)
+        return when {
+            status == GameStatus.CHECKMATE -> GameOutcome.WIN
+            status.isDraw -> GameOutcome.DRAW
+            else -> GameOutcome.IN_PROGRESS
         }
     }
 

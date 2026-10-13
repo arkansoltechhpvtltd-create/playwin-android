@@ -60,6 +60,70 @@ class ChessDrawTest {
         assertEquals(position, ChessFen.fromFen(ChessFen.toFen(position)))
     }
 
+    // --- Threefold repetition ---
+
+    private val knightsOut = listOf(
+        ChessMove(Square(0, 6), Square(2, 5)), // Ng1-f3
+        ChessMove(Square(7, 6), Square(5, 5)), // Ng8-f6
+        ChessMove(Square(2, 5), Square(0, 6)), // Nf3-g1
+        ChessMove(Square(5, 5), Square(7, 6))  // Nf6-g8
+    )
+
+    /** Plays [moves] from the start, returning the final position and the repetition keys of all earlier ones. */
+    private fun play(moves: List<ChessMove>): Pair<ChessPosition, List<String>> {
+        var position = ChessEngine.initialPosition()
+        val earlier = mutableListOf<String>()
+        for (move in moves) {
+            earlier += ChessEngine.repetitionKey(position)
+            position = ChessEngine.applyMove(position, move)
+        }
+        return position to earlier
+    }
+
+    @Test
+    fun `the same position a third time is a draw`() {
+        val (twice, twiceHistory) = play(knightsOut)
+        assertEquals("only the second time", GameStatus.IN_PROGRESS, ChessEngine.gameStatus(twice, twiceHistory))
+
+        val (thrice, thriceHistory) = play(knightsOut + knightsOut)
+        assertEquals(GameStatus.THREEFOLD_REPETITION, ChessEngine.gameStatus(thrice, thriceHistory))
+        assertTrue(GameStatus.THREEFOLD_REPETITION.isDraw)
+    }
+
+    @Test
+    fun `the same pieces with the other side to move is a different position`() {
+        val whiteToMove = fen("4k3/8/8/8/8/8/8/R3K3 w - - 0 1")
+        val blackToMove = fen("4k3/8/8/8/8/8/8/R3K3 b - - 0 1")
+        assertNotEquals(ChessEngine.repetitionKey(whiteToMove), ChessEngine.repetitionKey(blackToMove))
+        val history = List(2) { ChessEngine.repetitionKey(blackToMove) }
+        assertEquals(GameStatus.IN_PROGRESS, ChessEngine.gameStatus(whiteToMove, history))
+    }
+
+    @Test
+    fun `losing a castling right makes it a different position`() {
+        val rookOut = listOf(
+            ChessMove(Square(0, 6), Square(2, 5)), // Ng1-f3
+            ChessMove(Square(7, 6), Square(5, 5)), // Ng8-f6
+            ChessMove(Square(0, 7), Square(0, 6)), // Rh1-g1: White loses kingside castling
+            ChessMove(Square(5, 5), Square(7, 6)), // Nf6-g8
+            ChessMove(Square(0, 6), Square(0, 7)), // Rg1-h1
+            ChessMove(Square(7, 6), Square(5, 5))  // Ng8-f6
+        )
+        // Same pieces as after move 2, but White can no longer castle kingside: not a repeat of it.
+        val (position, history) = play(rookOut + rookOut.drop(2).take(4))
+        assertNotEquals(GameStatus.THREEFOLD_REPETITION, ChessEngine.gameStatus(position, history))
+    }
+
+    @Test
+    fun `an en passant square only counts when the capture is really possible`() {
+        val afterE4 = ChessEngine.applyMove(ChessEngine.initialPosition(), ChessMove(Square(1, 4), Square(3, 4)))
+        // No black pawn can take on e3, so the position is the same as without the en passant square.
+        assertEquals(ChessEngine.repetitionKey(afterE4.copy(enPassantTarget = null)), ChessEngine.repetitionKey(afterE4))
+
+        val canCapture = fen("4k3/8/8/8/3pP3/8/8/4K3 b - e3 0 1")
+        assertNotEquals(ChessEngine.repetitionKey(canCapture.copy(enPassantTarget = null)), ChessEngine.repetitionKey(canCapture))
+    }
+
     @Test
     fun `computer against computer always reaches an end`() {
         repeat(4) { seed ->

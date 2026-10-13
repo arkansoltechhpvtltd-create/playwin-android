@@ -38,9 +38,12 @@ enum class GameStatus {
     INSUFFICIENT_MATERIAL,
 
     /** 50 moves each with no capture or pawn move. */
-    FIFTY_MOVE_RULE;
+    FIFTY_MOVE_RULE,
 
-    val isDraw: Boolean get() = this == STALEMATE || this == INSUFFICIENT_MATERIAL || this == FIFTY_MOVE_RULE
+    /** The same position, with the same side to move and the same rights, has now occurred three times. */
+    THREEFOLD_REPETITION;
+
+    val isDraw: Boolean get() = this != IN_PROGRESS && this != CHECKMATE
 }
 
 /** An immutable snapshot of a game: the board plus everything needed to generate legal moves. */
