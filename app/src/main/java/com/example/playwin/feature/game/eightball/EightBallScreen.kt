@@ -189,7 +189,10 @@ fun EightBallScreen(
                         else -> "Computer's shot"
                     } + buildString {
                         if (uiState.lastTurnTimedOut) append(" (previous turn timed out)")
-                        uiState.lastFoul?.let { append(" (foul on previous shot: ${it.label})") }
+                        uiState.lastFoul?.let {
+                            append(if (uiState.lastFoulBy == EIGHT_BALL_HUMAN) " (your foul: " else " (computer's foul: ")
+                            append("${it.label})")
+                        }
                     },
                     secondsLeft = uiState.secondsLeft.takeIf { uiState.currentPlayer == EIGHT_BALL_HUMAN },
                     isBusy = uiState.isBallsMoving || uiState.isResolving || uiState.isComputerThinking,

@@ -24,6 +24,8 @@ data class EightBallUiState(
     val endedOnFoul: Boolean = false,
     /** The previous shot's foul, if it was one, for the turn banner. */
     val lastFoul: EightBallFoul? = null,
+    /** Who committed [lastFoul]. */
+    val lastFoulBy: Int? = null,
     val lastTurnTimedOut: Boolean = false,
     val wonCouponId: String? = null
 ) {

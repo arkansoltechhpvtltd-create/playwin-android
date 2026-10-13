@@ -101,7 +101,6 @@ class EightBallViewModel @Inject constructor(
             it.copy(
                 balls = EightBallRules.launch(state.match.balls, direction, power),
                 isBallsMoving = true,
-                lastFoul = null,
                 lastTurnTimedOut = false
             )
         }
@@ -130,7 +129,10 @@ class EightBallViewModel @Inject constructor(
                     balls = outcome.after.balls,
                     winner = winner,
                     endedOnFoul = result == GameOutcome.LOSE,
+                    // Replaced only once this shot has played out, so a foul stays on screen
+                    // through the next player's whole shot, not just its aiming.
                     lastFoul = outcome.foul,
+                    lastFoulBy = outcome.shooter.takeIf { outcome.fouled },
                     isResolving = false
                 )
             }
@@ -176,7 +178,14 @@ class EightBallViewModel @Inject constructor(
             // Timed out: the human's turn passes to the computer without a shot.
             _uiState.update {
                 val passed = EightBallRules.passTurn(it.match)
-                it.copy(match = passed, balls = passed.balls, secondsLeft = EIGHT_BALL_TURN_SECONDS, lastTurnTimedOut = true)
+                it.copy(
+                    match = passed,
+                    balls = passed.balls,
+                    secondsLeft = EIGHT_BALL_TURN_SECONDS,
+                    lastTurnTimedOut = true,
+                    lastFoul = null,
+                    lastFoulBy = null
+                )
             }
             startTurn()
         }
