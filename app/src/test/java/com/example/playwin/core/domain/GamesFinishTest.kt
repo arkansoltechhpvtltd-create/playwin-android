@@ -53,8 +53,8 @@ class GamesFinishTest {
         while (true) {
             val shot = EightBallBot.chooseShot(match, random)
             val result = EightBallPhysics.simulate(EightBallRules.launch(match.balls, shot.direction, shot.power))
-            val outcome = EightBallRules.resolveShot(match, result.balls, result.newlyPocketed)
-            if (outcome.eightBallPocketed) break
+            val outcome = EightBallRules.resolveShot(match, result.balls, result.newlyPocketed, result.events)
+            if (outcome.eightBallPocketed && !outcome.wasBreak) break
             match = outcome.after
             shots++
             assertTrue("8-ball still on the table after $shots shots", shots < 400)

@@ -8,22 +8,77 @@ import org.junit.Test
 
 class EightBallRulesTest {
 
+    private val groups = mapOf(1 to BallGroup.SOLIDS, 2 to BallGroup.STRIPES)
+
     private fun pocket(match: EightBallMatch, vararg ids: Int): List<Ball> =
         match.balls.map { if (it.id in ids) it.copy(pocketed = true) else it }
 
+    /** A clean shot: the cue ball hits [first], then something reaches a cushion. */
+    private fun cleanHit(first: Int): List<TableEvent> =
+        listOf(TableEvent.Contact(CUE_BALL_ID, first), TableEvent.Cushion(first))
+
+    private fun afterBreak(groups: Map<Int, BallGroup> = emptyMap()) = EightBallMatch(playerGroups = groups, isBreak = false)
+
+    private fun shot(match: EightBallMatch, events: List<TableEvent>, vararg potted: Int) =
+        EightBallRules.resolveShot(match, pocket(match, *potted), potted.toList(), events)
+
+    // --- The break ---
+
     @Test
-    fun `the first group ball potted assigns groups and keeps the turn`() {
-        val match = EightBallMatch()
-        val outcome = EightBallRules.resolveShot(match, pocket(match, 11), listOf(11))
+    fun `the table stays open after the break, and a pot on it keeps the table`() {
+        val outcome = shot(EightBallMatch(), cleanHit(1), 11)
+        assertTrue(outcome.after.playerGroups.isEmpty())
+        assertEquals(1, outcome.after.currentPlayer)
+        assertFalse(outcome.after.isBreak)
+        assertNull(outcome.foul)
+    }
+
+    @Test
+    fun `an empty break passes the turn without a foul`() {
+        val outcome = shot(EightBallMatch(), cleanHit(1))
+        assertEquals(2, outcome.after.currentPlayer)
+        assertNull(outcome.foul)
+    }
+
+    @Test
+    fun `an 8 potted on the break is re-spotted, not a loss`() {
+        val outcome = shot(EightBallMatch(), cleanHit(1), EIGHT_BALL_ID)
+        assertTrue(outcome.wasBreak)
+        assertNull(EightBallRules.predictedWinner(outcome))
+        assertFalse(outcome.after.balls.first { it.id == EIGHT_BALL_ID }.pocketed)
+    }
+
+    @Test
+    fun `scratching on the break is a foul`() {
+        val outcome = shot(EightBallMatch(), cleanHit(1), CUE_BALL_ID, 3)
+        assertEquals(EightBallFoul.SCRATCH, outcome.foul)
+        assertEquals(2, outcome.after.currentPlayer)
+    }
+
+    // --- Open table and groups ---
+
+    @Test
+    fun `the first legal pot after the break assigns groups and keeps the turn`() {
+        val outcome = shot(afterBreak(), cleanHit(11), 11)
         assertEquals(mapOf(1 to BallGroup.STRIPES, 2 to BallGroup.SOLIDS), outcome.after.playerGroups)
         assertEquals(1, outcome.after.currentPlayer)
     }
 
     @Test
+    fun `hitting the 8 first on an open table is a foul and assigns nothing`() {
+        val outcome = shot(afterBreak(), cleanHit(EIGHT_BALL_ID), 11)
+        assertEquals(EightBallFoul.WRONG_BALL_FIRST, outcome.foul)
+        assertTrue(outcome.after.playerGroups.isEmpty())
+        assertEquals(2, outcome.after.currentPlayer)
+    }
+
+    // --- Fouls ---
+
+    @Test
     fun `a scratch re-spots the cue ball and passes the turn`() {
-        val match = EightBallMatch(playerGroups = mapOf(1 to BallGroup.SOLIDS, 2 to BallGroup.STRIPES))
-        val outcome = EightBallRules.resolveShot(match, pocket(match, CUE_BALL_ID, 3), listOf(CUE_BALL_ID, 3))
+        val outcome = shot(afterBreak(groups), cleanHit(3), CUE_BALL_ID, 3)
         assertTrue(outcome.scratched)
+        assertEquals(EightBallFoul.SCRATCH, outcome.foul)
         assertEquals(2, outcome.after.currentPlayer)
         val cue = outcome.after.balls.first { it.id == CUE_BALL_ID }
         assertFalse(cue.pocketed)
@@ -31,27 +86,109 @@ class EightBallRulesTest {
     }
 
     @Test
-    fun `potting only the opponent's ball passes the turn`() {
-        val match = EightBallMatch(playerGroups = mapOf(1 to BallGroup.SOLIDS, 2 to BallGroup.STRIPES))
-        assertEquals(2, EightBallRules.resolveShot(match, pocket(match, 12), listOf(12)).after.currentPlayer)
+    fun `missing every ball is a foul`() {
+        val outcome = shot(afterBreak(groups), listOf(TableEvent.Cushion(CUE_BALL_ID)))
+        assertEquals(EightBallFoul.NO_CONTACT, outcome.foul)
+        assertEquals(2, outcome.after.currentPlayer)
     }
 
     @Test
-    fun `the 8 wins only after clearing your group, and never with a scratch`() {
-        val groups = mapOf(1 to BallGroup.SOLIDS, 2 to BallGroup.STRIPES)
-        val solids = (1..7).toList().toIntArray()
+    fun `hitting the opponent's ball first is a foul, even if your own then drops`() {
+        val outcome = shot(afterBreak(groups), cleanHit(12), 3)
+        assertEquals(EightBallFoul.WRONG_BALL_FIRST, outcome.foul)
+        assertEquals("a foul loses the table", 2, outcome.after.currentPlayer)
+    }
 
-        val cleared = EightBallMatch(balls = pocket(EightBallMatch(), *solids), playerGroups = groups)
-        val legal = EightBallRules.resolveShot(cleared, pocket(cleared, EIGHT_BALL_ID), listOf(EIGHT_BALL_ID))
-        assertEquals(1, EightBallRules.predictedWinner(legal))
+    @Test
+    fun `nothing potted and no cushion after contact is a foul`() {
+        val outcome = shot(afterBreak(groups), listOf(TableEvent.Contact(CUE_BALL_ID, 3)))
+        assertEquals(EightBallFoul.NO_RAIL, outcome.foul)
+    }
 
-        val scratch = EightBallRules.resolveShot(cleared, pocket(cleared, EIGHT_BALL_ID, CUE_BALL_ID), listOf(EIGHT_BALL_ID, CUE_BALL_ID))
-        assertEquals(2, EightBallRules.predictedWinner(scratch))
+    @Test
+    fun `a cushion before contact doesn't count`() {
+        val events = listOf(TableEvent.Cushion(CUE_BALL_ID), TableEvent.Contact(CUE_BALL_ID, 3))
+        assertEquals(EightBallFoul.NO_RAIL, shot(afterBreak(groups), events).foul)
+    }
 
-        val early = EightBallMatch(playerGroups = groups)
-        val tooSoon = EightBallRules.resolveShot(early, pocket(early, EIGHT_BALL_ID), listOf(EIGHT_BALL_ID))
+    @Test
+    fun `a pot satisfies the cushion rule`() {
+        val outcome = shot(afterBreak(groups), listOf(TableEvent.Contact(CUE_BALL_ID, 3)), 3)
+        assertNull(outcome.foul)
+        assertEquals(1, outcome.after.currentPlayer)
+    }
+
+    @Test
+    fun `a clean miss with a cushion is legal and just passes the turn`() {
+        val outcome = shot(afterBreak(groups), cleanHit(3))
+        assertNull(outcome.foul)
+        assertEquals(2, outcome.after.currentPlayer)
+    }
+
+    @Test
+    fun `potting only the opponent's ball passes the turn`() {
+        assertEquals(2, shot(afterBreak(groups), cleanHit(3), 12).after.currentPlayer)
+    }
+
+    // --- The 8 ---
+
+    private val solids = (1..7).toList().toIntArray()
+
+    @Test
+    fun `the 8 wins after clearing your group on a clean shot`() {
+        val cleared = afterBreak(groups).let { it.copy(balls = pocket(it, *solids)) }
+        assertEquals(1, EightBallRules.predictedWinner(shot(cleared, cleanHit(EIGHT_BALL_ID), EIGHT_BALL_ID)))
+    }
+
+    @Test
+    fun `the 8 loses with a scratch`() {
+        val cleared = afterBreak(groups).let { it.copy(balls = pocket(it, *solids)) }
+        assertEquals(2, EightBallRules.predictedWinner(shot(cleared, cleanHit(EIGHT_BALL_ID), EIGHT_BALL_ID, CUE_BALL_ID)))
+    }
+
+    @Test
+    fun `the 8 loses on any other foul too`() {
+        val cleared = afterBreak(groups).let { it.copy(balls = pocket(it, *solids)) }
+        // Cue ball strikes a stripe first, which then knocks the 8 in.
+        val outcome = shot(cleared, cleanHit(12), EIGHT_BALL_ID)
+        assertEquals(EightBallFoul.WRONG_BALL_FIRST, outcome.foul)
+        assertEquals(2, EightBallRules.predictedWinner(outcome))
+    }
+
+    @Test
+    fun `the 8 loses if potted before your group is cleared`() {
+        val tooSoon = shot(afterBreak(groups), cleanHit(3), EIGHT_BALL_ID)
         assertEquals(2, EightBallRules.predictedWinner(tooSoon))
+    }
 
-        assertNull(EightBallRules.predictedWinner(EightBallRules.resolveShot(early, early.balls, emptyList())))
+    @Test
+    fun `the 8 loses if potted on the same shot as your last group ball`() {
+        val oneLeft = afterBreak(groups).let { it.copy(balls = pocket(it, *solids.dropLast(1).toIntArray())) }
+        val outcome = shot(oneLeft, cleanHit(7), 7, EIGHT_BALL_ID)
+        assertFalse(outcome.shooterClearedGroup)
+        assertEquals(2, EightBallRules.predictedWinner(outcome))
+    }
+
+    @Test
+    fun `once your group is cleared you must hit the 8 first`() {
+        val cleared = afterBreak(groups).let { it.copy(balls = pocket(it, *solids)) }
+        assertEquals(EightBallFoul.WRONG_BALL_FIRST, shot(cleared, cleanHit(12)).foul)
+        assertNull(shot(cleared, cleanHit(EIGHT_BALL_ID)).foul)
+    }
+
+    @Test
+    fun `no 8 potted, no result`() {
+        assertNull(EightBallRules.predictedWinner(shot(afterBreak(groups), cleanHit(3))))
+    }
+
+    // --- The physics reports what the rules need ---
+
+    @Test
+    fun `the simulation reports the cue ball's first contact and the cushions after it`() {
+        val match = EightBallMatch()
+        val result = EightBallPhysics.simulate(EightBallRules.launch(match.balls, Vec2(1f, 0f), 1f))
+        val first = result.events.filterIsInstance<TableEvent.Contact>().first { CUE_BALL_ID in setOf(it.a, it.b) }
+        assertEquals("straight into the apex ball", 1, if (first.a == CUE_BALL_ID) first.b else first.a)
+        assertTrue(result.events.any { it is TableEvent.Cushion })
     }
 }

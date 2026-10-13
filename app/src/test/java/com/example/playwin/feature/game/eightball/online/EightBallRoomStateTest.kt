@@ -27,11 +27,12 @@ class EightBallRoomStateTest {
             m.copy(
                 balls = m.balls.map { if (it.id == 4) it.copy(pocketed = true) else it },
                 currentPlayer = 2,
-                playerGroups = mapOf(1 to BallGroup.SOLIDS, 2 to BallGroup.STRIPES)
+                playerGroups = mapOf(1 to BallGroup.SOLIDS, 2 to BallGroup.STRIPES),
+                isBreak = false
             )
         }
         val shot = EightBallRoomShot(seq = 5, shooter = 1, dx = 1f, dy = 0f, power = 0.5f)
-        val decoded = room(EightBallRoomState.of(match, shot, scratched = false).toJson()).eightBallState()
+        val decoded = room(EightBallRoomState.of(match, shot, foul = null).toJson()).eightBallState()
         assertEquals(match, decoded.toMatch())
         assertEquals(shot, decoded.shot)
     }

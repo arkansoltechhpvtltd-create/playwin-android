@@ -57,8 +57,19 @@ object EightBallTable {
 data class PhysicsStepResult(
     val balls: List<Ball>,
     val newlyPocketed: List<Int>,
-    val anyMoving: Boolean
+    val anyMoving: Boolean,
+    /** What happened on the table, in order: which balls touched, and which hit a cushion. The rules read fouls from it. */
+    val events: List<TableEvent> = emptyList()
 )
+
+/** Something [EightBallPhysics] saw happen during a shot. */
+sealed interface TableEvent {
+    /** Balls [a] and [b] collided. */
+    data class Contact(val a: Int, val b: Int) : TableEvent
+
+    /** Ball [ballId] (the cue ball included) bounced off a cushion. */
+    data class Cushion(val ballId: Int) : TableEvent
+}
 
 /** Simple arcade physics: friction, wall bounces, elastic ball-ball collisions, corner pockets. */
 object EightBallPhysics {
@@ -81,15 +92,22 @@ object EightBallPhysics {
     fun simulate(balls: List<Ball>): PhysicsStepResult {
         var current = balls
         val pocketed = mutableListOf<Int>()
+        val events = mutableListOf<TableEvent>()
         var elapsed = 0f
         while (elapsed < MAX_SIMULATED_SECONDS) {
             val result = step(current, SIMULATION_FRAME)
             current = result.balls
             pocketed += result.newlyPocketed
+            events += result.events
             elapsed += SIMULATION_FRAME
-            if (!result.anyMoving) return PhysicsStepResult(current, pocketed, anyMoving = false)
+            if (!result.anyMoving) return PhysicsStepResult(current, pocketed, anyMoving = false, events = events)
         }
-        return PhysicsStepResult(current.map { if (it.pocketed) it else it.copy(velocity = Vec2.Zero) }, pocketed, anyMoving = false)
+        return PhysicsStepResult(
+            current.map { if (it.pocketed) it else it.copy(velocity = Vec2.Zero) },
+            pocketed,
+            anyMoving = false,
+            events = events
+        )
     }
 
     fun step(balls: List<Ball>, dtSeconds: Float): PhysicsStepResult {
@@ -99,18 +117,24 @@ object EightBallPhysics {
 
         var current = balls
         val newlyPocketed = mutableListOf<Int>()
+        val events = mutableListOf<TableEvent>()
         repeat(subSteps) {
-            current = substep(current, subDt, newlyPocketed)
+            current = substep(current, subDt, newlyPocketed, events)
         }
 
         val anyMoving = current.any { !it.pocketed && it.velocity.length > MIN_SPEED }
         if (!anyMoving) {
             current = current.map { if (it.pocketed) it else it.copy(velocity = Vec2.Zero) }
         }
-        return PhysicsStepResult(current, newlyPocketed, anyMoving)
+        return PhysicsStepResult(current, newlyPocketed, anyMoving, events)
     }
 
-    private fun substep(balls: List<Ball>, dt: Float, newlyPocketed: MutableList<Int>): List<Ball> {
+    private fun substep(
+        balls: List<Ball>,
+        dt: Float,
+        newlyPocketed: MutableList<Int>,
+        events: MutableList<TableEvent>
+    ): List<Ball> {
         val decay = (1.0 - FRICTION_PER_SECOND).toDouble().pow(dt.toDouble()).toFloat()
 
         val moved = balls.map { ball ->
@@ -139,29 +163,35 @@ object EightBallPhysics {
             var y = ball.position.y
             var vx = ball.velocity.x
             var vy = ball.velocity.y
+            var bounced = false
             if (x - r < 0f) {
                 x = r
                 vx = -vx * WALL_RESTITUTION
+                bounced = true
             }
             if (x + r > EightBallTable.WIDTH) {
                 x = EightBallTable.WIDTH - r
                 vx = -vx * WALL_RESTITUTION
+                bounced = true
             }
             if (y - r < 0f) {
                 y = r
                 vy = -vy * WALL_RESTITUTION
+                bounced = true
             }
             if (y + r > EightBallTable.HEIGHT) {
                 y = EightBallTable.HEIGHT - r
                 vy = -vy * WALL_RESTITUTION
+                bounced = true
             }
+            if (bounced) events += TableEvent.Cushion(ball.id)
             ball.copy(position = Vec2(x, y), velocity = Vec2(vx, vy))
         }
 
-        return resolveBallCollisions(afterWalls)
+        return resolveBallCollisions(afterWalls, events)
     }
 
-    private fun resolveBallCollisions(balls: List<Ball>): List<Ball> {
+    private fun resolveBallCollisions(balls: List<Ball>, events: MutableList<TableEvent>): List<Ball> {
         val result = balls.toMutableList()
         val minDist = EightBallTable.BALL_RADIUS * 2f
 
@@ -190,6 +220,7 @@ object EightBallPhysics {
                     continue
                 }
 
+                events += TableEvent.Contact(a.id, b.id)
                 val v1t = a.velocity - normal * v1n
                 val v2t = b.velocity - normal * v2n
                 val newV1n = v1n + (v2n - v1n) * BALL_RESTITUTION

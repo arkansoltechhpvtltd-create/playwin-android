@@ -79,10 +79,12 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
 
     private fun resolveEightBall(snapshot: GameSnapshot.EightBall): GameOutcome {
         if (!snapshot.eightBallPocketed) return GameOutcome.IN_PROGRESS
+        // An 8 on the break is re-spotted, not a loss.
+        if (snapshot.isBreakShot) return GameOutcome.IN_PROGRESS
         // Sinking the 8-ball only wins the round if the shooter had already
-        // cleared their group and didn't scratch on this shot - otherwise it's
-        // a game-losing foul, exactly like a server-authoritative engine would rule.
-        return if (snapshot.shooterClearedGroup && !snapshot.scratched) {
+        // cleared their group and the shot was clean - otherwise it's a
+        // game-losing foul, exactly like a server-authoritative engine would rule.
+        return if (snapshot.shooterClearedGroup && !snapshot.scratched && !snapshot.fouled) {
             GameOutcome.WIN
         } else {
             GameOutcome.LOSE

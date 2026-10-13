@@ -40,14 +40,18 @@ sealed interface GameSnapshot {
      * A completed 8-ball shot, from the shooter's point of view.
      *
      * @param shooterClearedGroup true if the shooter's assigned ball group
-     * (solids/stripes) was fully pocketed at or before this shot.
+     * (solids/stripes) was fully pocketed before this shot.
      * @param eightBallPocketed true if the 8-ball went into a pocket on this shot.
      * @param scratched true if the cue ball was also pocketed on this shot.
+     * @param fouled true if the shot was a foul of any kind (a scratch included).
+     * @param isBreakShot true for the opening break, where a potted 8 is re-spotted.
      */
     data class EightBall(
         val shooterClearedGroup: Boolean,
         val eightBallPocketed: Boolean,
-        val scratched: Boolean
+        val scratched: Boolean,
+        val fouled: Boolean = scratched,
+        val isBreakShot: Boolean = false
     ) : GameSnapshot
 
     /**

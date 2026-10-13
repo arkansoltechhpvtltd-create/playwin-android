@@ -25,7 +25,7 @@ class EightBallBotTest {
             }
         }
         val groups = myGroup?.let { mapOf(1 to it, 2 to it.other()) } ?: emptyMap()
-        return EightBallMatch(balls = balls, currentPlayer = 1, playerGroups = groups)
+        return EightBallMatch(balls = balls, currentPlayer = 1, playerGroups = groups, isBreak = false)
     }
 
     private fun play(match: EightBallMatch, shot: EightBallBot.Shot) =

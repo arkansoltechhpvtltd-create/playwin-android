@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.playwin.core.domain.eightball.Ball
 import com.example.playwin.core.domain.eightball.BallGroup
+import com.example.playwin.core.domain.eightball.EightBallFoul
 import com.example.playwin.core.domain.eightball.EightBallMatch
 import com.example.playwin.core.domain.eightball.EightBallPhysics
 import com.example.playwin.core.domain.eightball.EightBallRules
+import com.example.playwin.core.domain.eightball.TableEvent
 import com.example.playwin.core.domain.eightball.Vec2
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
@@ -52,21 +54,26 @@ data class EightBallRoomState(
     /** Player number ("1"/"2") to their group, once assigned. */
     val groups: Map<String, String> = emptyMap(),
     val shot: EightBallRoomShot? = null,
-    val scratched: Boolean = false
+    val scratched: Boolean = false,
+    /** The previous shot's [EightBallFoul], by name, if it was one. */
+    val foul: String? = null
 ) {
     fun toMatch(): EightBallMatch = EightBallMatch(
         balls = balls?.map { Ball(it.id, Vec2(it.x, it.y), pocketed = it.p) } ?: EightBallMatch().balls,
         currentPlayer = currentPlayer,
-        playerGroups = groups.mapNotNull { (k, v) -> k.toIntOrNull()?.let { it to BallGroup.valueOf(v) } }.toMap()
+        playerGroups = groups.mapNotNull { (k, v) -> k.toIntOrNull()?.let { it to BallGroup.valueOf(v) } }.toMap(),
+        // No shot stored yet means nobody has broken.
+        isBreak = shot == null
     )
 
     companion object {
-        fun of(match: EightBallMatch, shot: EightBallRoomShot?, scratched: Boolean) = EightBallRoomState(
+        fun of(match: EightBallMatch, shot: EightBallRoomShot?, foul: EightBallFoul?) = EightBallRoomState(
             balls = match.balls.map { EightBallRoomBall(it.id, it.position.x, it.position.y, it.pocketed) },
             currentPlayer = match.currentPlayer,
             groups = match.playerGroups.map { (k, v) -> k.toString() to v.name }.toMap(),
             shot = shot,
-            scratched = scratched
+            scratched = foul == EightBallFoul.SCRATCH,
+            foul = foul?.name
         )
     }
 }
@@ -111,6 +118,7 @@ class EightBallOnlineViewModel @Inject constructor(
     private var replayTarget: List<Ball>? = null
     private var pendingShot: EightBallRoomShot? = null
     private val pocketedThisShot = mutableListOf<Int>()
+    private val eventsThisShot = mutableListOf<TableEvent>()
     private var lastSeenState: EightBallRoomState? = null
     private var clockJob: Job? = null
 
@@ -130,6 +138,7 @@ class EightBallOnlineViewModel @Inject constructor(
         if (!state.isMyTurn || state.isResolving || animation != Animation.NONE) return
         clockJob?.cancel()
         pocketedThisShot.clear()
+        eventsThisShot.clear()
         animation = Animation.MY_SHOT
         _isAnimating.value = true
         val stored = room.eightBallState()
@@ -142,7 +151,10 @@ class EightBallOnlineViewModel @Inject constructor(
         if (animation == Animation.NONE) return
         val result = EightBallPhysics.step(_displayBalls.value, dtSeconds)
         _displayBalls.value = result.balls
-        if (animation == Animation.MY_SHOT) pocketedThisShot += result.newlyPocketed
+        if (animation == Animation.MY_SHOT) {
+            pocketedThisShot += result.newlyPocketed
+            eventsThisShot += result.events
+        }
         if (result.anyMoving) return
 
         when (animation) {
@@ -159,16 +171,18 @@ class EightBallOnlineViewModel @Inject constructor(
         val room = uiState.value.room ?: return
         val me = uiState.value.myPlayerNumber ?: return
         val shot = pendingShot ?: return
-        val outcome = EightBallRules.resolveShot(room.eightBallState().toMatch(), finalBalls, pocketedThisShot.toList())
+        val outcome = EightBallRules.resolveShot(room.eightBallState().toMatch(), finalBalls, pocketedThisShot.toList(), eventsThisShot.toList())
 
         controller.runMove {
-            val encoded = EightBallRoomState.of(outcome.after, shot, outcome.scratched).toJson()
+            val encoded = EightBallRoomState.of(outcome.after, shot, outcome.foul).toJson()
             val result = gameEngineRepository.resolve(
                 GameId.EIGHT_BALL,
                 GameSnapshot.EightBall(
                     shooterClearedGroup = outcome.shooterClearedGroup,
                     eightBallPocketed = outcome.eightBallPocketed,
-                    scratched = outcome.scratched
+                    scratched = outcome.scratched,
+                    fouled = outcome.fouled,
+                    isBreakShot = outcome.wasBreak
                 )
             )
             when (result) {
@@ -222,7 +236,7 @@ class EightBallOnlineViewModel @Inject constructor(
                 val passed = EightBallRules.passTurn(stored.toMatch())
                 controller.runMove {
                     controller.submitMove(
-                        EightBallRoomState.of(passed, stored.shot, scratched = false).toJson(),
+                        EightBallRoomState.of(passed, stored.shot, foul = null).toJson(),
                         nextTurnPlayer = passed.currentPlayer
                     )
                 }

@@ -7,6 +7,7 @@ import com.example.playwin.core.domain.eightball.EightBallBot
 import com.example.playwin.core.domain.eightball.EightBallPhysics
 import com.example.playwin.core.domain.eightball.EightBallRules
 import com.example.playwin.core.domain.eightball.EightBallShotOutcome
+import com.example.playwin.core.domain.eightball.TableEvent
 import com.example.playwin.core.domain.eightball.Vec2
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
@@ -50,8 +51,9 @@ class EightBallViewModel @Inject constructor(
     private var computerJob: Job? = null
 
     // Accumulated across every physics tick of the current shot, since a ball
-    // can be pocketed on any frame while the balls are rolling.
+    // can be pocketed, touch another or hit a cushion on any frame while the balls are rolling.
     private val pocketedThisShot = mutableListOf<Int>()
+    private val eventsThisShot = mutableListOf<TableEvent>()
 
     init {
         startTimer()
@@ -69,12 +71,14 @@ class EightBallViewModel @Inject constructor(
 
         val result = EightBallPhysics.step(state.balls, dtSeconds)
         pocketedThisShot += result.newlyPocketed
+        eventsThisShot += result.events
 
         if (result.anyMoving) {
             _uiState.update { it.copy(balls = result.balls) }
         } else {
             _uiState.update { it.copy(balls = result.balls, isBallsMoving = false, isResolving = true) }
-            resolveShot(EightBallRules.resolveShot(state.match, result.balls, pocketedThisShot.toList()))
+            val outcome = EightBallRules.resolveShot(state.match, result.balls, pocketedThisShot.toList(), eventsThisShot.toList())
+            resolveShot(outcome)
         }
     }
 
@@ -82,6 +86,7 @@ class EightBallViewModel @Inject constructor(
         timerJob?.cancel()
         computerJob?.cancel()
         pocketedThisShot.clear()
+        eventsThisShot.clear()
         _uiState.value = EightBallUiState()
         startTimer()
     }
@@ -91,11 +96,12 @@ class EightBallViewModel @Inject constructor(
         if (state.balls.none { it.id == CUE_BALL_ID && !it.pocketed }) return
         timerJob?.cancel()
         pocketedThisShot.clear()
+        eventsThisShot.clear()
         _uiState.update {
             it.copy(
                 balls = EightBallRules.launch(state.match.balls, direction, power),
                 isBallsMoving = true,
-                fouled = false,
+                lastFoul = null,
                 lastTurnTimedOut = false
             )
         }
@@ -108,7 +114,9 @@ class EightBallViewModel @Inject constructor(
                 GameSnapshot.EightBall(
                     shooterClearedGroup = outcome.shooterClearedGroup,
                     eightBallPocketed = outcome.eightBallPocketed,
-                    scratched = outcome.scratched
+                    scratched = outcome.scratched,
+                    fouled = outcome.fouled,
+                    isBreakShot = outcome.wasBreak
                 )
             )
             val winner = when (result) {
@@ -122,7 +130,7 @@ class EightBallViewModel @Inject constructor(
                     balls = outcome.after.balls,
                     winner = winner,
                     endedOnFoul = result == GameOutcome.LOSE,
-                    fouled = outcome.scratched,
+                    lastFoul = outcome.foul,
                     isResolving = false
                 )
             }

@@ -2,6 +2,7 @@ package com.example.playwin.feature.game.eightball
 
 import com.example.playwin.core.domain.eightball.Ball
 import com.example.playwin.core.domain.eightball.BallGroup
+import com.example.playwin.core.domain.eightball.EightBallFoul
 import com.example.playwin.core.domain.eightball.EightBallMatch
 
 const val EIGHT_BALL_TURN_SECONDS = 20
@@ -21,7 +22,8 @@ data class EightBallUiState(
     val winner: Int? = null,
     /** The game ended on a foul (the 8 sunk early, or with a scratch). */
     val endedOnFoul: Boolean = false,
-    val fouled: Boolean = false,
+    /** The previous shot's foul, if it was one, for the turn banner. */
+    val lastFoul: EightBallFoul? = null,
     val lastTurnTimedOut: Boolean = false,
     val wonCouponId: String? = null
 ) {

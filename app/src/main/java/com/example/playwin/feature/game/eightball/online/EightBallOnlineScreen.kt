@@ -9,6 +9,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.PhysicsFrameClock
+import com.example.playwin.core.domain.eightball.EightBallFoul
 import com.example.playwin.feature.game.eightball.GroupLegend
 import com.example.playwin.feature.game.eightball.PoolTable
 import com.example.playwin.feature.game.eightball.TurnBanner
@@ -45,7 +46,8 @@ fun EightBallOnlineRoute(
                     isAnimating -> "…"
                     state.isMyTurn -> "Your shot - drag back from the cue ball"
                     else -> "Opponent is aiming"
-                } + if (stored.scratched) " (scratch on previous shot)" else "",
+                } + (stored.foul?.let { name -> runCatching { EightBallFoul.valueOf(name) }.getOrNull() }
+                    ?.let { " (foul on previous shot: ${it.label})" } ?: ""),
                 secondsLeft = secondsLeft,
                 isBusy = isAnimating || state.isResolving,
                 modifier = Modifier.padding(top = 8.dp)
