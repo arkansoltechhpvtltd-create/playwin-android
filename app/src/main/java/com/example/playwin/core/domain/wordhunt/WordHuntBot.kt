@@ -4,25 +4,27 @@ import kotlin.random.Random
 
 /**
  * The "Play vs Computer" Word Hunt opponent. It really searches the letter
- * grid for the listed words (left-to-right and top-to-bottom, the two
- * directions words are placed in) rather than peeking at where they were
- * hidden, then goes for the longest word still unclaimed - it's worth the
- * most base points. Its speed is human-like, not instant: see [thinkSeconds].
+ * grid for the listed words, reading every way words are hidden (see
+ * [WORD_HUNT_DIRECTIONS]) rather than peeking at where they were hidden,
+ * then goes for the longest word still unclaimed - it's worth the most base
+ * points. Its speed is human-like, not instant: see [thinkSeconds].
  */
 object WordHuntBot {
 
-    /** Every occurrence of each of [words] in [grid], reading left-to-right or top-to-bottom. */
+    /** Every occurrence of each of [words] in [grid], read in any of the eight directions. */
     fun findWords(grid: List<List<Char>>, words: List<String>): List<PlacedWord> = buildList {
         val rows = grid.size
         val cols = grid.firstOrNull()?.size ?: 0
+        fun at(r: Int, c: Int): Char? = if (r in 0 until rows && c in 0 until cols) grid[r][c] else null
         for (word in words) {
+            if (word.length < 2) continue
+            val span = word.length - 1
             for (r in 0 until rows) {
                 for (c in 0 until cols) {
-                    if (c + word.length <= cols && word.indices.all { grid[r][c + it] == word[it] }) {
-                        add(PlacedWord(word, r, c, r, c + word.length - 1))
-                    }
-                    if (word.length > 1 && r + word.length <= rows && word.indices.all { grid[r + it][c] == word[it] }) {
-                        add(PlacedWord(word, r, c, r + word.length - 1, c))
+                    for ((dr, dc) in WORD_HUNT_DIRECTIONS) {
+                        if (word.indices.all { at(r + dr * it, c + dc * it) == word[it] }) {
+                            add(PlacedWord(word, r, c, r + dr * span, c + dc * span))
+                        }
                     }
                 }
             }

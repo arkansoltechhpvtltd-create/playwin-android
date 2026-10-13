@@ -34,6 +34,56 @@ class WordHuntBotTest {
     }
 
     @Test
+    fun `finds backwards and diagonal words too`() {
+        val twisted = listOf(
+            "SSEHCXX",
+            "LXXXXXX",
+            "XUXXXXD",
+            "XXDXXRX",
+            "XXXOAXX",
+            "XXXOXXX",
+            "XXBXXXX"
+        ).map { it.toList() }
+        val found = WordHuntBot.findWords(twisted, words).toSet()
+        assertEquals(
+            setOf(
+                PlacedWord("CHESS", 0, 4, 0, 0), // right to left
+                PlacedWord("LUDO", 1, 0, 4, 3), // down-right
+                PlacedWord("BOARD", 6, 2, 2, 6) // up-right
+            ),
+            found
+        )
+    }
+
+    @Test
+    fun `a word's cells follow its direction, whichever way it runs`() {
+        assertEquals(listOf(0 to 4, 0 to 3, 0 to 2, 0 to 1, 0 to 0), PlacedWord("CHESS", 0, 4, 0, 0).cells())
+        assertEquals(listOf(6 to 2, 5 to 3, 4 to 4, 3 to 5, 2 to 6), PlacedWord("BOARD", 6, 2, 2, 6).cells())
+    }
+
+    @Test
+    fun `a diagonal or backwards word is selected by tapping either end`() {
+        val diagonal = PlacedWord("BOARD", 6, 2, 2, 6)
+        assertTrue(diagonal.matches(6 to 2, 2 to 6))
+        assertTrue(diagonal.matches(2 to 6, 6 to 2))
+        assertTrue(!diagonal.matches(6 to 2, 3 to 5))
+    }
+
+    @Test
+    fun `generated puzzles hide words in all eight directions, each readable along its cells`() {
+        val seen = mutableSetOf<Pair<Int, Int>>()
+        repeat(60) { seed ->
+            val puzzle = WordHuntBoard.generate(Random(seed))
+            for (placed in puzzle.words) {
+                val read = placed.cells().map { (r, c) -> puzzle.grid[r][c] }.joinToString("")
+                assertEquals(placed.word, read)
+                seen += (placed.endRow - placed.startRow).coerceIn(-1, 1) to (placed.endCol - placed.startCol).coerceIn(-1, 1)
+            }
+        }
+        assertEquals(WORD_HUNT_DIRECTIONS.toSet(), seen)
+    }
+
+    @Test
     fun `goes for the longest unclaimed word`() {
         // CHESS and BOARD tie on length; alphabetical tie-break keeps it deterministic.
         assertEquals("BOARD", WordHuntBot.chooseWord(grid, words, claimed = emptySet())?.word)
