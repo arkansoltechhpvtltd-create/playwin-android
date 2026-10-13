@@ -4,6 +4,7 @@ import com.example.playwin.core.domain.carrom.CarromBoard
 import com.example.playwin.core.domain.carrom.CarromMatch
 import com.example.playwin.core.domain.carrom.Coin
 import com.example.playwin.core.domain.carrom.CoinColor
+import com.example.playwin.core.domain.carrom.DueEvent
 import com.example.playwin.core.domain.carrom.QueenEvent
 import com.example.playwin.core.domain.carrom.STRIKER_ID
 import com.example.playwin.core.domain.carrom.Vec2
@@ -46,7 +47,12 @@ data class CarromUiState(
     val isComputerThinking: Boolean = false,
     val winner: Int? = null,
     val isDraw: Boolean = false,
+    /** The last shot was a foul. Kept until the next shot has played out, so it can be read. */
     val fouled: Boolean = false,
+    /** Who took the last shot, so its foul or due note can say whose it was. */
+    val lastShooter: Int? = null,
+    /** How a due was settled on the last shot, if one was. */
+    val lastDue: DueEvent? = null,
     val lastTurnTimedOut: Boolean = false,
     /** What happened to the queen on the last shot (claimed, returned...), for the turn banner. */
     val lastQueenEvent: QueenEvent? = null,

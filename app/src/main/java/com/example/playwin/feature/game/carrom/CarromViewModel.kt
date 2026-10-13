@@ -108,7 +108,6 @@ class CarromViewModel @Inject constructor(
             it.copy(
                 coins = CarromRules.launch(state.match.coins, direction, power),
                 isPiecesMoving = true,
-                fouled = false,
                 lastTurnTimedOut = false
             )
         }
@@ -136,7 +135,11 @@ class CarromViewModel @Inject constructor(
                     coins = after.coins,
                     winner = winner,
                     isDraw = result == GameOutcome.DRAW,
+                    // Replaced only once the next shot has played out, so a foul stays
+                    // readable through the other player's whole shot.
                     fouled = outcome.fouled,
+                    lastShooter = outcome.shooter,
+                    lastDue = outcome.dueEvent,
                     lastQueenEvent = outcome.queenEvent,
                     isResolving = false
                 )
@@ -189,6 +192,8 @@ class CarromViewModel @Inject constructor(
                     coins = passed.coins,
                     secondsLeft = CARROM_TURN_SECONDS,
                     lastTurnTimedOut = true,
+                    fouled = false,
+                    lastDue = null,
                     lastQueenEvent = QueenEvent.RETURNED.takeIf { forfeitedQueen }
                 )
             }

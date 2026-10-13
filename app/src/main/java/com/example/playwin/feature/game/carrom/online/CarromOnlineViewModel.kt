@@ -71,7 +71,9 @@ data class CarromRoomState(
     val shot: CarromRoomShot? = null,
     val fouled: Boolean = false,
     /** The player who must cover the queen on their next shot, if any. */
-    val queenOwedBy: Int? = null
+    val queenOwedBy: Int? = null,
+    /** Dues owed by players 1 and 2: fouls not yet paid with a coin. */
+    val dues: List<Int> = listOf(0, 0)
 ) {
     fun toMatch(): CarromMatch {
         val base = CarromMatch()
@@ -80,7 +82,8 @@ data class CarromRoomState(
             currentPlayer = currentPlayer,
             playerColors = colors.mapNotNull { (k, v) -> k.toIntOrNull()?.let { it to CoinColor.valueOf(v) } }.toMap(),
             scores = mapOf(1 to scores.getOrElse(0) { 0 }, 2 to scores.getOrElse(1) { 0 }),
-            queenCoverOwedBy = queenOwedBy
+            queenCoverOwedBy = queenOwedBy,
+            duesOwed = mapOf(1 to dues.getOrElse(0) { 0 }, 2 to dues.getOrElse(1) { 0 }).filterValues { it > 0 }
         )
     }
 
@@ -92,7 +95,8 @@ data class CarromRoomState(
             scores = listOf(match.scores.getValue(1), match.scores.getValue(2)),
             shot = shot,
             fouled = fouled,
-            queenOwedBy = match.queenCoverOwedBy
+            queenOwedBy = match.queenCoverOwedBy,
+            dues = listOf(match.duesOwed[1] ?: 0, match.duesOwed[2] ?: 0)
         )
     }
 }

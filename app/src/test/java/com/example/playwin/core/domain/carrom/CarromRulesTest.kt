@@ -162,6 +162,104 @@ class CarromRulesTest {
         assertEquals(CarromBoard.baselineFor(2), passed.coins.first { it.id == STRIKER_ID }.position)
     }
 
+    // --- Fouls and dues. Player 1 (the human) owns white 1..9, player 2 (the computer) black 10..18. ---
+
+    private val owned = mapOf(1 to CoinColor.WHITE, 2 to CoinColor.BLACK)
+    private val firstCoin = mapOf(1 to 1, 2 to 10)
+    private val secondCoin = mapOf(1 to 2, 2 to 11)
+
+    private fun onBoard(match: CarromMatch, id: Int) = !match.coins.first { it.id == id }.pocketed
+
+    /** [player] to shoot, having already pocketed (and scored) their [secondCoin]. */
+    private fun withOnePocketed(player: Int): CarromMatch {
+        val base = CarromMatch(currentPlayer = player, playerColors = owned)
+        return base.copy(coins = pocket(base, secondCoin.getValue(player)), scores = mapOf(1 to 0, 2 to 0) + (player to 1))
+    }
+
+    private fun foulsPayingDueFromAnEarlierCoin(player: Int) {
+        val match = withOnePocketed(player)
+        val outcome = CarromRules.resolveShot(match, pocket(match, STRIKER_ID), potted = listOf(STRIKER_ID))
+        assertTrue(outcome.fouled)
+        assertEquals(DueEvent.PAID_ON_FOUL, outcome.dueEvent)
+        assertEquals(-1, outcome.pointsGained)
+        assertEquals(0, outcome.after.scores[player])
+        assertTrue("the due coin is back on the board", onBoard(outcome.after, secondCoin.getValue(player)))
+        assertTrue(outcome.after.duesOwed.isEmpty())
+        assertEquals(3 - player, outcome.after.currentPlayer)
+    }
+
+    private fun foulsOwingDueThenPayingItWithTheNextCoin(player: Int) {
+        val match = CarromMatch(currentPlayer = player, playerColors = owned)
+        val foul = CarromRules.resolveShot(match, pocket(match, STRIKER_ID), potted = listOf(STRIKER_ID))
+        assertEquals(DueEvent.OWED, foul.dueEvent)
+        assertEquals(0, foul.pointsGained)
+        assertEquals(mapOf(player to 1), foul.after.duesOwed)
+
+        // Their next turn: the first own coin they pot pays the due instead of scoring.
+        val next = foul.after.copy(currentPlayer = player)
+        val coin = firstCoin.getValue(player)
+        val pays = CarromRules.resolveShot(next, pocket(next, coin), potted = listOf(coin))
+        assertEquals(DueEvent.PAID_FROM_POT, pays.dueEvent)
+        assertEquals(0, pays.pointsGained)
+        assertTrue("the coin went back to the centre", onBoard(pays.after, coin))
+        assertTrue(pays.after.duesOwed.isEmpty())
+        assertEquals("potting your own coin still keeps the turn", player, pays.after.currentPlayer)
+
+        // Debt cleared: the coin after that scores again.
+        val then = CarromRules.resolveShot(pays.after, pocket(pays.after, secondCoin.getValue(player)), potted = listOf(secondCoin.getValue(player)))
+        assertEquals(1, then.pointsGained)
+        assertNull(then.dueEvent)
+    }
+
+    private fun foulReturnsEveryCoinPottedThatShot(player: Int) {
+        val match = withOnePocketed(player)
+        val own = firstCoin.getValue(player)
+        val theirs = firstCoin.getValue(3 - player)
+        val potted = listOf(STRIKER_ID, own, theirs, QUEEN_ID)
+        val outcome = CarromRules.resolveShot(match, pocket(match, *potted.toIntArray()), potted)
+        for (id in listOf(own, theirs, QUEEN_ID)) assertTrue("coin $id back on the board", onBoard(outcome.after, id))
+        assertEquals(QueenEvent.RETURNED, outcome.queenEvent)
+        assertEquals("only the due is lost, the shot's own coin never scored", -1, outcome.pointsGained)
+        val back = outcome.after.coins.filter { it.id in outcome.returnedToCentre }
+        for (a in back) for (b in back) if (a.id < b.id) {
+            assertTrue("coins ${a.id} and ${b.id} overlap", (a.position - b.position).length >= 2 * CarromBoard.COIN_RADIUS)
+        }
+    }
+
+    @Test fun `player - a foul pays a due with an earlier coin`() = foulsPayingDueFromAnEarlierCoin(1)
+    @Test fun `computer - a foul pays a due with an earlier coin`() = foulsPayingDueFromAnEarlierCoin(2)
+    @Test fun `player - a due owed is paid by the next own coin`() = foulsOwingDueThenPayingItWithTheNextCoin(1)
+    @Test fun `computer - a due owed is paid by the next own coin`() = foulsOwingDueThenPayingItWithTheNextCoin(2)
+    @Test fun `player - a foul returns every coin potted that shot`() = foulReturnsEveryCoinPottedThatShot(1)
+    @Test fun `computer - a foul returns every coin potted that shot`() = foulReturnsEveryCoinPottedThatShot(2)
+
+    @Test
+    fun `a foul decides no colors, and a due owed before colors waits for your first coin`() {
+        val open = CarromMatch()
+        val foul = CarromRules.resolveShot(open, pocket(open, STRIKER_ID, 10), potted = listOf(STRIKER_ID, 10))
+        assertTrue("coins potted on a foul decide nothing", foul.after.playerColors.isEmpty())
+        assertEquals(DueEvent.OWED, foul.dueEvent)
+        assertTrue(onBoard(foul.after, 10))
+
+        val next = foul.after.copy(currentPlayer = 1)
+        val pays = CarromRules.resolveShot(next, pocket(next, 3), potted = listOf(3))
+        assertEquals(CoinColor.WHITE, pays.after.playerColors[1])
+        assertEquals(DueEvent.PAID_FROM_POT, pays.dueEvent)
+        assertEquals(0, pays.after.scores[1])
+    }
+
+    @Test
+    fun `dues stack, one coin each`() {
+        var match = CarromMatch(currentPlayer = 1, playerColors = owned)
+        repeat(2) {
+            match = CarromRules.resolveShot(match, pocket(match, STRIKER_ID), listOf(STRIKER_ID)).after.copy(currentPlayer = 1)
+        }
+        assertEquals(mapOf(1 to 2), match.duesOwed)
+        val outcome = CarromRules.resolveShot(match, pocket(match, 1, 2, 3), listOf(1, 2, 3))
+        assertEquals(1, outcome.pointsGained)
+        assertTrue(outcome.after.duesOwed.isEmpty())
+    }
+
     @Test
     fun `a simulated shot comes to rest`() {
         val match = CarromMatch()

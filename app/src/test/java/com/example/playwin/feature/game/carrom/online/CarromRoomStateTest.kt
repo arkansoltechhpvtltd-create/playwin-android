@@ -44,6 +44,13 @@ class CarromRoomStateTest {
     }
 
     @Test
+    fun `dues owed survive a round trip`() {
+        val match = CarromMatch(playerColors = mapOf(1 to CoinColor.WHITE, 2 to CoinColor.BLACK), duesOwed = mapOf(2 to 1))
+        val decoded = room(CarromRoomState.of(match, null, fouled = true).toJson()).carromState()
+        assertEquals(match, decoded.toMatch())
+    }
+
+    @Test
     fun `where the striker was slid to survives a round trip`() {
         val shot = CarromRoomShot(seq = 1, shooter = 2, dx = 0f, dy = 1f, power = 0.5f, sx = 250f)
         val decoded = room(CarromRoomState.of(CarromMatch(), shot, fouled = false).toJson()).carromState()

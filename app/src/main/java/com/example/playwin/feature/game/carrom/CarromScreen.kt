@@ -75,6 +75,7 @@ import com.example.playwin.core.domain.carrom.CarromBoard
 import com.example.playwin.core.domain.carrom.Coin
 import com.example.playwin.core.domain.carrom.QUEEN_POINTS
 import com.example.playwin.core.domain.carrom.QueenEvent
+import com.example.playwin.core.domain.carrom.DueEvent
 import com.example.playwin.core.domain.carrom.CoinColor
 import com.example.playwin.core.domain.carrom.QUEEN_ID
 import com.example.playwin.core.domain.carrom.STRIKER_ID
@@ -166,7 +167,7 @@ fun CarromScreen(
                         else -> "Computer's shot"
                     } + buildString {
                         if (uiState.lastTurnTimedOut) append(" (previous turn timed out)")
-                        if (uiState.fouled) append(" (foul on previous shot)")
+                        dueNote(uiState)?.let { append(" ($it)") }
                     },
                     secondsLeft = uiState.secondsLeft.takeIf { uiState.currentPlayer == CARROM_HUMAN },
                     isBusy = uiState.isPiecesMoving || uiState.isResolving || uiState.isComputerThinking
@@ -231,6 +232,17 @@ fun TurnBanner(text: String, secondsLeft: Int?, isBusy: Boolean, modifier: Modif
         if (secondsLeft != null) {
             TurnTimerRing(secondsLeft = secondsLeft, totalSeconds = CARROM_TURN_SECONDS)
         }
+    }
+}
+
+/** The last shot's foul, or the due it paid off, for the turn banner. */
+private fun dueNote(uiState: CarromUiState): String? {
+    val who = if (uiState.lastShooter == CARROM_HUMAN) "your" else "computer's"
+    return when (uiState.lastDue) {
+        DueEvent.PAID_ON_FOUL -> "$who foul - a coin went back as a due"
+        DueEvent.OWED -> "$who foul - a due is owed"
+        DueEvent.PAID_FROM_POT -> "$who coin paid a due - back to the centre"
+        null -> if (uiState.fouled) "$who foul" else null
     }
 }
 
