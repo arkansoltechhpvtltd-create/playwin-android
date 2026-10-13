@@ -1,6 +1,7 @@
 package com.example.playwin.feature.game.carrom
 
 import com.example.playwin.core.domain.carrom.CarromBoard
+import com.example.playwin.core.domain.carrom.CarromFoul
 import com.example.playwin.core.domain.carrom.CarromMatch
 import com.example.playwin.core.domain.carrom.Coin
 import com.example.playwin.core.domain.carrom.CoinColor
@@ -51,6 +52,8 @@ data class CarromUiState(
     val fouled: Boolean = false,
     /** Who took the last shot, so its foul or due note can say whose it was. */
     val lastShooter: Int? = null,
+    /** What the last shot's foul was, if it was one. */
+    val lastFoul: CarromFoul? = null,
     /** How a due was settled on the last shot, if one was. */
     val lastDue: DueEvent? = null,
     val lastTurnTimedOut: Boolean = false,

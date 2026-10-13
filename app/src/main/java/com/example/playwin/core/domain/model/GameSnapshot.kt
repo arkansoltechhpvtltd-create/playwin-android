@@ -57,12 +57,16 @@ sealed interface GameSnapshot {
     /**
      * A completed carrom shot, from the shooter's point of view.
      *
-     * @param boardCleared true once every coin and the queen have been pocketed.
+     * @param shooterCoinsLeft the shooter's coins still on the board after this shot.
+     * @param opponentCoinsLeft the opponent's coins still on the board after this shot.
+     * @param queenSettled the queen is pocketed and covered (no cover still owed).
      * @param shooterScore the shooter's cumulative score, including this shot.
      * @param opponentScore the opponent's cumulative score.
      */
     data class Carrom(
-        val boardCleared: Boolean,
+        val shooterCoinsLeft: Int,
+        val opponentCoinsLeft: Int,
+        val queenSettled: Boolean,
         val shooterScore: Int,
         val opponentScore: Int
     ) : GameSnapshot

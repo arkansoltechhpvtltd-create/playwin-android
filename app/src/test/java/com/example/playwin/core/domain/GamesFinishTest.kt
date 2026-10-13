@@ -10,6 +10,7 @@ import com.example.playwin.core.domain.eightball.EightBallPhysics
 import com.example.playwin.core.domain.eightball.EightBallRules
 import com.example.playwin.core.domain.ludo.LudoBot
 import com.example.playwin.core.domain.ludo.LudoEngine
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
@@ -32,16 +33,23 @@ class GamesFinishTest {
     }
 
     @Test
-    fun `carrom always clears the board`() = repeat(10) { seed ->
+    fun `carrom always ends with someone clearing their coins`() = repeat(10) { seed ->
         var match = CarromMatch()
         var shots = 0
         val random = Random(seed)
-        while (!match.boardCleared) {
+        while (true) {
+            val shooter = match.currentPlayer
             val shot = CarromBot.chooseShot(match, random)
             val result = CarromPhysics.simulate(CarromRules.launch(match.coins, shot.direction, shot.power))
             match = CarromRules.resolveShot(match, result.coins, result.newlyPocketed).after
             shots++
-            assertTrue("board not clear after $shots shots", shots < 400)
+            val winner = CarromRules.winner(match, shooter)
+            if (winner != null) {
+                assertEquals("the winner has cleared their coins", 0, match.coinsLeft(winner))
+                assertTrue("the queen was covered first", match.queenSettled)
+                break
+            }
+            assertTrue("no winner after $shots shots", shots < 600)
         }
     }
 

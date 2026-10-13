@@ -31,6 +31,25 @@ data class CarromMatch(
 ) {
     val opponent: Int get() = 3 - currentPlayer
     val boardCleared: Boolean get() = coins.filter { it.id != STRIKER_ID }.all { it.pocketed }
+
+    /** The queen is down and covered - nobody still owes a cover - so a player may clear their coins. */
+    val queenSettled: Boolean get() = coins.any { it.id == QUEEN_ID && it.pocketed } && queenCoverOwedBy == null
+
+    /** How many of [player]'s coins are still on the board (all of them while colors are undecided). */
+    fun coinsLeft(player: Int): Int {
+        val color = playerColors[player] ?: return COINS_PER_COLOR
+        return coins.count { !it.pocketed && it.id != STRIKER_ID && it.id != QUEEN_ID && coinColorOf(it.id) == color }
+    }
+}
+
+const val COINS_PER_COLOR = 9
+
+/** Why a shot was a foul. */
+enum class CarromFoul {
+    /** The striker went into a pocket. */
+    STRIKER,
+    /** The shot pocketed the last coin of a color while the queen was still on the board or uncovered. */
+    LAST_COIN_BEFORE_QUEEN
 }
 
 /** What happened to the queen on one shot. */
@@ -69,7 +88,9 @@ data class CarromShotOutcome(
     val opponentPointsGained: Int = 0,
     val dueEvent: DueEvent? = null,
     /** Coins put back at the centre by this shot (the queen included, if it went back). */
-    val returnedToCentre: List<Int> = emptyList()
+    val returnedToCentre: List<Int> = emptyList(),
+    /** What the foul was, when [fouled]. */
+    val foul: CarromFoul? = null
 )
 
 /**
@@ -87,8 +108,13 @@ data class CarromShotOutcome(
  * coins on the same shot or their very next one. A cover claims the queen
  * for [QUEEN_POINTS]; a miss (including a foul or a timed-out turn) puts it
  * back at the centre. Potting the queen earns the next shot to cover it.
- * Who has *won* once the board is clear is still decided by
- * [com.example.playwin.core.domain.repository.GameEngineRepository].
+ *
+ * Winning follows the standard rule: the first player with all their coins
+ * pocketed wins the board, which needs the queen pocketed and covered first -
+ * pocketing a color's last coin before that is a foul. Pocketing the
+ * opponent's last coin hands them the board. [winner] mirrors this for
+ * planning; the ruling itself is
+ * [com.example.playwin.core.domain.repository.GameEngineRepository]'s.
  */
 object CarromRules {
 
@@ -99,7 +125,33 @@ object CarromRules {
     }
 
     fun resolveShot(match: CarromMatch, finalCoins: List<Coin>, potted: List<Int>): CarromShotOutcome {
-        if (STRIKER_ID in potted) return resolveFoul(match, finalCoins, potted)
+        if (STRIKER_ID in potted) return resolveFoul(match, finalCoins, potted, CarromFoul.STRIKER)
+        val clean = resolveCleanShot(match, finalCoins, potted)
+        // A color may only be cleared once the queen is down and covered; emptying one before is a foul.
+        val after = clean.after
+        val emptiedEarly = after.playerColors.isNotEmpty() && !after.queenSettled &&
+            listOf(1, 2).any { match.coinsLeft(it) > 0 && after.coinsLeft(it) == 0 }
+        return if (emptiedEarly) resolveFoul(match, finalCoins, potted, CarromFoul.LAST_COIN_BEFORE_QUEEN) else clean
+    }
+
+    /**
+     * Who has won once [match] stands like this, by the standard rule:
+     * the first player with all their coins pocketed wins the board - and
+     * pocketing the opponent's last coin hands it to them. Only once the
+     * queen is settled; null while the game goes on. Mirrors the game
+     * engine's ruling, for planning.
+     */
+    fun winner(match: CarromMatch, shooter: Int): Int? {
+        if (match.playerColors.isEmpty() || !match.queenSettled) return null
+        val other = 3 - shooter
+        return when {
+            match.coinsLeft(other) == 0 -> other
+            match.coinsLeft(shooter) == 0 -> shooter
+            else -> null
+        }
+    }
+
+    private fun resolveCleanShot(match: CarromMatch, finalCoins: List<Coin>, potted: List<Int>): CarromShotOutcome {
 
         val shooter = match.currentPlayer
         val pottedCoins = potted.filter { it != STRIKER_ID }
@@ -151,13 +203,13 @@ object CarromRules {
     }
 
     /**
-     * Potting the striker: the turn passes, every coin potted on the shot
+     * A foul ([reason]): the turn passes, every coin potted on the shot
      * goes back to the centre (so no colors are decided and an owed or freshly
      * potted queen returns), and the fouler pays a due - one of their own
      * coins pocketed on an earlier shot comes back out, losing its point, or
      * the due is owed if they have none.
      */
-    private fun resolveFoul(match: CarromMatch, finalCoins: List<Coin>, potted: List<Int>): CarromShotOutcome {
+    private fun resolveFoul(match: CarromMatch, finalCoins: List<Coin>, potted: List<Int>, reason: CarromFoul): CarromShotOutcome {
         val shooter = match.currentPlayer
         val pottedCoins = potted.filter { it != STRIKER_ID }
         val queenEvent = QueenEvent.RETURNED.takeIf { match.queenCoverOwedBy == shooter || QUEEN_ID in pottedCoins }
@@ -181,7 +233,8 @@ object CarromRules {
         return CarromShotOutcome(
             shooter, after, potted, fouled = true, pointsGained, queenEvent,
             dueEvent = if (dueCoin != null) DueEvent.PAID_ON_FOUL else DueEvent.OWED,
-            returnedToCentre = returned
+            returnedToCentre = returned,
+            foul = reason
         )
     }
 

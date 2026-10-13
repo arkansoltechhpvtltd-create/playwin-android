@@ -33,9 +33,9 @@ private const val COMPUTER_MIN_THINK_MILLIS = 700L
  * Carrom against the computer: the human is [CARROM_HUMAN] (bottom), and
  * [CarromBot] plays [CARROM_COMPUTER] (top). Striker physics runs frame by
  * frame from the screen's clock; scoring and turn order come from
- * [CarromRules]; the *verdict* on who wins once the board is cleared always
- * comes from [GameEngineRepository.resolve], never decided locally. Only a
- * human win claims a reward.
+ * [CarromRules]; the *verdict* on who wins - the first to clear their coins
+ * once the queen is covered - always comes from [GameEngineRepository.resolve],
+ * never decided locally. Only a human win claims a reward.
  */
 @HiltViewModel
 class CarromViewModel @Inject constructor(
@@ -119,7 +119,9 @@ class CarromViewModel @Inject constructor(
             val result = gameEngineRepository.resolve(
                 GameId.CARROM,
                 GameSnapshot.Carrom(
-                    boardCleared = after.boardCleared,
+                    shooterCoinsLeft = after.coinsLeft(outcome.shooter),
+                    opponentCoinsLeft = after.coinsLeft(3 - outcome.shooter),
+                    queenSettled = after.queenSettled,
                     shooterScore = after.scores.getValue(outcome.shooter),
                     opponentScore = after.scores.getValue(3 - outcome.shooter)
                 )
@@ -139,6 +141,7 @@ class CarromViewModel @Inject constructor(
                     // readable through the other player's whole shot.
                     fouled = outcome.fouled,
                     lastShooter = outcome.shooter,
+                    lastFoul = outcome.foul,
                     lastDue = outcome.dueEvent,
                     lastQueenEvent = outcome.queenEvent,
                     isResolving = false

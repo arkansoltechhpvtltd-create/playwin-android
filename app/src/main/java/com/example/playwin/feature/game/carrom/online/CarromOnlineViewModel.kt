@@ -217,7 +217,9 @@ class CarromOnlineViewModel @Inject constructor(
             val result = gameEngineRepository.resolve(
                 GameId.CARROM,
                 GameSnapshot.Carrom(
-                    boardCleared = after.boardCleared,
+                    shooterCoinsLeft = after.coinsLeft(me),
+                    opponentCoinsLeft = after.coinsLeft(3 - me),
+                    queenSettled = after.queenSettled,
                     shooterScore = after.scores.getValue(me),
                     opponentScore = after.scores.getValue(3 - me)
                 )

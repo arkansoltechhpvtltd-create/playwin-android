@@ -92,11 +92,14 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
     }
 
     private fun resolveCarrom(snapshot: GameSnapshot.Carrom): GameOutcome {
-        if (!snapshot.boardCleared) return GameOutcome.IN_PROGRESS
+        // Standard rule: the first player with all their coins pocketed wins the board,
+        // but only once the queen is pocketed and covered.
+        if (!snapshot.queenSettled) return GameOutcome.IN_PROGRESS
         return when {
-            snapshot.shooterScore > snapshot.opponentScore -> GameOutcome.WIN
-            snapshot.shooterScore < snapshot.opponentScore -> GameOutcome.LOSE
-            else -> GameOutcome.DRAW
+            // Pocketing the opponent's last coin hands them the board, even if yours went too.
+            snapshot.opponentCoinsLeft == 0 -> GameOutcome.LOSE
+            snapshot.shooterCoinsLeft == 0 -> GameOutcome.WIN
+            else -> GameOutcome.IN_PROGRESS
         }
     }
 

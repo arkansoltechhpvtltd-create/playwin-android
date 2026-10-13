@@ -297,6 +297,84 @@ class CarromRulesTest {
         assertTrue(outcome.after.duesOwed.isEmpty())
     }
 
+    // --- Winning: first to clear their coins, once the queen is covered ---
+
+    private val allWhite = (1..9).toList()
+    private val allBlack = (10..18).toList()
+
+    /**
+     * Late in a game: [player] to shoot, with only [onBoard] coins still out
+     * (striker aside). The queen is down and covered unless it's in [onBoard]
+     * or [queenOwedBy] is set.
+     */
+    private fun endgame(player: Int, onBoard: List<Int>, queenOwedBy: Int? = null): CarromMatch {
+        val base = CarromMatch(currentPlayer = player, playerColors = owned, queenCoverOwedBy = queenOwedBy)
+        val down = (allWhite + allBlack + QUEEN_ID).filter { it !in onBoard }
+        return base.copy(coins = pocket(base, *down.toIntArray()))
+    }
+
+    private fun own(player: Int) = if (player == 1) allWhite else allBlack
+    private fun theirs(player: Int) = own(3 - player)
+
+    private fun clearingYourLastCoinWins(player: Int) {
+        val last = own(player).first()
+        val match = endgame(player, onBoard = listOf(last, theirs(player).first()))
+        val outcome = CarromRules.resolveShot(match, pocket(match, last), listOf(last))
+        assertFalse(outcome.fouled)
+        assertEquals(player, CarromRules.winner(outcome.after, player))
+    }
+
+    private fun clearingYourLastCoinBeforeTheQueenIsAFoul(player: Int) {
+        val last = own(player).first()
+        val match = endgame(player, onBoard = listOf(last, theirs(player).first(), QUEEN_ID))
+        val outcome = CarromRules.resolveShot(match, pocket(match, last), listOf(last))
+        assertTrue(outcome.fouled)
+        assertEquals(CarromFoul.LAST_COIN_BEFORE_QUEEN, outcome.foul)
+        assertTrue("the last coin is back on the board", onBoard(outcome.after, last))
+        assertEquals(3 - player, outcome.after.currentPlayer)
+        assertNull(CarromRules.winner(outcome.after, player))
+    }
+
+    private fun coveringTheQueenWithYourLastCoinWins(player: Int) {
+        val last = own(player).first()
+        // The queen went down last shot; this shot must cover it - with the last coin.
+        val match = endgame(player, onBoard = listOf(last, theirs(player).first()), queenOwedBy = player)
+        val outcome = CarromRules.resolveShot(match, pocket(match, last), listOf(last))
+        assertEquals(QueenEvent.CLAIMED, outcome.queenEvent)
+        assertFalse(outcome.fouled)
+        assertEquals(player, CarromRules.winner(outcome.after, player))
+    }
+
+    private fun pocketingTheirLastCoinHandsThemTheBoard(player: Int) {
+        val theirLast = theirs(player).first()
+        val match = endgame(player, onBoard = listOf(own(player).first(), theirLast))
+        val outcome = CarromRules.resolveShot(match, pocket(match, theirLast), listOf(theirLast))
+        assertEquals(3 - player, CarromRules.winner(outcome.after, player))
+    }
+
+    @Test fun `player - clearing your last coin wins`() = clearingYourLastCoinWins(1)
+    @Test fun `computer - clearing its last coin wins`() = clearingYourLastCoinWins(2)
+    @Test fun `player - your last coin before the queen is a foul`() = clearingYourLastCoinBeforeTheQueenIsAFoul(1)
+    @Test fun `computer - its last coin before the queen is a foul`() = clearingYourLastCoinBeforeTheQueenIsAFoul(2)
+    @Test fun `player - covering the queen with your last coin wins`() = coveringTheQueenWithYourLastCoinWins(1)
+    @Test fun `computer - covering the queen with its last coin wins`() = coveringTheQueenWithYourLastCoinWins(2)
+    @Test fun `player - pocketing the computer's last coin hands it the board`() = pocketingTheirLastCoinHandsThemTheBoard(1)
+    @Test fun `computer - pocketing your last coin hands you the board`() = pocketingTheirLastCoinHandsThemTheBoard(2)
+
+    @Test
+    fun `pocketing the opponent's last coin before the queen is a foul too`() {
+        val match = endgame(1, onBoard = listOf(1, 10, QUEEN_ID))
+        val outcome = CarromRules.resolveShot(match, pocket(match, 10), listOf(10))
+        assertEquals(CarromFoul.LAST_COIN_BEFORE_QUEEN, outcome.foul)
+        assertTrue(onBoard(outcome.after, 10))
+    }
+
+    @Test
+    fun `no winner while both sides have coins, or before colors are decided`() {
+        assertNull(CarromRules.winner(endgame(1, onBoard = listOf(1, 10)), 1))
+        assertNull(CarromRules.winner(CarromMatch(), 1))
+    }
+
     @Test
     fun `a simulated shot comes to rest`() {
         val match = CarromMatch()

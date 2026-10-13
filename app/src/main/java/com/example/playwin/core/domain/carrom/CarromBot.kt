@@ -23,6 +23,9 @@ object CarromBot {
     private const val MAX_SIMULATED_CANDIDATES = 45
     private const val MIN_CUT_COSINE = 0.35f
 
+    /** The score of a shot that wins (or, negated, loses) the board: beyond anything else a shot can be worth. */
+    private const val DECISIVE = 1000.0
+
     /** Standard deviation-ish of the aiming error, in degrees; 0 gives the bot perfect aim. */
     const val DEFAULT_AIM_ERROR_DEGREES = 2.0
 
@@ -43,6 +46,10 @@ object CarromBot {
     fun evaluate(match: CarromMatch, shot: Shot): Double {
         val result = CarromPhysics.simulate(CarromRules.launch(match.coins, shot.direction, shot.power))
         val outcome = CarromRules.resolveShot(match, result.coins, result.newlyPocketed)
+        when (CarromRules.winner(outcome.after, match.currentPlayer)) {
+            match.currentPlayer -> return DECISIVE
+            match.opponent -> return -DECISIVE
+        }
 
         var score = outcome.pointsGained * 10.0
         if (outcome.fouled) score -= 15.0

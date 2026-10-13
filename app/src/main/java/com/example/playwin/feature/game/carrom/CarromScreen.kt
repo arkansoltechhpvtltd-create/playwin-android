@@ -76,6 +76,7 @@ import com.example.playwin.core.domain.carrom.Coin
 import com.example.playwin.core.domain.carrom.QUEEN_POINTS
 import com.example.playwin.core.domain.carrom.QueenEvent
 import com.example.playwin.core.domain.carrom.DueEvent
+import com.example.playwin.core.domain.carrom.CarromFoul
 import com.example.playwin.core.domain.carrom.CoinColor
 import com.example.playwin.core.domain.carrom.QUEEN_ID
 import com.example.playwin.core.domain.carrom.STRIKER_ID
@@ -238,11 +239,12 @@ fun TurnBanner(text: String, secondsLeft: Int?, isBusy: Boolean, modifier: Modif
 /** The last shot's foul, or the due it paid off, for the turn banner. */
 private fun dueNote(uiState: CarromUiState): String? {
     val who = if (uiState.lastShooter == CARROM_HUMAN) "your" else "computer's"
+    val foul = if (uiState.lastFoul == CarromFoul.LAST_COIN_BEFORE_QUEEN) "$who foul (last coin before the Queen)" else "$who foul"
     return when (uiState.lastDue) {
-        DueEvent.PAID_ON_FOUL -> "$who foul - a coin went back as a due"
-        DueEvent.OWED -> "$who foul - a due is owed"
+        DueEvent.PAID_ON_FOUL -> "$foul - a coin went back as a due"
+        DueEvent.OWED -> "$foul - a due is owed"
         DueEvent.PAID_FROM_POT -> "$who coin paid a due - back to the centre"
-        null -> if (uiState.fouled) "$who foul" else null
+        null -> if (uiState.fouled) foul else null
     }
 }
 
