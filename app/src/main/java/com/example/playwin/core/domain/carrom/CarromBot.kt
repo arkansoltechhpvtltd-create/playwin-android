@@ -49,6 +49,8 @@ object CarromBot {
         var score = outcome.pointsGained * 10.0
         if (outcome.fouled) score -= 15.0
         if (!outcome.fouled && outcome.after.currentPlayer == match.currentPlayer) score += 3.0
+        // An uncovered queen is only worth something if the cover then goes in.
+        if (outcome.queenEvent == QueenEvent.COVER_OWED) score += QUEEN_POINTS * 5.0
         score -= 6.0 * outcome.potted.count { it != STRIKER_ID && theirColor != null && coinColorOf(it) == theirColor }
         return score
     }

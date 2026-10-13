@@ -73,6 +73,8 @@ import com.example.playwin.core.designsystem.theme.PwGoldDark
 import com.example.playwin.core.designsystem.theme.PwGoldLight
 import com.example.playwin.core.domain.carrom.CarromBoard
 import com.example.playwin.core.domain.carrom.Coin
+import com.example.playwin.core.domain.carrom.QUEEN_POINTS
+import com.example.playwin.core.domain.carrom.QueenEvent
 import com.example.playwin.core.domain.carrom.CoinColor
 import com.example.playwin.core.domain.carrom.QUEEN_ID
 import com.example.playwin.core.domain.carrom.STRIKER_ID
@@ -170,6 +172,9 @@ fun CarromScreen(
                     isBusy = uiState.isPiecesMoving || uiState.isResolving || uiState.isComputerThinking
                 )
             }
+            if (!uiState.isGameOver) {
+                queenNote(uiState)?.let { QueenBanner(text = it, modifier = Modifier.padding(top = 8.dp)) }
+            }
 
             BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
                 CarromBoardView(
@@ -226,6 +231,32 @@ fun TurnBanner(text: String, secondsLeft: Int?, isBusy: Boolean, modifier: Modif
         if (secondsLeft != null) {
             TurnTimerRing(secondsLeft = secondsLeft, totalSeconds = CARROM_TURN_SECONDS)
         }
+    }
+}
+
+/** The queen line under the turn banner: an owed cover, or what just happened to the queen. */
+private fun queenNote(uiState: CarromUiState): String? = when {
+    uiState.queenCoverOwedBy == CARROM_HUMAN -> "Cover the Queen — pot one of your coins"
+    uiState.queenCoverOwedBy == CARROM_COMPUTER -> "Computer must cover the Queen this shot"
+    uiState.lastQueenEvent == QueenEvent.CLAIMED -> "Queen covered! +$QUEEN_POINTS"
+    uiState.lastQueenEvent == QueenEvent.RETURNED -> "Queen not covered — back to the centre"
+    else -> null
+}
+
+@Composable
+private fun QueenBanner(text: String, modifier: Modifier = Modifier) {
+    GameStatusBanner(accent = QueenFace, modifier = modifier) {
+        Canvas(modifier = Modifier.size(22.dp)) {
+            drawCarromPiece(center = center, radius = size.minDimension * 0.44f, piece = QueenPiece)
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 12.dp)
+        )
     }
 }
 

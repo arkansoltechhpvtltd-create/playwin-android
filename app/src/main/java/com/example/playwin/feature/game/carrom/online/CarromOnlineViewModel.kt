@@ -69,7 +69,9 @@ data class CarromRoomState(
     val colors: Map<String, String> = emptyMap(),
     val scores: List<Int> = listOf(0, 0),
     val shot: CarromRoomShot? = null,
-    val fouled: Boolean = false
+    val fouled: Boolean = false,
+    /** The player who must cover the queen on their next shot, if any. */
+    val queenOwedBy: Int? = null
 ) {
     fun toMatch(): CarromMatch {
         val base = CarromMatch()
@@ -77,7 +79,8 @@ data class CarromRoomState(
             coins = coins?.map { Coin(it.id, Vec2(it.x, it.y), pocketed = it.p) } ?: base.coins,
             currentPlayer = currentPlayer,
             playerColors = colors.mapNotNull { (k, v) -> k.toIntOrNull()?.let { it to CoinColor.valueOf(v) } }.toMap(),
-            scores = mapOf(1 to scores.getOrElse(0) { 0 }, 2 to scores.getOrElse(1) { 0 })
+            scores = mapOf(1 to scores.getOrElse(0) { 0 }, 2 to scores.getOrElse(1) { 0 }),
+            queenCoverOwedBy = queenOwedBy
         )
     }
 
@@ -88,7 +91,8 @@ data class CarromRoomState(
             colors = match.playerColors.map { (k, v) -> k.toString() to v.name }.toMap(),
             scores = listOf(match.scores.getValue(1), match.scores.getValue(2)),
             shot = shot,
-            fouled = fouled
+            fouled = fouled,
+            queenOwedBy = match.queenCoverOwedBy
         )
     }
 }

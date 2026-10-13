@@ -6,6 +6,7 @@ import com.example.playwin.core.domain.carrom.CarromBot
 import com.example.playwin.core.domain.carrom.CarromPhysics
 import com.example.playwin.core.domain.carrom.CarromRules
 import com.example.playwin.core.domain.carrom.CarromShotOutcome
+import com.example.playwin.core.domain.carrom.QueenEvent
 import com.example.playwin.core.domain.carrom.STRIKER_ID
 import com.example.playwin.core.domain.carrom.Vec2
 import com.example.playwin.core.domain.model.GameId
@@ -136,6 +137,7 @@ class CarromViewModel @Inject constructor(
                     winner = winner,
                     isDraw = result == GameOutcome.DRAW,
                     fouled = outcome.fouled,
+                    lastQueenEvent = outcome.queenEvent,
                     isResolving = false
                 )
             }
@@ -181,7 +183,14 @@ class CarromViewModel @Inject constructor(
             // Timed out: the human's turn passes to the computer without a shot.
             _uiState.update {
                 val passed = CarromRules.passTurn(it.match)
-                it.copy(match = passed, coins = passed.coins, secondsLeft = CARROM_TURN_SECONDS, lastTurnTimedOut = true)
+                val forfeitedQueen = it.match.queenCoverOwedBy == it.currentPlayer
+                it.copy(
+                    match = passed,
+                    coins = passed.coins,
+                    secondsLeft = CARROM_TURN_SECONDS,
+                    lastTurnTimedOut = true,
+                    lastQueenEvent = QueenEvent.RETURNED.takeIf { forfeitedQueen }
+                )
             }
             startTurn()
         }

@@ -4,6 +4,7 @@ import com.example.playwin.core.domain.carrom.CarromBoard
 import com.example.playwin.core.domain.carrom.CarromMatch
 import com.example.playwin.core.domain.carrom.Coin
 import com.example.playwin.core.domain.carrom.CoinColor
+import com.example.playwin.core.domain.carrom.QueenEvent
 import com.example.playwin.core.domain.carrom.STRIKER_ID
 import com.example.playwin.core.domain.carrom.Vec2
 
@@ -47,9 +48,13 @@ data class CarromUiState(
     val isDraw: Boolean = false,
     val fouled: Boolean = false,
     val lastTurnTimedOut: Boolean = false,
+    /** What happened to the queen on the last shot (claimed, returned...), for the turn banner. */
+    val lastQueenEvent: QueenEvent? = null,
     val wonCouponId: String? = null
 ) {
     val currentPlayer: Int get() = match.currentPlayer
+    /** Who must cover the queen with their next shot, if anyone. */
+    val queenCoverOwedBy: Int? get() = match.queenCoverOwedBy
     val playerColors: Map<Int, CoinColor> get() = match.playerColors
     val scores: Map<Int, Int> get() = match.scores
     val isGameOver: Boolean get() = winner != null || isDraw
