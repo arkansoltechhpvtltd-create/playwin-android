@@ -25,7 +25,9 @@ private data class LudoRoomState(
     /** The current, not-yet-used roll, if the player to move has rolled. */
     val dice: Int? = null,
     /** The most recent roll by either player, so the other side can see what was rolled even when it was a pass. */
-    val lastRoll: Int? = null
+    val lastRoll: Int? = null,
+    /** Sixes the player to move has rolled back to back this turn; a third forfeits the turn. */
+    val sixes: Int = 0
 )
 
 private val json = Json { ignoreUnknownKeys = true }
@@ -44,7 +46,8 @@ fun Room.ludoState(): LudoState {
         currentPlayerIndex = stored.turn,
         diceValue = stored.dice,
         hasRolled = stored.dice != null,
-        players = LudoEngine.TWO_PLAYER
+        players = LudoEngine.TWO_PLAYER,
+        sixesInARow = stored.sixes
     )
 }
 
@@ -59,7 +62,8 @@ fun LudoState.toRoomJson(lastRoll: Int?): JsonElement {
             yellow = positions(LudoColor.YELLOW),
             turn = currentPlayerIndex,
             dice = diceValue,
-            lastRoll = lastRoll
+            lastRoll = lastRoll,
+            sixes = sixesInARow
         )
     )
 }

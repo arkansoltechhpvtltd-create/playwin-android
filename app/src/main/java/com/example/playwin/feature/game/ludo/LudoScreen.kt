@@ -251,9 +251,14 @@ private fun TurnBanner(uiState: LudoUiState, modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface
             )
-            if (uiState.lastTurnTimedOut) {
+            val note = when {
+                uiState.lastTurnForfeited -> "Three 6s in a row - turn passed"
+                uiState.lastTurnTimedOut -> "Previous turn timed out"
+                else -> null
+            }
+            if (note != null) {
                 Text(
-                    text = "Previous turn timed out",
+                    text = note,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

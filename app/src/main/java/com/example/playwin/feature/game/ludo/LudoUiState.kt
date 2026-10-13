@@ -19,6 +19,8 @@ data class LudoUiState(
     val winner: LudoColor? = null,
     val isResolving: Boolean = false,
     val lastTurnTimedOut: Boolean = false,
+    /** The last turn ended on a third 6 in a row, which is void. */
+    val lastTurnForfeited: Boolean = false,
     val wonCouponId: String? = null
 ) {
     val currentColor: LudoColor get() = game.currentColor

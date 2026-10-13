@@ -81,7 +81,10 @@ class LudoViewModel @Inject constructor(
             viewModelScope.launch {
                 delay(400) // let the rolled value render briefly before the turn moves on
                 val passed = LudoEngine.passTurn(rolled)
-                _uiState.update { it.copy(game = passed, isResolving = false, lastTurnTimedOut = false) }
+                val forfeited = LudoEngine.isTurnForfeited(rolled)
+                _uiState.update {
+                    it.copy(game = passed, isResolving = false, lastTurnTimedOut = false, lastTurnForfeited = forfeited)
+                }
                 startTurn(passed)
             }
         } else if (rolled.currentColor == LUDO_HUMAN) {
@@ -115,7 +118,7 @@ class LudoViewModel @Inject constructor(
                 }
 
                 GameOutcome.LOSE, GameOutcome.DRAW, GameOutcome.IN_PROGRESS -> {
-                    _uiState.update { it.copy(isResolving = false, lastTurnTimedOut = false) }
+                    _uiState.update { it.copy(isResolving = false, lastTurnTimedOut = false, lastTurnForfeited = false) }
                     startTurn(newGame)
                 }
             }
@@ -146,7 +149,13 @@ class LudoViewModel @Inject constructor(
             // Timed out: the human's turn passes to the computer without a roll or move.
             val forced = LudoEngine.forcePassTurn(_uiState.value.game)
             _uiState.update {
-                it.copy(game = forced, movableTokens = emptyList(), secondsLeft = LUDO_TURN_SECONDS, lastTurnTimedOut = true)
+                it.copy(
+                    game = forced,
+                    movableTokens = emptyList(),
+                    secondsLeft = LUDO_TURN_SECONDS,
+                    lastTurnTimedOut = true,
+                    lastTurnForfeited = false
+                )
             }
             startTurn(forced)
         }

@@ -197,4 +197,58 @@ class LudoEngineTest {
         assertTrue(LudoEngine.hasAllTokensHome(allHome))
         assertFalse(LudoEngine.hasAllTokensHome(notAllHome))
     }
+
+    // --- Three sixes in a row ---
+
+    /** Red rolls [value] and, if it can, moves token 0. */
+    private fun rollAndMove(state: LudoState, value: Int): LudoState {
+        val rolled = LudoEngine.rollDice(state, value)
+        return if (LudoEngine.movableTokens(rolled).isEmpty()) LudoEngine.passTurn(rolled) else LudoEngine.applyMove(rolled, LudoColor.RED, 0)
+    }
+
+    @Test
+    fun `two sixes in a row still earn another roll`() {
+        var state = LudoState(tokens = tokensWith((LudoColor.RED to 0) to 0), currentPlayerIndex = 0)
+        state = rollAndMove(state, 6)
+        state = rollAndMove(state, 6)
+        assertEquals(0, state.currentPlayerIndex)
+        assertEquals(2, state.sixesInARow)
+    }
+
+    @Test
+    fun `a third six in a row is void and passes the turn`() {
+        var state = LudoState(tokens = tokensWith((LudoColor.RED to 0) to 0), currentPlayerIndex = 0)
+        state = rollAndMove(state, 6)
+        state = rollAndMove(state, 6)
+        val third = LudoEngine.rollDice(state, 6)
+
+        assertTrue(LudoEngine.isTurnForfeited(third))
+        assertTrue("the third six can't be played", LudoEngine.movableTokens(third).isEmpty())
+        val passed = LudoEngine.passTurn(third)
+        assertEquals(1, passed.currentPlayerIndex)
+        assertEquals(0, passed.sixesInARow)
+        assertEquals("the token stays where the first two sixes put it", 12, passed.tokens.first { it.color == LudoColor.RED && it.index == 0 }.position)
+    }
+
+    @Test
+    fun `a non-six in between resets the count`() {
+        // A capture on a 3 earns an extra roll but breaks the run of sixes.
+        val tokens = tokensWith((LudoColor.RED to 0) to 1, (LudoColor.BLUE to 0) to 17)
+        var state = LudoState(tokens = tokens, currentPlayerIndex = 0, sixesInARow = 2)
+        state = LudoEngine.applyMove(LudoEngine.rollDice(state, 3), LudoColor.RED, 0)
+        assertEquals(0, state.currentPlayerIndex)
+        assertEquals(0, state.sixesInARow)
+
+        val six = LudoEngine.rollDice(state, 6)
+        assertFalse(LudoEngine.isTurnForfeited(six))
+    }
+
+    @Test
+    fun `the next player's sixes start from zero`() {
+        var state = LudoState(tokens = tokensWith((LudoColor.RED to 0) to 0), currentPlayerIndex = 0)
+        state = rollAndMove(state, 6)
+        state = rollAndMove(state, 2)
+        assertEquals(1, state.currentPlayerIndex)
+        assertEquals(0, state.sixesInARow)
+    }
 }

@@ -4,7 +4,8 @@ package com.example.playwin.core.domain.ludo
  * Pure-Kotlin Ludo rules: the shared 52-cell path, four private 6-cell home
  * columns, dice rolls, the need for a 6 to leave base, capturing an opponent
  * on a non-safe cell, exact-count finishing, and an extra roll for a 6, a
- * capture, or bringing a token home. No
+ * capture, or bringing a token home - except that a third 6 in a row is void
+ * and passes the turn. No
  * Android dependency - exercised directly by unit tests.
  */
 object LudoEngine {
@@ -46,7 +47,17 @@ object LudoEngine {
         players = players
     )
 
-    fun rollDice(state: LudoState): LudoState = state.copy(diceValue = (1..6).random(), hasRolled = true)
+    /** Sixes in a row that forfeit the turn: the third one is void and play passes on. */
+    const val MAX_SIXES_IN_A_ROW = 3
+
+    fun rollDice(state: LudoState, value: Int = (1..6).random()): LudoState = state.copy(
+        diceValue = value,
+        hasRolled = true,
+        sixesInARow = if (value == 6) state.sixesInARow + 1 else 0
+    )
+
+    /** True when the roll just made is the third six in a row: it can't be played and the turn passes. */
+    fun isTurnForfeited(state: LudoState): Boolean = state.diceValue == 6 && state.sixesInARow >= MAX_SIXES_IN_A_ROW
 
     fun canMove(token: Token, dice: Int): Boolean = when {
         token.position == IN_BASE -> dice == 6
@@ -55,6 +66,7 @@ object LudoEngine {
 
     fun movableTokens(state: LudoState): List<Token> {
         val dice = state.diceValue ?: return emptyList()
+        if (isTurnForfeited(state)) return emptyList()
         val color = state.currentColor
         return state.tokens.filter { it.color == color && canMove(it, dice) }
     }
@@ -86,20 +98,35 @@ object LudoEngine {
         // A 6, a capture, or bringing a token home each earn one more roll; several at once still earn just one.
         val extraRoll = dice == 6 || captured || newPosition == FINISH_LOCAL_POSITION
         val nextPlayerIndex = if (extraRoll) state.currentPlayerIndex else (state.currentPlayerIndex + 1) % state.players.size
-        return state.copy(tokens = newTokens, diceValue = null, hasRolled = false, currentPlayerIndex = nextPlayerIndex)
+        // Only a run of sixes counts toward the three-sixes limit; an extra roll earned some other way starts afresh.
+        val sixes = if (extraRoll && dice == 6) state.sixesInARow else 0
+        return state.copy(
+            tokens = newTokens,
+            diceValue = null,
+            hasRolled = false,
+            currentPlayerIndex = nextPlayerIndex,
+            sixesInARow = sixes
+        )
     }
 
-    /** Called when a roll leaves the current player with no legal move at all. */
+    /** Called when a roll leaves the current player with no legal move at all (or forfeits on a third six). */
     fun passTurn(state: LudoState): LudoState {
-        val nextPlayerIndex = if (state.diceValue == 6) state.currentPlayerIndex else (state.currentPlayerIndex + 1) % state.players.size
-        return state.copy(diceValue = null, hasRolled = false, currentPlayerIndex = nextPlayerIndex)
+        val rollsAgain = state.diceValue == 6 && !isTurnForfeited(state)
+        val nextPlayerIndex = if (rollsAgain) state.currentPlayerIndex else (state.currentPlayerIndex + 1) % state.players.size
+        return state.copy(
+            diceValue = null,
+            hasRolled = false,
+            currentPlayerIndex = nextPlayerIndex,
+            sixesInARow = if (rollsAgain) state.sixesInARow else 0
+        )
     }
 
     /** Forces the turn to the next player without a roll - used when the per-turn timer expires. */
     fun forcePassTurn(state: LudoState): LudoState = state.copy(
         diceValue = null,
         hasRolled = false,
-        currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.size
+        currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.size,
+        sixesInARow = 0
     )
 
     fun hasAllTokensHome(positions: List<Int>): Boolean =
