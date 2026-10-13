@@ -181,6 +181,69 @@ class EightBallRulesTest {
         assertNull(EightBallRules.predictedWinner(shot(afterBreak(groups), cleanHit(3))))
     }
 
+    // --- Ball in hand ---
+
+    @Test
+    fun `a foul gives the next player ball in hand anywhere`() {
+        val outcome = shot(afterBreak(groups), cleanHit(12))
+        assertEquals(EightBallFoul.WRONG_BALL_FIRST, outcome.foul)
+        assertEquals(2, outcome.after.currentPlayer)
+        assertEquals(BallInHand.ANYWHERE, outcome.after.ballInHand)
+    }
+
+    @Test
+    fun `a scratch on the break gives ball in hand behind the head string`() {
+        val outcome = shot(EightBallMatch(), cleanHit(1), CUE_BALL_ID)
+        assertEquals(BallInHand.BEHIND_HEAD_STRING, outcome.after.ballInHand)
+    }
+
+    @Test
+    fun `a clean shot gives no ball in hand, and taking the next shot uses it up`() {
+        assertNull(shot(afterBreak(groups), cleanHit(3)).after.ballInHand)
+        val inHand = afterBreak(groups).copy(ballInHand = BallInHand.ANYWHERE)
+        assertNull(shot(inHand, cleanHit(3)).after.ballInHand)
+    }
+
+    @Test
+    fun `ball in hand not used is lost when the turn times out`() {
+        val inHand = afterBreak(groups).copy(ballInHand = BallInHand.ANYWHERE)
+        assertNull(EightBallRules.passTurn(inHand).ballInHand)
+    }
+
+    @Test
+    fun `with ball in hand the cue ball can go on any open spot`() {
+        val inHand = afterBreak(groups).copy(ballInHand = BallInHand.ANYWHERE)
+        val spot = Vec2(600f, 100f)
+        val placed = EightBallRules.placeCueBall(inHand, spot)
+        assertEquals(spot, placed?.balls?.first { it.id == CUE_BALL_ID }?.position)
+    }
+
+    @Test
+    fun `the cue ball can't go on a ball, over a pocket, or off the felt`() {
+        val inHand = afterBreak(groups).copy(ballInHand = BallInHand.ANYWHERE)
+        val r = EightBallTable.BALL_RADIUS
+        val onABall = inHand.balls.first { it.id == 1 }.position
+        assertNull(EightBallRules.placeCueBall(inHand, onABall))
+        assertNull(EightBallRules.placeCueBall(inHand, Vec2(r + 5f, r + 5f)))
+        assertNull(EightBallRules.placeCueBall(inHand, Vec2(500f, r / 2f)))
+        assertNull(EightBallRules.placeCueBall(inHand, Vec2(EightBallTable.WIDTH + 10f, 250f)))
+    }
+
+    @Test
+    fun `after a break foul the cue ball must stay behind the head string`() {
+        val kitchen = afterBreak().copy(ballInHand = BallInHand.BEHIND_HEAD_STRING)
+        assertNull(EightBallRules.placeCueBall(kitchen, Vec2(EightBallTable.HEAD_STRING_X + 40f, 250f)))
+        assertEquals(
+            Vec2(EightBallTable.HEAD_STRING_X - 40f, 150f),
+            EightBallRules.placeCueBall(kitchen, Vec2(EightBallTable.HEAD_STRING_X - 40f, 150f))?.balls?.first { it.id == CUE_BALL_ID }?.position
+        )
+    }
+
+    @Test
+    fun `without ball in hand the cue ball stays put`() {
+        assertNull(EightBallRules.placeCueBall(afterBreak(groups), Vec2(600f, 100f)))
+    }
+
     // --- The physics reports what the rules need ---
 
     @Test

@@ -12,9 +12,20 @@ data class EightBallMatch(
     val balls: List<Ball> = EightBallTable.initialRack(),
     val currentPlayer: Int = 1,
     val playerGroups: Map<Int, BallGroup> = emptyMap(),
-    val isBreak: Boolean = true
+    val isBreak: Boolean = true,
+    /** The player to shoot may place the cue ball first, after the opponent's foul; null if not. */
+    val ballInHand: BallInHand? = null
 ) {
     val opponent: Int get() = 3 - currentPlayer
+}
+
+/** Where a player with ball in hand may put the cue ball. */
+enum class BallInHand {
+    /** Anywhere on the table: after a foul once the game is under way. */
+    ANYWHERE,
+
+    /** Only behind the head string (the "kitchen"): after a foul on the break. */
+    BEHIND_HEAD_STRING
 }
 
 /** Why a shot was a foul. Any foul passes the turn, and potting the 8 on one loses. */
@@ -58,6 +69,9 @@ data class EightBallShotOutcome(
  *    potted and no ball reaches a cushion after that first contact.
  *  - Potting one of your own group on a legal shot earns another; a foul
  *    passes the turn, and a scratched cue ball is re-spotted.
+ *  - After a foul the incoming player has ball in hand: they may place the
+ *    cue ball anywhere ([placeCueBall]) - behind the head string only, if
+ *    the foul came on the break.
  * Whether potting the 8 wins or loses is the game engine's call -
  * [predictedWinner] only mirrors that rule so the bot can plan.
  */
@@ -104,9 +118,15 @@ object EightBallRules {
         val eightPotted = EIGHT_BALL_ID in potted
         if (eightPotted && match.isBreak) settled = respotEightBall(settled)
 
+        // A foul always passes the turn, and the incoming player takes the cue ball in hand.
+        val ballInHand = when {
+            foul == null -> null
+            match.isBreak -> BallInHand.BEHIND_HEAD_STRING
+            else -> BallInHand.ANYWHERE
+        }
         return EightBallShotOutcome(
             shooter = shooter,
-            after = EightBallMatch(settled, nextPlayer, groups, isBreak = false),
+            after = EightBallMatch(settled, nextPlayer, groups, isBreak = false, ballInHand = ballInHand),
             potted = potted,
             scratched = scratched,
             eightBallPocketed = eightPotted,
@@ -116,8 +136,32 @@ object EightBallRules {
         )
     }
 
-    /** The turn passes without a shot (e.g. the shot clock ran out). A break not yet taken passes to the other player. */
-    fun passTurn(match: EightBallMatch): EightBallMatch = match.copy(currentPlayer = match.opponent)
+    /**
+     * The turn passes without a shot (e.g. the shot clock ran out). A break not
+     * yet taken passes to the other player; ball in hand not used is lost.
+     */
+    fun passTurn(match: EightBallMatch): EightBallMatch = match.copy(currentPlayer = match.opponent, ballInHand = null)
+
+    /**
+     * The match with the cue ball placed at [at], for a player with ball in
+     * hand - or null if they don't have it or the spot isn't allowed: off the
+     * felt, over a pocket, touching another ball, or in front of the head
+     * string when only the kitchen is open.
+     */
+    fun placeCueBall(match: EightBallMatch, at: Vec2): EightBallMatch? {
+        val inHand = match.ballInHand ?: return null
+        val r = EightBallTable.BALL_RADIUS
+        if (at.x < r || at.x > EightBallTable.WIDTH - r || at.y < r || at.y > EightBallTable.HEIGHT - r) return null
+        if (inHand == BallInHand.BEHIND_HEAD_STRING && at.x > EightBallTable.HEAD_STRING_X) return null
+        if (EightBallTable.corners.any { (it - at).length <= EightBallTable.POCKET_RADIUS + r }) return null
+        if (match.balls.any { it.id != CUE_BALL_ID && !it.pocketed && (it.position - at).length < 2 * r }) return null
+        return match.copy(balls = withCueAt(match.balls, at))
+    }
+
+    /** [balls] with the cue ball standing at [at] - no checks; for replaying a placement already made. */
+    fun withCueAt(balls: List<Ball>, at: Vec2): List<Ball> = balls.map {
+        if (it.id == CUE_BALL_ID) it.copy(position = at, velocity = Vec2.Zero, pocketed = false) else it
+    }
 
     /**
      * Who wins because of this shot, mirroring the engine's rule: an 8 on the

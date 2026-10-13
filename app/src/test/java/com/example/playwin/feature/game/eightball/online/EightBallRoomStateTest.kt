@@ -1,6 +1,9 @@
 package com.example.playwin.feature.game.eightball.online
 
 import com.example.playwin.core.domain.eightball.BallGroup
+import com.example.playwin.core.domain.eightball.BallInHand
+import com.example.playwin.core.domain.eightball.EightBallFoul
+import com.example.playwin.core.domain.eightball.Vec2
 import com.example.playwin.core.domain.eightball.EightBallMatch
 import com.example.playwin.core.domain.model.Room
 import com.example.playwin.core.domain.model.RoomStatus
@@ -35,5 +38,21 @@ class EightBallRoomStateTest {
         val decoded = room(EightBallRoomState.of(match, shot, foul = null).toJson()).eightBallState()
         assertEquals(match, decoded.toMatch())
         assertEquals(shot, decoded.shot)
+    }
+
+    @Test
+    fun `ball in hand and where the cue ball was placed survive a round trip`() {
+        val match = EightBallMatch(isBreak = false, currentPlayer = 2, ballInHand = BallInHand.ANYWHERE)
+        val shot = EightBallRoomShot(seq = 4, shooter = 1, dx = 0f, dy = 1f, power = 0.6f, cx = 300f, cy = 120f)
+        val decoded = room(EightBallRoomState.of(match, shot, EightBallFoul.NO_RAIL).toJson()).eightBallState()
+        assertEquals(match, decoded.toMatch())
+        assertEquals(Vec2(300f, 120f), decoded.shot?.cueAt)
+    }
+
+    @Test
+    fun `a shot without a placement is stored as before`() {
+        val shot = EightBallRoomShot(seq = 1, shooter = 1, dx = 1f, dy = 0f, power = 1f)
+        val stored = EightBallRoomState.of(EightBallMatch(), shot, foul = null).toJson() as JsonObject
+        assertEquals(setOf("seq", "shooter", "dx", "dy", "power"), (stored["shot"] as JsonObject).keys)
     }
 }

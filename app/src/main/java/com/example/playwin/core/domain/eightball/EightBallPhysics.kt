@@ -20,6 +20,9 @@ object EightBallTable {
     const val POCKET_RADIUS = BALL_RADIUS * 2.25f
 
     const val CUE_START_X = WIDTH * 0.25f
+
+    /** The head string, painted across the table where the cue ball starts; the "kitchen" is behind it. */
+    const val HEAD_STRING_X = CUE_START_X
     const val RACK_APEX_X = WIDTH * 0.72f
     const val CENTER_Y = HEIGHT / 2f
 

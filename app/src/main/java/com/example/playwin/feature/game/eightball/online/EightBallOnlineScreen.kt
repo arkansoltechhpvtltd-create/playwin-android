@@ -11,6 +11,7 @@ import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.PhysicsFrameClock
 import com.example.playwin.core.domain.eightball.EightBallFoul
 import com.example.playwin.feature.game.eightball.GroupLegend
+import com.example.playwin.feature.game.eightball.ballInHandPrompt
 import com.example.playwin.feature.game.eightball.PoolTable
 import com.example.playwin.feature.game.eightball.TurnBanner
 import com.example.playwin.feature.game.online.OnlineMatchEffects
@@ -40,11 +41,13 @@ fun EightBallOnlineRoute(
         activeContent = { room ->
             val me = state.myPlayerNumber ?: return@OnlineMatchScreen
             val stored = room.eightBallState()
+            val match = stored.toMatch()
+            val canAim = state.isMyTurn && !state.isResolving && !isAnimating
 
             TurnBanner(
                 text = when {
                     isAnimating -> "…"
-                    state.isMyTurn -> "Your shot - drag back from the cue ball"
+                    state.isMyTurn -> ballInHandPrompt(match.ballInHand)
                     else -> "Opponent is aiming"
                 } + (stored.foul?.let { name -> runCatching { EightBallFoul.valueOf(name) }.getOrNull() }
                     ?.let { " (foul on previous shot: ${it.label})" } ?: ""),
@@ -55,11 +58,12 @@ fun EightBallOnlineRoute(
             BoardSlot(modifier = Modifier.padding(top = 12.dp)) {
                 PoolTable(
                     balls = balls,
-                    canAim = state.isMyTurn && !state.isResolving && !isAnimating,
-                    onShoot = viewModel::onShoot
+                    canAim = canAim,
+                    onShoot = viewModel::onShoot,
+                    ballInHand = match.ballInHand.takeIf { canAim },
+                    onPlaceCueBall = viewModel::onPlaceCueBall
                 )
             }
-            val match = stored.toMatch()
             GroupLegend(myGroup = match.playerGroups[me], modifier = Modifier.padding(top = 12.dp), beforeBreak = match.isBreak)
         },
         finishedBoard = { room ->

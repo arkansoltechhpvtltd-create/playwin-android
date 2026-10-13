@@ -18,27 +18,74 @@ import kotlin.random.Random
  */
 object EightBallBot {
 
-    data class Shot(val direction: Vec2, val power: Float)
+    /** A shot; [cueAt] is where it places the cue ball first, when it has ball in hand. */
+    data class Shot(val direction: Vec2, val power: Float, val cueAt: Vec2? = null)
 
     private val POWERS = listOf(0.4f, 0.65f, 0.95f)
     private const val MAX_SIMULATED_CANDIDATES = 45
     private const val MIN_CUT_COSINE = 0.35f
     private const val DECISIVE = 1000.0
 
+    /** With ball in hand: how many of the best-looking spots it tries shots from, and how many shots from each. */
+    private const val PLACEMENTS_TRIED = 4
+    private const val SHOTS_PER_PLACEMENT = 9
+
     /** Aiming error in degrees, either way; 0 gives the bot perfect aim. */
     const val DEFAULT_AIM_ERROR_DEGREES = 1.5
 
     fun chooseShot(match: EightBallMatch, random: Random = Random, aimErrorDegrees: Double = DEFAULT_AIM_ERROR_DEGREES): Shot {
-        val best = candidates(match)
-            .ifEmpty { listOf(safetyShot(match)) }
-            .maxBy { evaluate(match, it) + random.nextDouble(0.0, 0.01) }
+        // With ball in hand, shots are tried from a few good spots; otherwise from where the cue ball lies.
+        val tables: List<Pair<EightBallMatch, Vec2?>> = placements(match).ifEmpty { listOf(match to null) }
+        val (table, best) = tables
+            .flatMap { (table, at) ->
+                val shots = candidates(table).ifEmpty { listOf(safetyShot(table)) }
+                (if (at == null) shots else shots.take(SHOTS_PER_PLACEMENT)).map { table to it.copy(cueAt = at) }
+            }
+            .maxBy { (table, shot) -> evaluate(table, shot) + random.nextDouble(0.0, 0.01) }
         if (aimErrorDegrees <= 0.0) return best
 
         val error = Math.toRadians(random.nextDouble(-aimErrorDegrees, aimErrorDegrees))
         val (x, y) = best.direction.x.toDouble() to best.direction.y.toDouble()
         val rotated = Vec2((x * cos(error) - y * sin(error)).toFloat(), (x * sin(error) + y * cos(error)).toFloat())
         val power = (best.power * random.nextDouble(0.93, 1.07).toFloat()).coerceIn(0.1f, 1f)
-        return Shot(rotated, power)
+        return best.copy(direction = rotated, power = power)
+    }
+
+    /**
+     * With ball in hand, the most promising spots for the cue ball (each with
+     * the cue ball placed there): straight behind a target ball on its line to
+     * a pocket, plus a coarse grid so the kitchen always has options - ranked
+     * by the cleanest cut each leaves. Empty without ball in hand.
+     */
+    internal fun placements(match: EightBallMatch): List<Pair<EightBallMatch, Vec2>> {
+        if (match.ballInHand == null) return emptyList()
+        val r = EightBallTable.BALL_RADIUS
+        val spots = mutableListOf<Vec2>()
+        for (target in targets(match)) {
+            for (pocket in EightBallTable.corners) {
+                val toPocket = (pocket - target.position).normalizedOrZero()
+                val ghost = target.position - toPocket * (r * 2f)
+                for (back in listOf(3f, 6f, 10f)) spots += ghost - toPocket * (r * back)
+            }
+        }
+        for (gx in 1..9) for (gy in 1..4) spots += Vec2(EightBallTable.WIDTH * gx / 10f, EightBallTable.HEIGHT * gy / 5f)
+
+        return spots
+            .mapNotNull { at -> EightBallRules.placeCueBall(match, at)?.let { it to at } }
+            .sortedByDescending { (placed, _) -> bestCut(placed) }
+            .take(PLACEMENTS_TRIED)
+    }
+
+    /** The cleanest cut (1 = dead straight) the cue ball has on any target, by geometry alone. */
+    private fun bestCut(match: EightBallMatch): Float {
+        val cue = match.balls.first { it.id == CUE_BALL_ID }
+        return targets(match).maxOfOrNull { target ->
+            EightBallTable.corners.maxOf { pocket ->
+                val toPocket = (pocket - target.position).normalizedOrZero()
+                val ghost = target.position - toPocket * (EightBallTable.BALL_RADIUS * 2f)
+                (ghost - cue.position).normalizedOrZero().dot(toPocket)
+            }
+        } ?: -1f
     }
 
     /** How good a shot is, by simulating it with the real physics and judging it with the real rules. */

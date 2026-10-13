@@ -72,4 +72,30 @@ class EightBallBotTest {
         val cleared = table(EIGHT_BALL_ID to easySpot, 9 to farSpot)
         assertEquals(listOf(EIGHT_BALL_ID), EightBallBot.targets(cleared).map { it.id })
     }
+
+    @Test
+    fun `with ball in hand it places the cue ball legally and pots an awkward ball`() {
+        // Ball 1 hugs the long cushion far from the cue ball: hard from where the cue lies, easy once placed.
+        val match = table(1 to Vec2(700f, 470f), 9 to farSpot).copy(ballInHand = BallInHand.ANYWHERE)
+        val shot = EightBallBot.chooseShot(match, Random(0), aimErrorDegrees = 0.0)
+        val at = requireNotNull(shot.cueAt) { "it should use its ball in hand" }
+        val placed = requireNotNull(EightBallRules.placeCueBall(match, at)) { "placed at an illegal spot: $at" }
+        val result = play(placed, shot)
+        assertTrue("potted ${result.newlyPocketed}", 1 in result.newlyPocketed)
+        assertFalse(CUE_BALL_ID in result.newlyPocketed)
+    }
+
+    @Test
+    fun `after a break foul it keeps the cue ball behind the head string`() {
+        val match = table(1 to easySpot, 9 to farSpot, myGroup = null).copy(ballInHand = BallInHand.BEHIND_HEAD_STRING)
+        val at = requireNotNull(EightBallBot.chooseShot(match, Random(0), aimErrorDegrees = 0.0).cueAt)
+        assertTrue("placed at $at", at.x <= EightBallTable.HEAD_STRING_X)
+        assertTrue(EightBallRules.placeCueBall(match, at) != null)
+    }
+
+    @Test
+    fun `without ball in hand it shoots from where the cue ball lies`() {
+        val match = table(1 to easySpot, EIGHT_BALL_ID to farSpot)
+        assertEquals(null, EightBallBot.chooseShot(match, Random(0), aimErrorDegrees = 0.0).cueAt)
+    }
 }

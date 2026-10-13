@@ -64,6 +64,18 @@ class EightBallViewModel @Inject constructor(
         shoot(direction, power)
     }
 
+    /**
+     * With ball in hand, moves the cue ball to [at] before the shot. Spots the
+     * rules don't allow (over a pocket, on another ball, out of the kitchen
+     * after a break foul) are ignored, so the ball stays where it last was.
+     */
+    fun onPlaceCueBall(at: Vec2) {
+        val state = _uiState.value
+        if (!state.canAim) return
+        val placed = EightBallRules.placeCueBall(state.match, at) ?: return
+        _uiState.update { it.copy(match = placed, balls = placed.balls) }
+    }
+
     /** Advances the table by one rendered frame; called from the screen's own frame clock. */
     fun onPhysicsTick(dtSeconds: Float) {
         val state = _uiState.value
@@ -164,6 +176,11 @@ class EightBallViewModel @Inject constructor(
             val shot = withContext(Dispatchers.Default) { EightBallBot.chooseShot(match) }
             delay((COMPUTER_MIN_THINK_MILLIS - (System.currentTimeMillis() - started)).coerceAtLeast(0))
             _uiState.update { it.copy(isComputerThinking = false) }
+            shot.cueAt?.let { at ->
+                EightBallRules.placeCueBall(_uiState.value.match, at)?.let { placed ->
+                    _uiState.update { it.copy(match = placed, balls = placed.balls) }
+                }
+            }
             shoot(shot.direction, shot.power)
         }
     }

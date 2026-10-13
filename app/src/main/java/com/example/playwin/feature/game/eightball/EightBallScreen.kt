@@ -48,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,6 +95,7 @@ import com.example.playwin.core.designsystem.theme.PwGoldDark
 import com.example.playwin.core.designsystem.theme.PwGoldLight
 import com.example.playwin.core.domain.eightball.Ball
 import com.example.playwin.core.domain.eightball.BallGroup
+import com.example.playwin.core.domain.eightball.BallInHand
 import com.example.playwin.core.domain.eightball.CUE_BALL_ID
 import com.example.playwin.core.domain.eightball.EightBallTable
 import com.example.playwin.core.domain.eightball.Vec2
@@ -150,8 +152,16 @@ private fun EightBallComputerRoute(
         uiState = uiState,
         onBack = onBack,
         onShoot = viewModel::onShoot,
-        onPlayAgain = viewModel::onPlayAgain
+        onPlayAgain = viewModel::onPlayAgain,
+        onPlaceCueBall = viewModel::onPlaceCueBall
     )
+}
+
+/** What the player to shoot is told: how to aim, and with ball in hand, where the cue ball may go first. */
+fun ballInHandPrompt(ballInHand: BallInHand?): String = when (ballInHand) {
+    BallInHand.ANYWHERE -> "Ball in hand - drag the cue ball anywhere, then drag back to shoot"
+    BallInHand.BEHIND_HEAD_STRING -> "Ball in hand - place the cue ball behind the line, then drag back to shoot"
+    null -> "Your shot - drag back from the cue ball"
 }
 
 /** The banners keep the usual 16dp side margin; only the table runs wider. */
@@ -164,7 +174,8 @@ fun EightBallScreen(
     onBack: () -> Unit,
     onShoot: (direction: Vec2, power: Float) -> Unit,
     onPlayAgain: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onPlaceCueBall: ((Vec2) -> Unit)? = null
 ) {
     GameScaffold(
         modifier = modifier.fillMaxSize(),
@@ -185,7 +196,7 @@ fun EightBallScreen(
                 else -> TurnBanner(
                     text = when {
                         uiState.isComputerThinking -> "Computer is lining up a shot…"
-                        uiState.currentPlayer == EIGHT_BALL_HUMAN -> "Your shot - drag back from the cue ball"
+                        uiState.currentPlayer == EIGHT_BALL_HUMAN -> ballInHandPrompt(uiState.match.ballInHand)
                         else -> "Computer's shot"
                     } + buildString {
                         if (uiState.lastTurnTimedOut) append(" (previous turn timed out)")
@@ -204,7 +215,9 @@ fun EightBallScreen(
                 PoolTable(
                     balls = uiState.balls,
                     canAim = uiState.canAim,
-                    onShoot = onShoot
+                    onShoot = onShoot,
+                    ballInHand = uiState.match.ballInHand.takeIf { uiState.canAim },
+                    onPlaceCueBall = onPlaceCueBall
                 )
                 if (humanWon) {
                     CelebrationBurst(
@@ -437,25 +450,38 @@ private fun rememberTableImage(): ImageBitmap? {
     return image
 }
 
+/** How close to the cue ball (in ball radii) a drag must start to pick it up with ball in hand. */
+private const val CUE_GRAB_RADII = 2f
+
 /** A ball that has just dropped: it rolls from where it was into the pocket, shrinking away. */
 private class SinkingBall(val id: Int, val from: Vec2, val pocket: Vec2) {
     val progress = Animatable(0f)
 }
 
-/** The table. Drag back from the cue ball to aim; release to shoot. */
+/**
+ * The table. Drag back from the cue ball to aim; release to shoot. With
+ * [ballInHand], a drag that starts on the cue ball moves it instead, through
+ * [onPlaceCueBall] (which keeps it only where the rules allow).
+ */
 @Composable
 fun PoolTable(
     balls: List<Ball>,
     canAim: Boolean,
     onShoot: (Vec2, Float) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    ballInHand: BallInHand? = null,
+    onPlaceCueBall: ((Vec2) -> Unit)? = null
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var dragCurrent by remember { mutableStateOf<Offset?>(null) }
+    var movingCue by remember { mutableStateOf(false) }
 
     val scale = if (canvasSize.width > 0) canvasSize.width / EightBallTable.WIDTH else 0f
     val cueBall = balls.firstOrNull { it.id == CUE_BALL_ID && !it.pocketed }
     val cueScreenPos = cueBall?.let { Offset(it.position.x * scale, it.position.y * scale) }
+    // Read through state inside the gesture, so moving the cue ball doesn't restart the gesture mid-drag.
+    val currentCuePos = rememberUpdatedState(cueScreenPos)
+    val currentPlace = rememberUpdatedState(onPlaceCueBall.takeIf { ballInHand != null })
 
     val maxDragPx = canvasSize.width * 0.4f
     val minDragPx = canvasSize.width * 0.02f
@@ -544,15 +570,26 @@ fun PoolTable(
                 .width(artPixel * TableArt.FELT_WIDTH)
                 .aspectRatio(2f)
                 .onSizeChanged { canvasSize = it }
-                .pointerInput(canAim, cueScreenPos) {
+                .pointerInput(canAim, scale) {
                     if (!canAim) return@pointerInput
                     detectDragGestures(
-                        onDragStart = { offset -> dragCurrent = offset },
-                        onDrag = { change, _ -> dragCurrent = change.position },
+                        onDragStart = { offset ->
+                            val cue = currentCuePos.value
+                            val grab = EightBallTable.BALL_RADIUS * scale * CUE_GRAB_RADII
+                            movingCue = currentPlace.value != null && cue != null && (offset - cue).getDistance() <= grab
+                            if (!movingCue) dragCurrent = offset
+                        },
+                        onDrag = { change, _ ->
+                            if (movingCue) {
+                                if (scale > 0f) currentPlace.value?.invoke(Vec2(change.position.x / scale, change.position.y / scale))
+                            } else {
+                                dragCurrent = change.position
+                            }
+                        },
                         onDragEnd = {
-                            val start = cueScreenPos
+                            val start = currentCuePos.value
                             val end = dragCurrent
-                            if (start != null && end != null) {
+                            if (!movingCue && start != null && end != null) {
                                 val pullDistance = (end - start).getDistance()
                                 if (pullDistance > minDragPx && maxDragPx > 0f) {
                                     val direction = Vec2(start.x - end.x, start.y - end.y).normalizedOrZero()
@@ -561,8 +598,12 @@ fun PoolTable(
                                 }
                             }
                             dragCurrent = null
+                            movingCue = false
                         },
-                        onDragCancel = { dragCurrent = null }
+                        onDragCancel = {
+                            dragCurrent = null
+                            movingCue = false
+                        }
                     )
                 }
         ) {
@@ -580,6 +621,11 @@ fun PoolTable(
                 val s = size.width / EightBallTable.WIDTH
                 val ballRadius = EightBallTable.BALL_RADIUS * s
                 fun toScreen(v: Vec2) = Offset(v.x * s, v.y * s)
+
+                if (ballInHand == BallInHand.BEHIND_HEAD_STRING) {
+                    // The kitchen, where the cue ball may go after a foul on the break.
+                    drawRect(Color.White.copy(alpha = 0.08f), size = Size(EightBallTable.HEAD_STRING_X * s, size.height))
+                }
 
                 sinking.forEach { sink ->
                     val t = sink.progress.value

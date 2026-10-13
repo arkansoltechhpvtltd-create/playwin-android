@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.playwin.core.domain.eightball.Ball
 import com.example.playwin.core.domain.eightball.BallGroup
+import com.example.playwin.core.domain.eightball.BallInHand
 import com.example.playwin.core.domain.eightball.EightBallFoul
 import com.example.playwin.core.domain.eightball.EightBallMatch
 import com.example.playwin.core.domain.eightball.EightBallPhysics
@@ -40,7 +41,18 @@ data class EightBallRoomBall(val id: Int, val x: Float, val y: Float, val p: Boo
 
 /** The shot that produced the stored table, so the other player can watch it play out. */
 @Serializable
-data class EightBallRoomShot(val seq: Int, val shooter: Int, val dx: Float, val dy: Float, val power: Float)
+data class EightBallRoomShot(
+    val seq: Int,
+    val shooter: Int,
+    val dx: Float,
+    val dy: Float,
+    val power: Float,
+    /** Where the shooter placed the cue ball first, with ball in hand; left out otherwise. */
+    val cx: Float? = null,
+    val cy: Float? = null
+) {
+    val cueAt: Vec2? get() = if (cx != null && cy != null) Vec2(cx, cy) else null
+}
 
 /**
  * What online 8-ball stores in `rooms.board_state`: where every ball came to
@@ -56,14 +68,17 @@ data class EightBallRoomState(
     val shot: EightBallRoomShot? = null,
     val scratched: Boolean = false,
     /** The previous shot's [EightBallFoul], by name, if it was one. */
-    val foul: String? = null
+    val foul: String? = null,
+    /** The player to shoot has [BallInHand], by name, after the previous shot's foul. */
+    val ballInHand: String? = null
 ) {
     fun toMatch(): EightBallMatch = EightBallMatch(
         balls = balls?.map { Ball(it.id, Vec2(it.x, it.y), pocketed = it.p) } ?: EightBallMatch().balls,
         currentPlayer = currentPlayer,
         playerGroups = groups.mapNotNull { (k, v) -> k.toIntOrNull()?.let { it to BallGroup.valueOf(v) } }.toMap(),
         // No shot stored yet means nobody has broken.
-        isBreak = shot == null
+        isBreak = shot == null,
+        ballInHand = ballInHand?.let { name -> runCatching { BallInHand.valueOf(name) }.getOrNull() }
     )
 
     companion object {
@@ -73,7 +88,8 @@ data class EightBallRoomState(
             groups = match.playerGroups.map { (k, v) -> k.toString() to v.name }.toMap(),
             shot = shot,
             scratched = foul == EightBallFoul.SCRATCH,
-            foul = foul?.name
+            foul = foul?.name,
+            ballInHand = match.ballInHand?.name
         )
     }
 }
@@ -117,6 +133,8 @@ class EightBallOnlineViewModel @Inject constructor(
     private var animation = Animation.NONE
     private var replayTarget: List<Ball>? = null
     private var pendingShot: EightBallRoomShot? = null
+    /** Where I put the cue ball this turn, with ball in hand; null if I haven't moved it. */
+    private var placedCueAt: Vec2? = null
     private val pocketedThisShot = mutableListOf<Int>()
     private val eventsThisShot = mutableListOf<TableEvent>()
     private var lastSeenState: EightBallRoomState? = null
@@ -142,8 +160,29 @@ class EightBallOnlineViewModel @Inject constructor(
         animation = Animation.MY_SHOT
         _isAnimating.value = true
         val stored = room.eightBallState()
-        pendingShot = EightBallRoomShot((stored.shot?.seq ?: 0) + 1, me, direction.x, direction.y, power)
-        _displayBalls.value = EightBallRules.launch(stored.toMatch().balls, direction, power)
+        val at = placedCueAt
+        pendingShot = EightBallRoomShot((stored.shot?.seq ?: 0) + 1, me, direction.x, direction.y, power, at?.x, at?.y)
+        _displayBalls.value = EightBallRules.launch(tableBeforeMyShot(stored).balls, direction, power)
+    }
+
+    /**
+     * With ball in hand on my turn, moves the cue ball to [at] (only where the
+     * rules allow). The spot travels with the shot, so the opponent's replay
+     * starts from it too.
+     */
+    fun onPlaceCueBall(at: Vec2) {
+        val state = uiState.value
+        val room = state.room ?: return
+        if (!state.isMyTurn || state.isResolving || animation != Animation.NONE) return
+        val placed = EightBallRules.placeCueBall(room.eightBallState().toMatch(), at) ?: return
+        placedCueAt = at
+        _displayBalls.value = placed.balls
+    }
+
+    /** The stored table, with the cue ball where I placed it if I had ball in hand. */
+    private fun tableBeforeMyShot(stored: EightBallRoomState): EightBallMatch {
+        val match = stored.toMatch()
+        return placedCueAt?.let { EightBallRules.placeCueBall(match, it) } ?: match
     }
 
     /** Advances whatever is moving by one rendered frame; called from the screen's frame clock. */
@@ -171,7 +210,7 @@ class EightBallOnlineViewModel @Inject constructor(
         val room = uiState.value.room ?: return
         val me = uiState.value.myPlayerNumber ?: return
         val shot = pendingShot ?: return
-        val outcome = EightBallRules.resolveShot(room.eightBallState().toMatch(), finalBalls, pocketedThisShot.toList(), eventsThisShot.toList())
+        val outcome = EightBallRules.resolveShot(tableBeforeMyShot(room.eightBallState()), finalBalls, pocketedThisShot.toList(), eventsThisShot.toList())
 
         controller.runMove {
             val encoded = EightBallRoomState.of(outcome.after, shot, outcome.foul).toJson()
@@ -197,6 +236,8 @@ class EightBallOnlineViewModel @Inject constructor(
     private fun onStoredState(stored: EightBallRoomState) {
         val previous = lastSeenState
         lastSeenState = stored
+        // A new table (my shot recorded, or the opponent's): any cue placement of mine is spent.
+        if (animation != Animation.MY_SHOT) placedCueAt = null
         val me = uiState.value.myPlayerNumber
         val shot = stored.shot
         val isNewOpponentShot = shot != null && shot.shooter != me && previous != null &&
@@ -209,7 +250,8 @@ class EightBallOnlineViewModel @Inject constructor(
                 animation = Animation.REPLAY
                 _isAnimating.value = true
                 replayTarget = stored.toMatch().balls
-                _displayBalls.value = EightBallRules.launch(previous.toMatch().balls, Vec2(shot.dx, shot.dy), shot.power)
+                val start = previous.toMatch().balls.let { balls -> shot.cueAt?.let { EightBallRules.withCueAt(balls, it) } ?: balls }
+                _displayBalls.value = EightBallRules.launch(start, Vec2(shot.dx, shot.dy), shot.power)
             }
             else -> {
                 animation = Animation.NONE
