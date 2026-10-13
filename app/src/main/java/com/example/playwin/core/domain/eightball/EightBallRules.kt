@@ -153,7 +153,7 @@ object EightBallRules {
         val r = EightBallTable.BALL_RADIUS
         if (at.x < r || at.x > EightBallTable.WIDTH - r || at.y < r || at.y > EightBallTable.HEIGHT - r) return null
         if (inHand == BallInHand.BEHIND_HEAD_STRING && at.x > EightBallTable.HEAD_STRING_X) return null
-        if (EightBallTable.corners.any { (it - at).length <= EightBallTable.POCKET_RADIUS + r }) return null
+        if (EightBallTable.pockets.any { (it.center - at).length <= it.radius + r }) return null
         if (match.balls.any { it.id != CUE_BALL_ID && !it.pocketed && (it.position - at).length < 2 * r }) return null
         return match.copy(balls = withCueAt(match.balls, at))
     }

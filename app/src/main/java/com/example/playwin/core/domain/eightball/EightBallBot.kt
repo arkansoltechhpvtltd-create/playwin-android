@@ -62,7 +62,7 @@ object EightBallBot {
         val r = EightBallTable.BALL_RADIUS
         val spots = mutableListOf<Vec2>()
         for (target in targets(match)) {
-            for (pocket in EightBallTable.corners) {
+            for (pocket in EightBallTable.pocketCentres) {
                 val toPocket = (pocket - target.position).normalizedOrZero()
                 val ghost = target.position - toPocket * (r * 2f)
                 for (back in listOf(3f, 6f, 10f)) spots += ghost - toPocket * (r * back)
@@ -80,7 +80,7 @@ object EightBallBot {
     private fun bestCut(match: EightBallMatch): Float {
         val cue = match.balls.first { it.id == CUE_BALL_ID }
         return targets(match).maxOfOrNull { target ->
-            EightBallTable.corners.maxOf { pocket ->
+            EightBallTable.pocketCentres.maxOf { pocket ->
                 val toPocket = (pocket - target.position).normalizedOrZero()
                 val ghost = target.position - toPocket * (EightBallTable.BALL_RADIUS * 2f)
                 (ghost - cue.position).normalizedOrZero().dot(toPocket)
@@ -124,7 +124,7 @@ object EightBallBot {
         val cue = match.balls.firstOrNull { it.id == CUE_BALL_ID && !it.pocketed } ?: return emptyList()
         val aims = mutableListOf<Pair<Vec2, Float>>()
         for (target in targets(match)) {
-            for (pocket in EightBallTable.corners) {
+            for (pocket in EightBallTable.pocketCentres) {
                 val toPocket = (pocket - target.position).normalizedOrZero()
                 val ghost = target.position - toPocket * (EightBallTable.BALL_RADIUS * 2f)
                 val aim = (ghost - cue.position).normalizedOrZero()

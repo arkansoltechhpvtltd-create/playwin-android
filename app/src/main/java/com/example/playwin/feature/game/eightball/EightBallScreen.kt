@@ -350,10 +350,11 @@ private fun colorForBall(id: Int): Color = ballColors[id] ?: ballColors.getValue
 
 /**
  * Where things are in eightball_table.jpg, a near-square table with eight pockets.
- * The physics table is 2:1 with only the four corner pockets, so [loadTableImage]
- * reshapes it: cropped to the outside of the rails, with the band of columns holding
- * the top and bottom middle pockets cut out, and the band of rows holding the two
- * side pockets cut out. All in the image's pixels.
+ * The physics table is 2:1 with six - four corners and one in the middle of each
+ * long cushion - so [loadTableImage] reshapes it: cropped to the outside of the
+ * rails, keeping the top and bottom middle pockets (they become the side pockets of
+ * the long table) and cutting out the band of rows holding the pockets in the middle
+ * of the short sides. All in the image's pixels.
  */
 private object TableArt {
     // The outside of the rails.
@@ -367,11 +368,10 @@ private object TableArt {
     const val FELT_TOP = 168
     const val FELT_RIGHT = 812
 
-    // Columns [CUT_LEFT, CUT_RIGHT) and rows [CUT_TOP, CUT_BOTTOM) are dropped.
-    const val CUT_LEFT = 482
-    const val CUT_RIGHT = 548
-    const val CUT_TOP = 300
-    const val CUT_BOTTOM = 724
+    // Rows [CUT_TOP, CUT_BOTTOM) are dropped: centred on the short sides' middle
+    // pockets (row ~508), and just tall enough to leave the felt exactly 2:1.
+    const val CUT_TOP = 313
+    const val CUT_BOTTOM = 704
 
     /**
      * The row cut is cross-faded over this many rows either side of it rather than
@@ -380,11 +380,11 @@ private object TableArt {
     const val FADE = 100
 
     // The reshaped image, and the felt within it (exactly 2:1, like the physics table).
-    const val WIDTH = RIGHT - LEFT - (CUT_RIGHT - CUT_LEFT)
+    const val WIDTH = RIGHT - LEFT
     const val HEIGHT = BOTTOM - TOP - (CUT_BOTTOM - CUT_TOP)
     const val FELT_X = FELT_LEFT - LEFT
     const val FELT_Y = FELT_TOP - TOP
-    const val FELT_WIDTH = FELT_RIGHT - FELT_LEFT - (CUT_RIGHT - CUT_LEFT)
+    const val FELT_WIDTH = FELT_RIGHT - FELT_LEFT
 
     /** Rounds the frame off with the chrome corner caps, as a percentage of the table's height. */
     const val CORNER_PERCENT = 7
@@ -399,20 +399,12 @@ private fun loadTableImage(resources: Resources): ImageBitmap = tableImageCache 
     val source = BitmapFactory.decodeResource(resources, R.drawable.eightball_table)
     val table = Bitmap.createBitmap(TableArt.WIDTH, TableArt.HEIGHT, Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(table)
-    // Rows [srcTop, srcBottom) of both column halves, either side of the column cut.
+    // Rows [srcTop, srcBottom), across the full width of the rails.
     fun drawRows(srcTop: Int, srcBottom: Int, dstTop: Int) {
-        val dstBottom = dstTop + srcBottom - srcTop
-        val leftWidth = TableArt.CUT_LEFT - TableArt.LEFT
         canvas.drawBitmap(
             source,
-            AndroidRect(TableArt.LEFT, srcTop, TableArt.CUT_LEFT, srcBottom),
-            AndroidRect(0, dstTop, leftWidth, dstBottom),
-            null
-        )
-        canvas.drawBitmap(
-            source,
-            AndroidRect(TableArt.CUT_RIGHT, srcTop, TableArt.RIGHT, srcBottom),
-            AndroidRect(leftWidth, dstTop, TableArt.WIDTH, dstBottom),
+            AndroidRect(TableArt.LEFT, srcTop, TableArt.RIGHT, srcBottom),
+            AndroidRect(0, dstTop, TableArt.WIDTH, dstTop + srcBottom - srcTop),
             null
         )
     }
@@ -497,7 +489,7 @@ fun PoolTable(
             if (balls.count { it.pocketed } > before.count { it.pocketed }) {
                 balls.filter { it.pocketed }.forEach { ball ->
                     val last = before.firstOrNull { it.id == ball.id && !it.pocketed } ?: return@forEach
-                    val pocket = EightBallTable.corners.minBy { (it - last.position).length }
+                    val pocket = EightBallTable.pockets.minBy { (it.center - last.position).length }.center
                     val sink = SinkingBall(ball.id, last.position, pocket)
                     sinking += sink
                     scope.launch {
@@ -717,8 +709,8 @@ fun PoolTable(
 
 /**
  * The head string and spots on the artwork's felt. The pockets come from the
- * artwork: the physics sinks balls at the felt's corners, in the jaws just in
- * front of the painted pockets.
+ * artwork: the physics sinks balls at the felt's corners and the middle of each
+ * long cushion, in the jaws just in front of the painted pockets.
  */
 private fun DrawScope.drawTableMarkings() {
     val s = size.width / EightBallTable.WIDTH

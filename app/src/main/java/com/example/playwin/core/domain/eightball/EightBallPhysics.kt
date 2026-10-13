@@ -33,6 +33,27 @@ object EightBallTable {
         Vec2(WIDTH, HEIGHT)
     )
 
+    /**
+     * The catch radius of the two side pockets. Smaller than a corner's: a side
+     * pocket's mouth is cut straight into the cushion, so with the corners' radius
+     * every ball rolling along the rail past the middle would drop. At this size a
+     * ball against the cushion drops within about a ball's width of the middle.
+     */
+    const val SIDE_POCKET_RADIUS = BALL_RADIUS * 1.6f
+
+    /** The middle of each long cushion, in the mouth of the painted side pocket. */
+    val sidePockets: List<Vec2> = listOf(
+        Vec2(WIDTH / 2f, 0f),
+        Vec2(WIDTH / 2f, HEIGHT)
+    )
+
+    /** All six pockets, each with the distance from its centre at which a ball drops. */
+    val pockets: List<Pocket> =
+        corners.map { Pocket(it, POCKET_RADIUS) } + sidePockets.map { Pocket(it, SIDE_POCKET_RADIUS) }
+
+    /** Where to aim a ball to pot it: the centre of each of the six pockets. */
+    val pocketCentres: List<Vec2> = pockets.map { it.center }
+
     /** Standard 15-ball triangle rack with the 8-ball on the middle spot, plus the cue ball. */
     fun initialRack(): List<Ball> {
         val rows = listOf(
@@ -57,6 +78,9 @@ object EightBallTable {
     }
 }
 
+/** A pocket: a ball drops once its centre comes within [radius] of [center]. */
+data class Pocket(val center: Vec2, val radius: Float)
+
 data class PhysicsStepResult(
     val balls: List<Ball>,
     val newlyPocketed: List<Int>,
@@ -74,7 +98,7 @@ sealed interface TableEvent {
     data class Cushion(val ballId: Int) : TableEvent
 }
 
-/** Simple arcade physics: friction, wall bounces, elastic ball-ball collisions, corner pockets. */
+/** Simple arcade physics: friction, wall bounces, elastic ball-ball collisions, six pockets. */
 object EightBallPhysics {
     private const val FRICTION_PER_SECOND = 0.72f
     private const val MIN_SPEED = 3f
@@ -148,9 +172,7 @@ object EightBallPhysics {
 
         val afterPockets = moved.map { ball ->
             if (ball.pocketed) return@map ball
-            val pocketed = EightBallTable.corners.any { corner ->
-                (ball.position - corner).length < EightBallTable.POCKET_RADIUS
-            }
+            val pocketed = EightBallTable.pockets.any { pocket -> (ball.position - pocket.center).length < pocket.radius }
             if (pocketed) {
                 newlyPocketed += ball.id
                 ball.copy(velocity = Vec2.Zero, pocketed = true)

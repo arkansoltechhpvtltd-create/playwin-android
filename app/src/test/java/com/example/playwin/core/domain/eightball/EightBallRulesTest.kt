@@ -225,6 +225,7 @@ class EightBallRulesTest {
         val onABall = inHand.balls.first { it.id == 1 }.position
         assertNull(EightBallRules.placeCueBall(inHand, onABall))
         assertNull(EightBallRules.placeCueBall(inHand, Vec2(r + 5f, r + 5f)))
+        assertNull("over a side pocket", EightBallRules.placeCueBall(inHand, Vec2(EightBallTable.WIDTH / 2f, r + 10f)))
         assertNull(EightBallRules.placeCueBall(inHand, Vec2(500f, r / 2f)))
         assertNull(EightBallRules.placeCueBall(inHand, Vec2(EightBallTable.WIDTH + 10f, 250f)))
     }
