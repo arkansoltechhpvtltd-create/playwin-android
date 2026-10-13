@@ -70,6 +70,7 @@ import com.example.playwin.core.designsystem.theme.PwGoldDark
 import com.example.playwin.core.designsystem.theme.PwGoldLight
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.wordhunt.PlacedWord
+import com.example.playwin.core.domain.wordhunt.WORD_HUNT_TIME_WARNING_SECONDS
 import com.example.playwin.core.domain.wordhunt.WORD_HUNT_TURN_SECONDS
 import com.example.playwin.core.domain.wordhunt.cells
 import com.example.playwin.feature.game.BoardSlot
@@ -138,10 +139,11 @@ fun WordHuntScreen(
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            val timeUp = if (uiState.endedOnTime) "Time's up - " else ""
             val banner = when (uiState.result) {
-                GameOutcome.WIN -> "You win! Claiming your coupon…"
-                GameOutcome.LOSE -> "The computer wins this round"
-                GameOutcome.DRAW -> "It's a draw!"
+                GameOutcome.WIN -> "${timeUp}You win! Claiming your coupon…"
+                GameOutcome.LOSE -> "${timeUp}The computer wins this round"
+                GameOutcome.DRAW -> "${timeUp}It's a draw!"
                 else -> null
             }
             val humanWon = uiState.result == GameOutcome.WIN
@@ -174,7 +176,12 @@ fun WordHuntScreen(
                 )
             }
 
-            ScoreLine(myScore = uiState.humanScore, theirScore = uiState.computerScore, theirLabel = "Computer")
+            ScoreLine(
+                myScore = uiState.humanScore,
+                theirScore = uiState.computerScore,
+                theirLabel = "Computer",
+                gameSecondsLeft = uiState.gameSecondsLeft.takeIf { uiState.result == null }
+            )
 
             WordList(
                 words = uiState.words,
@@ -267,11 +274,27 @@ private val GoldRim = Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGol
 
 /** Both scores as chips that count up as points land, above the one-line scoring rule. */
 @Composable
-fun ScoreLine(myScore: Int, theirScore: Int, theirLabel: String, modifier: Modifier = Modifier) {
+fun ScoreLine(
+    myScore: Int,
+    theirScore: Int,
+    theirLabel: String,
+    modifier: Modifier = Modifier,
+    gameSecondsLeft: Int? = null
+) {
     Column(modifier = modifier.fillMaxWidth().padding(top = 10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             ScoreChip(label = "You", score = myScore, accent = PwGoldDark, modifier = Modifier.weight(1f))
             ScoreChip(label = theirLabel, score = theirScore, accent = Ruby, modifier = Modifier.weight(1f))
+        }
+        if (gameSecondsLeft != null) {
+            Text(
+                text = "Game ends in ${gameSecondsLeft / 60}:${(gameSecondsLeft % 60).toString().padStart(2, '0')} - top score then wins",
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                color = if (gameSecondsLeft <= WORD_HUNT_TIME_WARNING_SECONDS * 6) Ruby else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp)
+            )
         }
         Text(
             text = "A word scores its length + half the seconds left on your clock.",

@@ -96,17 +96,43 @@ class WordHuntViewModel @Inject constructor(
                 startTurn(if (side == WordHuntSide.HUMAN) WordHuntSide.COMPUTER else WordHuntSide.HUMAN)
                 return@launch
             }
-
-            _uiState.update { it.copy(result = outcome, isResolving = false) }
-            if (outcome == GameOutcome.WIN) {
-                val coupon = rewardsRepository.claimReward(GameId.WORD_HUNT)
-                couponsRepository.addCoupon(coupon)
-                _uiState.update { it.copy(wonCouponId = coupon.id) }
-            }
+            finish(outcome)
         }
     }
 
-    /** Runs [side]'s turn clock; the computer claims its word partway through, the human by tapping. */
+    /** The game clock ran out: the game ends on the scores as they stand, as the engine rules them. */
+    private fun endOnTime() {
+        turnJob?.cancel()
+        _uiState.update { it.copy(isResolving = true, firstSelection = null) }
+        viewModelScope.launch {
+            val state = _uiState.value
+            val outcome = gameEngineRepository.resolve(
+                GameId.WORD_HUNT,
+                GameSnapshot.WordHunt(
+                    puzzleWords = state.words.map { it.word },
+                    myClaims = state.humanClaims,
+                    opponentClaims = state.computerClaims,
+                    timeUp = true
+                )
+            )
+            _uiState.update { it.copy(endedOnTime = true) }
+            finish(outcome)
+        }
+    }
+
+    private suspend fun finish(outcome: GameOutcome) {
+        _uiState.update { it.copy(result = outcome, isResolving = false) }
+        if (outcome == GameOutcome.WIN) {
+            val coupon = rewardsRepository.claimReward(GameId.WORD_HUNT)
+            couponsRepository.addCoupon(coupon)
+            _uiState.update { it.copy(wonCouponId = coupon.id) }
+        }
+    }
+
+    /**
+     * Runs [side]'s turn clock - and the game clock with it; the computer claims
+     * its word partway through, the human by tapping.
+     */
     private fun startTurn(side: WordHuntSide) {
         turnJob?.cancel()
         _uiState.update { it.copy(turn = side, secondsLeft = WORD_HUNT_TURN_SECONDS, firstSelection = null) }
@@ -125,6 +151,11 @@ class WordHuntViewModel @Inject constructor(
                     }
                 }
                 delay(1000)
+                _uiState.update { it.copy(gameSecondsLeft = (it.gameSecondsLeft - 1).coerceAtLeast(0)) }
+                if (_uiState.value.gameSecondsLeft == 0) {
+                    endOnTime()
+                    return@launch
+                }
             }
             // Time's up: the turn passes without a word.
             _uiState.update { it.copy(lastTurnTimedOut = true) }

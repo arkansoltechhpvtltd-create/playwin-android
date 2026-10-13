@@ -31,4 +31,11 @@ class WordHuntRoomStateTest {
         assertEquals(listOf(WordHuntClaim("CHESS", 7)), decoded.claimsOf(2))
         assertEquals(setOf("LUDO", "CHESS"), decoded.claimedWords)
     }
+
+    @Test
+    fun `the game clock's used time survives a round trip, and starts at zero`() {
+        assertEquals(0, room(JsonObject(emptyMap())).wordHuntState().elapsed)
+        val stored = WordHuntRoomState(elapsed = 95).withClaim(1, WordHuntClaim("LUDO", 4))
+        assertEquals(95, room(stored.toJson()).wordHuntState().elapsed)
+    }
 }

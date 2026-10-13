@@ -2,6 +2,7 @@ package com.example.playwin.feature.game.wordhunt
 
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.wordhunt.PlacedWord
+import com.example.playwin.core.domain.wordhunt.WORD_HUNT_GAME_SECONDS
 import com.example.playwin.core.domain.wordhunt.WORD_HUNT_TURN_SECONDS
 import com.example.playwin.core.domain.wordhunt.WordHuntBoard
 import com.example.playwin.core.domain.wordhunt.WordHuntClaim
@@ -16,6 +17,10 @@ data class WordHuntUiState(
     /** The human hunts first. */
     val turn: WordHuntSide = WordHuntSide.HUMAN,
     val secondsLeft: Int = WORD_HUNT_TURN_SECONDS,
+    /** The whole game's clock, ticking through both sides' turns; at zero the game ends. */
+    val gameSecondsLeft: Int = WORD_HUNT_GAME_SECONDS,
+    /** The game was decided by the game clock running out, not by the words. */
+    val endedOnTime: Boolean = false,
     val firstSelection: Pair<Int, Int>? = null,
     val lastTurnTimedOut: Boolean = false,
     /** From the human's point of view, once the game is decided. */

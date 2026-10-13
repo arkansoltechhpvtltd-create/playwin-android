@@ -92,11 +92,13 @@ sealed interface GameSnapshot {
      * @param puzzleWords every word hidden in this round's grid.
      * @param myClaims the words this player found, with their speed bonuses.
      * @param opponentClaims the words the other player found.
+     * @param timeUp the game clock has run out, so the game ends on the scores as they stand.
      */
     data class WordHunt(
         val puzzleWords: List<String>,
         val myClaims: List<WordHuntClaim>,
-        val opponentClaims: List<WordHuntClaim>
+        val opponentClaims: List<WordHuntClaim>,
+        val timeUp: Boolean = false
     ) : GameSnapshot
 
     /**

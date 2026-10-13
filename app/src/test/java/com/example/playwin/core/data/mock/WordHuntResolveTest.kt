@@ -30,6 +30,24 @@ class WordHuntResolveTest {
         assertEquals(GameOutcome.LOSE, resolve(emptyList(), mine))
     }
 
+    private fun resolveOnTime(mine: List<WordHuntClaim>, theirs: List<WordHuntClaim>) = runBlocking {
+        engine.resolve(GameId.WORD_HUNT, GameSnapshot.WordHunt(words, mine, theirs, timeUp = true))
+    }
+
+    @Test
+    fun `when the game clock runs out the scores as they stand decide it`() {
+        // Words are still open, which alone would keep the game going.
+        assertEquals(GameOutcome.WIN, resolveOnTime(listOf(WordHuntClaim("LUDO", 5)), emptyList()))
+        assertEquals(GameOutcome.LOSE, resolveOnTime(emptyList(), listOf(WordHuntClaim("LUDO", 5))))
+        assertEquals(GameOutcome.DRAW, resolveOnTime(emptyList(), emptyList()))
+        assertEquals(GameOutcome.DRAW, resolveOnTime(listOf(WordHuntClaim("LUDO", 1)), listOf(WordHuntClaim("CHESS", 0))))
+    }
+
+    @Test
+    fun `running out of time doesn't excuse a fabricated claim`() {
+        assertEquals(GameOutcome.LOSE, resolveOnTime(listOf(WordHuntClaim("POCKET", 5)), emptyList()))
+    }
+
     @Test
     fun `compares totals once every word is claimed`() {
         val mine = listOf(WordHuntClaim("LUDO", 3), WordHuntClaim("BINGO", 3)) // 7 + 8 = 15

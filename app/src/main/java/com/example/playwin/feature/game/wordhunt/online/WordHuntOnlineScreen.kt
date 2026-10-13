@@ -29,6 +29,7 @@ fun WordHuntOnlineRoute(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val secondsLeft by viewModel.secondsLeft.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
+    val gameSecondsLeft by viewModel.gameSecondsLeft.collectAsStateWithLifecycle()
     OnlineMatchEffects(state, viewModel.controller, onBack, onWin)
 
     OnlineMatchScreen(
@@ -54,7 +55,8 @@ fun WordHuntOnlineRoute(
             ScoreLine(
                 myScore = WordHuntScoring.total(stored.claimsOf(me)),
                 theirScore = WordHuntScoring.total(stored.claimsOf(3 - me)),
-                theirLabel = "Opponent"
+                theirLabel = "Opponent",
+                gameSecondsLeft = gameSecondsLeft
             )
             WordList(puzzle.words, myWords, theirWords, modifier = Modifier.padding(top = 12.dp))
             BoardSlot(modifier = Modifier.padding(top = 16.dp)) {

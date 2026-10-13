@@ -117,6 +117,14 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
 
         val mine = WordHuntScoring.total(snapshot.myClaims)
         val theirs = WordHuntScoring.total(snapshot.opponentClaims)
+        // Out of time: the scores as they stand decide it.
+        if (snapshot.timeUp) {
+            return when {
+                mine > theirs -> GameOutcome.WIN
+                mine < theirs -> GameOutcome.LOSE
+                else -> GameOutcome.DRAW
+            }
+        }
         val stillOpen = WordHuntScoring.maxRemaining(snapshot.puzzleWords - claimedWords.toSet())
         return when {
             mine > theirs + stillOpen -> GameOutcome.WIN

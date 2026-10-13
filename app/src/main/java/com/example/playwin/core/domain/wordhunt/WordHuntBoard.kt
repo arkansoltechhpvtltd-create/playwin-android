@@ -7,6 +7,12 @@ const val WORD_HUNT_WORD_COUNT = 6
 
 /** Seconds each player has to find a word on their turn before it passes. */
 const val WORD_HUNT_TURN_SECONDS = 20
+
+/**
+ * The whole game's clock, counted across both players' turns. When it runs
+ * out the game ends there and the higher score wins. Tune it here.
+ */
+const val WORD_HUNT_GAME_SECONDS = 180
 const val WORD_HUNT_TIME_WARNING_SECONDS = 5
 
 /** The largest speed bonus a single find can earn (half the full turn clock). */
