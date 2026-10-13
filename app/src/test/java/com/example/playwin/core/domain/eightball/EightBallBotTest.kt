@@ -29,7 +29,7 @@ class EightBallBotTest {
     }
 
     private fun play(match: EightBallMatch, shot: EightBallBot.Shot) =
-        EightBallPhysics.simulate(EightBallRules.launch(match.balls, shot.direction, shot.power))
+        EightBallPhysics.simulate(EightBallRules.launch(match, shot.direction, shot.power))
 
     @Test
     fun `pots an easy ball from its own group`() {

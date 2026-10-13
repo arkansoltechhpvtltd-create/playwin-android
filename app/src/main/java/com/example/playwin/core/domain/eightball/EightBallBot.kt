@@ -90,7 +90,7 @@ object EightBallBot {
 
     /** How good a shot is, by simulating it with the real physics and judging it with the real rules. */
     fun evaluate(match: EightBallMatch, shot: Shot): Double {
-        val result = EightBallPhysics.simulate(EightBallRules.launch(match.balls, shot.direction, shot.power))
+        val result = EightBallPhysics.simulate(EightBallRules.launch(match, shot.direction, shot.power))
         val outcome = EightBallRules.resolveShot(match, result.balls, result.newlyPocketed, result.events)
         when (EightBallRules.predictedWinner(outcome)) {
             match.currentPlayer -> return DECISIVE

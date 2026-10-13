@@ -111,7 +111,7 @@ class EightBallViewModel @Inject constructor(
         eventsThisShot.clear()
         _uiState.update {
             it.copy(
-                balls = EightBallRules.launch(state.match.balls, direction, power),
+                balls = EightBallRules.launch(state.match, direction, power),
                 isBallsMoving = true,
                 lastTurnTimedOut = false
             )

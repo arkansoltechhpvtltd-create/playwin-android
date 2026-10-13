@@ -162,7 +162,7 @@ class EightBallOnlineViewModel @Inject constructor(
         val stored = room.eightBallState()
         val at = placedCueAt
         pendingShot = EightBallRoomShot((stored.shot?.seq ?: 0) + 1, me, direction.x, direction.y, power, at?.x, at?.y)
-        _displayBalls.value = EightBallRules.launch(tableBeforeMyShot(stored).balls, direction, power)
+        _displayBalls.value = EightBallRules.launch(tableBeforeMyShot(stored), direction, power)
     }
 
     /**
@@ -251,7 +251,7 @@ class EightBallOnlineViewModel @Inject constructor(
                 _isAnimating.value = true
                 replayTarget = stored.toMatch().balls
                 val start = previous.toMatch().balls.let { balls -> shot.cueAt?.let { EightBallRules.withCueAt(balls, it) } ?: balls }
-                _displayBalls.value = EightBallRules.launch(start, Vec2(shot.dx, shot.dy), shot.power)
+                _displayBalls.value = EightBallRules.launch(previous.toMatch().copy(balls = start), Vec2(shot.dx, shot.dy), shot.power)
             }
             else -> {
                 animation = Animation.NONE

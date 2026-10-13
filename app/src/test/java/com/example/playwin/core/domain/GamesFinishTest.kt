@@ -60,7 +60,7 @@ class GamesFinishTest {
         val random = Random(seed)
         while (true) {
             val shot = EightBallBot.chooseShot(match, random)
-            val result = EightBallPhysics.simulate(EightBallRules.launch(match.balls, shot.direction, shot.power))
+            val result = EightBallPhysics.simulate(EightBallRules.launch(match, shot.direction, shot.power))
             val outcome = EightBallRules.resolveShot(match, result.balls, result.newlyPocketed, result.events)
             if (outcome.eightBallPocketed && !outcome.wasBreak) break
             match = outcome.after

@@ -33,11 +33,46 @@ class EightBallRulesTest {
         assertNull(outcome.foul)
     }
 
+    /** The cue ball breaks into the apex ball, and these numbered balls reach a cushion. */
+    private fun breakTo(vararg cushioned: Int): List<TableEvent> =
+        listOf(TableEvent.Contact(CUE_BALL_ID, 1)) + cushioned.map { TableEvent.Cushion(it) }
+
     @Test
-    fun `an empty break passes the turn without a foul`() {
-        val outcome = shot(EightBallMatch(), cleanHit(1))
-        assertEquals(2, outcome.after.currentPlayer)
+    fun `an empty break with four balls to a cushion is legal and passes the turn`() {
+        val outcome = shot(EightBallMatch(), breakTo(2, 9, 12, 15))
         assertNull(outcome.foul)
+        assertEquals(2, outcome.after.currentPlayer)
+        assertNull(outcome.after.ballInHand)
+    }
+
+    @Test
+    fun `an empty break with fewer than four balls to a cushion is a foul - ball in hand behind the line`() {
+        val outcome = shot(EightBallMatch(), breakTo(2, 9, 12))
+        assertEquals(EightBallFoul.ILLEGAL_BREAK, outcome.foul)
+        assertEquals(2, outcome.after.currentPlayer)
+        assertEquals(BallInHand.BEHIND_HEAD_STRING, outcome.after.ballInHand)
+    }
+
+    @Test
+    fun `a pot makes the break legal however few balls reach a cushion`() {
+        assertNull(shot(EightBallMatch(), breakTo(), 11).foul)
+    }
+
+    @Test
+    fun `a full-power break is legal, a feeble one isn't`() {
+        fun breakAt(power: Float): EightBallShotOutcome {
+            val match = EightBallMatch()
+            val result = EightBallPhysics.simulate(EightBallRules.launch(match, Vec2(1f, 0f), power))
+            return EightBallRules.resolveShot(match, result.balls, result.newlyPocketed, result.events)
+        }
+        assertNull(breakAt(1f).foul)
+        assertEquals(EightBallFoul.ILLEGAL_BREAK, breakAt(0.15f).foul)
+    }
+
+    @Test
+    fun `on the break the cue ball's bounces and a ball hitting twice count once`() {
+        val events = breakTo(2, 2, 9, 12) + TableEvent.Cushion(CUE_BALL_ID) + TableEvent.Cushion(CUE_BALL_ID)
+        assertEquals(EightBallFoul.ILLEGAL_BREAK, shot(EightBallMatch(), events).foul)
     }
 
     @Test
@@ -250,7 +285,7 @@ class EightBallRulesTest {
     @Test
     fun `the simulation reports the cue ball's first contact and the cushions after it`() {
         val match = EightBallMatch()
-        val result = EightBallPhysics.simulate(EightBallRules.launch(match.balls, Vec2(1f, 0f), 1f))
+        val result = EightBallPhysics.simulate(EightBallRules.launch(match, Vec2(1f, 0f), 1f))
         val first = result.events.filterIsInstance<TableEvent.Contact>().first { CUE_BALL_ID in setOf(it.a, it.b) }
         assertEquals("straight into the apex ball", 1, if (first.a == CUE_BALL_ID) first.b else first.a)
         assertTrue(result.events.any { it is TableEvent.Cushion })

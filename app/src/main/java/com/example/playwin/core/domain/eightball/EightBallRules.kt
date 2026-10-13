@@ -33,8 +33,20 @@ enum class EightBallFoul(val label: String) {
     SCRATCH("scratch"),
     NO_CONTACT("cue ball hit nothing"),
     WRONG_BALL_FIRST("wrong ball hit first"),
-    NO_RAIL("no ball reached a cushion")
+    NO_RAIL("no ball reached a cushion"),
+    ILLEGAL_BREAK("break pocketed nothing and fewer than 4 balls reached a cushion")
 }
+
+/** On the break, at least this many numbered balls must reach a cushion, unless one is pocketed. */
+const val BREAK_MIN_BALLS_TO_CUSHION = 4
+
+/**
+ * How much harder than any other shot the break can be struck. The table's
+ * friction stops balls quickly; at normal top speed even a full break sends
+ * only two balls to a cushion, so the break gets the extra pace it needs to
+ * spread the rack (a full break then reaches 7+ cushions or pots a ball).
+ */
+const val BREAK_SPEED_MULTIPLIER = 2.5f
 
 /**
  * What one shot did, with exactly the facts the game engine needs
@@ -62,7 +74,9 @@ data class EightBallShotOutcome(
  * [EightBallBot]:
  *  - The table stays open after the break; the first group ball potted on a
  *    legal shot after it decides groups. An 8 potted on the break is
- *    re-spotted, and potting any ball on a clean break keeps the table.
+ *    re-spotted, and potting any ball on a clean break keeps the table. A
+ *    break must pocket a ball or drive at least [BREAK_MIN_BALLS_TO_CUSHION]
+ *    numbered balls to a cushion; otherwise it's a foul, as is a scratch.
  *  - After the break a shot is a foul if the cue ball is potted (scratch),
  *    hits nothing, first hits the wrong ball (the 8 on an open table; anything
  *    but your group, or the 8 once your group is cleared), or if nothing is
@@ -77,10 +91,15 @@ data class EightBallShotOutcome(
  */
 object EightBallRules {
 
-    /** The table with the cue ball sent off along [direction] at [power] (0..1 of max speed). */
-    fun launch(balls: List<Ball>, direction: Vec2, power: Float): List<Ball> {
-        val speed = EightBallPhysics.MAX_SHOT_SPEED * power.coerceIn(0f, 1f)
-        return balls.map { if (it.id == CUE_BALL_ID) it.copy(velocity = direction.normalizedOrZero() * speed) else it }
+    /**
+     * [match]'s table with the cue ball sent off along [direction] at [power]
+     * (0..1 of max speed) - up to [BREAK_SPEED_MULTIPLIER] times harder on the
+     * break, so a full break can spread the rack to the cushions.
+     */
+    fun launch(match: EightBallMatch, direction: Vec2, power: Float): List<Ball> {
+        val top = EightBallPhysics.MAX_SHOT_SPEED * if (match.isBreak) BREAK_SPEED_MULTIPLIER else 1f
+        val speed = top * power.coerceIn(0f, 1f)
+        return match.balls.map { if (it.id == CUE_BALL_ID) it.copy(velocity = direction.normalizedOrZero() * speed) else it }
     }
 
     fun resolveShot(
@@ -96,9 +115,11 @@ object EightBallRules {
         val clearedBefore = shooterGroupBefore != null &&
             match.balls.filter { ballGroupOf(it.id) == shooterGroupBefore }.all { it.pocketed }
 
-        val foul = if (scratched) EightBallFoul.SCRATCH else if (match.isBreak) null else contactFoul(
-            events, pottedObjects, shooterGroupBefore, clearedBefore
-        )
+        val foul = when {
+            scratched -> EightBallFoul.SCRATCH
+            match.isBreak -> breakFoul(events, pottedObjects)
+            else -> contactFoul(events, pottedObjects, shooterGroupBefore, clearedBefore)
+        }
 
         var groups = match.playerGroups
         if (groups.isEmpty() && !match.isBreak && foul == null) {
@@ -173,6 +194,16 @@ object EightBallRules {
         !outcome.eightBallPocketed || outcome.wasBreak -> null
         outcome.shooterClearedGroup && !outcome.fouled -> outcome.shooter
         else -> 3 - outcome.shooter
+    }
+
+    /**
+     * A legal break pockets a ball or drives at least [BREAK_MIN_BALLS_TO_CUSHION]
+     * different numbered balls to a cushion; the cue ball's own bounces don't count.
+     */
+    private fun breakFoul(events: List<TableEvent>, pottedObjects: List<Int>): EightBallFoul? {
+        if (pottedObjects.isNotEmpty()) return null
+        val ballsToCushion = events.filterIsInstance<TableEvent.Cushion>().map { it.ballId }.filter { it != CUE_BALL_ID }.toSet()
+        return if (ballsToCushion.size < BREAK_MIN_BALLS_TO_CUSHION) EightBallFoul.ILLEGAL_BREAK else null
     }
 
     private fun contactFoul(
