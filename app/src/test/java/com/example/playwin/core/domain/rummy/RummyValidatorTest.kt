@@ -1,6 +1,8 @@
 package com.example.playwin.core.domain.rummy
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -84,11 +86,146 @@ class RummyValidatorTest {
             c(Suit.SPADES, Rank.TWO), c(Suit.SPADES, Rank.THREE), c(Suit.SPADES, Rank.FOUR),
             // set of nines completed with a wild-rank card standing in for the fourth suit
             c(Suit.SPADES, Rank.NINE), c(Suit.HEARTS, Rank.NINE), c(Suit.CLUBS, Rank.NINE), c(Suit.DIAMONDS, wildRank),
-            // sets
-            c(Suit.SPADES, Rank.QUEEN), c(Suit.HEARTS, Rank.QUEEN), c(Suit.CLUBS, Rank.QUEEN),
-            c(Suit.SPADES, Rank.KING), c(Suit.HEARTS, Rank.KING), c(Suit.CLUBS, Rank.KING)
+            // second sequence, then a set
+            c(Suit.HEARTS, Rank.JACK), c(Suit.HEARTS, Rank.QUEEN), c(Suit.HEARTS, Rank.KING),
+            c(Suit.SPADES, Rank.KING), c(Suit.DIAMONDS, Rank.KING), c(Suit.CLUBS, Rank.KING)
         )
         assertTrue(RummyValidator.isValidDeclaration(hand, wildRank))
+    }
+
+    // --- Aces: low or high within a run, never both (no wrap-around) ---
+
+    @Test
+    fun `Q-K-A is a pure sequence, ace high`() {
+        val run = listOf(c(Suit.SPADES, Rank.QUEEN), c(Suit.SPADES, Rank.KING), c(Suit.SPADES, Rank.ACE))
+        assertEquals(GroupKind.PURE_SEQUENCE, RummyValidator.classifyGroup(run, wildRank = Rank.SEVEN))
+    }
+
+    @Test
+    fun `a declaration whose only pure sequence is Q-K-A is accepted`() {
+        val hand = listOf(
+            c(Suit.SPADES, Rank.QUEEN), c(Suit.SPADES, Rank.KING), c(Suit.SPADES, Rank.ACE),
+            c(Suit.HEARTS, Rank.TWO), c(Suit.HEARTS, Rank.THREE), joker(),
+            c(Suit.SPADES, Rank.NINE), c(Suit.HEARTS, Rank.NINE), c(Suit.CLUBS, Rank.NINE),
+            c(Suit.SPADES, Rank.FIVE), c(Suit.HEARTS, Rank.FIVE), c(Suit.CLUBS, Rank.FIVE), c(Suit.DIAMONDS, Rank.FIVE)
+        )
+        assertTrue(RummyValidator.isValidDeclaration(hand, wildRank = Rank.SEVEN))
+    }
+
+    @Test
+    fun `A-2-3 is a pure sequence, ace low`() {
+        val run = listOf(c(Suit.CLUBS, Rank.ACE), c(Suit.CLUBS, Rank.TWO), c(Suit.CLUBS, Rank.THREE))
+        assertEquals(GroupKind.PURE_SEQUENCE, RummyValidator.classifyGroup(run, wildRank = Rank.SEVEN))
+    }
+
+    @Test
+    fun `a declaration whose only pure sequence is A-2-3 is accepted`() {
+        val hand = listOf(
+            c(Suit.CLUBS, Rank.ACE), c(Suit.CLUBS, Rank.TWO), c(Suit.CLUBS, Rank.THREE),
+            c(Suit.HEARTS, Rank.SEVEN), c(Suit.HEARTS, Rank.EIGHT), joker(),
+            c(Suit.SPADES, Rank.NINE), c(Suit.HEARTS, Rank.NINE), c(Suit.CLUBS, Rank.NINE),
+            c(Suit.SPADES, Rank.KING), c(Suit.HEARTS, Rank.KING), c(Suit.CLUBS, Rank.KING), c(Suit.DIAMONDS, Rank.KING)
+        )
+        assertTrue(RummyValidator.isValidDeclaration(hand, wildRank = Rank.FIVE))
+    }
+
+    @Test
+    fun `K-A-2 does not wrap around`() {
+        val run = listOf(c(Suit.SPADES, Rank.KING), c(Suit.SPADES, Rank.ACE), c(Suit.SPADES, Rank.TWO))
+        assertNull(RummyValidator.classifyGroup(run, wildRank = Rank.SEVEN))
+        // Not even with a joker filling in: the ace still can't be high and low at once.
+        val longer = run + joker()
+        assertNull(RummyValidator.classifyGroup(longer, wildRank = Rank.SEVEN))
+    }
+
+    @Test
+    fun `a declaration that needs K-A-2 is rejected`() {
+        val hand = listOf(
+            c(Suit.SPADES, Rank.KING), c(Suit.SPADES, Rank.ACE), c(Suit.SPADES, Rank.TWO),
+            c(Suit.HEARTS, Rank.SIX), c(Suit.HEARTS, Rank.SEVEN), c(Suit.HEARTS, Rank.EIGHT),
+            c(Suit.CLUBS, Rank.NINE), c(Suit.CLUBS, Rank.TEN), joker(),
+            c(Suit.SPADES, Rank.FOUR), c(Suit.HEARTS, Rank.FOUR), c(Suit.CLUBS, Rank.FOUR), c(Suit.DIAMONDS, Rank.FOUR)
+        )
+        assertFalse(RummyValidator.isValidDeclaration(hand, wildRank = Rank.JACK))
+    }
+
+    // --- Two sequences, at least one pure ---
+
+    @Test
+    fun `one pure sequence and three sets is rejected - a second sequence is needed`() {
+        val hand = listOf(
+            c(Suit.SPADES, Rank.TWO), c(Suit.SPADES, Rank.THREE), c(Suit.SPADES, Rank.FOUR),
+            c(Suit.SPADES, Rank.NINE), c(Suit.HEARTS, Rank.NINE), c(Suit.CLUBS, Rank.NINE),
+            c(Suit.SPADES, Rank.QUEEN), c(Suit.HEARTS, Rank.QUEEN), c(Suit.CLUBS, Rank.QUEEN),
+            c(Suit.SPADES, Rank.KING), c(Suit.HEARTS, Rank.KING), c(Suit.CLUBS, Rank.KING), c(Suit.DIAMONDS, Rank.KING)
+        )
+        assertFalse(RummyValidator.isValidDeclaration(hand, wildRank = Rank.SIX))
+    }
+
+    @Test
+    fun `two sequences with one pure, plus sets, is accepted`() {
+        val hand = listOf(
+            c(Suit.SPADES, Rank.TWO), c(Suit.SPADES, Rank.THREE), c(Suit.SPADES, Rank.FOUR),
+            c(Suit.HEARTS, Rank.TEN), joker(), c(Suit.HEARTS, Rank.QUEEN),
+            c(Suit.SPADES, Rank.NINE), c(Suit.HEARTS, Rank.NINE), c(Suit.CLUBS, Rank.NINE),
+            c(Suit.SPADES, Rank.KING), c(Suit.HEARTS, Rank.KING), c(Suit.CLUBS, Rank.KING), c(Suit.DIAMONDS, Rank.KING)
+        )
+        assertTrue(RummyValidator.isValidDeclaration(hand, wildRank = Rank.SIX))
+    }
+
+    @Test
+    fun `two impure sequences without a pure one are rejected`() {
+        val hand = listOf(
+            c(Suit.SPADES, Rank.TWO), c(Suit.SPADES, Rank.THREE), joker(),
+            c(Suit.HEARTS, Rank.TEN), joker(), c(Suit.HEARTS, Rank.QUEEN),
+            c(Suit.SPADES, Rank.NINE), c(Suit.HEARTS, Rank.NINE), c(Suit.CLUBS, Rank.NINE),
+            c(Suit.SPADES, Rank.KING), c(Suit.HEARTS, Rank.KING), c(Suit.CLUBS, Rank.KING), c(Suit.DIAMONDS, Rank.KING)
+        )
+        assertFalse(RummyValidator.isValidDeclaration(hand, wildRank = Rank.SIX))
+    }
+
+    // --- What makes a run pure ---
+
+    @Test
+    fun `a wild-rank card in its natural run keeps the run pure`() {
+        val run = listOf(c(Suit.HEARTS, Rank.FOUR), c(Suit.HEARTS, Rank.FIVE), c(Suit.HEARTS, Rank.SIX))
+        assertEquals(GroupKind.PURE_SEQUENCE, RummyValidator.classifyGroup(run, wildRank = Rank.FIVE))
+    }
+
+    @Test
+    fun `a declaration whose only pure sequence holds a natural wild-rank card is accepted`() {
+        val hand = listOf(
+            c(Suit.HEARTS, Rank.FOUR), c(Suit.HEARTS, Rank.FIVE), c(Suit.HEARTS, Rank.SIX),
+            c(Suit.SPADES, Rank.NINE), c(Suit.SPADES, Rank.TEN), joker(),
+            c(Suit.SPADES, Rank.TWO), c(Suit.HEARTS, Rank.TWO), c(Suit.CLUBS, Rank.TWO),
+            c(Suit.SPADES, Rank.KING), c(Suit.HEARTS, Rank.KING), c(Suit.CLUBS, Rank.KING), c(Suit.DIAMONDS, Rank.KING)
+        )
+        assertTrue(RummyValidator.isValidDeclaration(hand, wildRank = Rank.FIVE))
+    }
+
+    @Test
+    fun `a run using a joker as a substitute is impure`() {
+        val wildRank = Rank.FIVE
+        // A wild-rank card of another suit standing in for the 5 of hearts.
+        val withWildCard = listOf(c(Suit.HEARTS, Rank.FOUR), c(Suit.CLUBS, Rank.FIVE), c(Suit.HEARTS, Rank.SIX))
+        assertEquals(GroupKind.IMPURE_SEQUENCE, RummyValidator.classifyGroup(withWildCard, wildRank))
+        // A wild-rank card standing in for a different rank.
+        val wildAsSeven = listOf(c(Suit.HEARTS, Rank.EIGHT), c(Suit.HEARTS, Rank.FIVE), c(Suit.HEARTS, Rank.SIX))
+        assertEquals(GroupKind.IMPURE_SEQUENCE, RummyValidator.classifyGroup(wildAsSeven, wildRank))
+        // A printed joker.
+        val withJoker = listOf(c(Suit.HEARTS, Rank.FOUR), joker(), c(Suit.HEARTS, Rank.SIX))
+        assertEquals(GroupKind.IMPURE_SEQUENCE, RummyValidator.classifyGroup(withJoker, wildRank))
+    }
+
+    @Test
+    fun `a declaration whose only complete runs use jokers is rejected`() {
+        val hand = listOf(
+            c(Suit.HEARTS, Rank.FOUR), joker(), c(Suit.HEARTS, Rank.SIX),
+            c(Suit.SPADES, Rank.NINE), c(Suit.SPADES, Rank.TEN), c(Suit.CLUBS, Rank.FIVE),
+            c(Suit.SPADES, Rank.TWO), c(Suit.HEARTS, Rank.TWO), c(Suit.CLUBS, Rank.TWO),
+            c(Suit.SPADES, Rank.KING), c(Suit.HEARTS, Rank.KING), c(Suit.CLUBS, Rank.KING), c(Suit.DIAMONDS, Rank.KING)
+        )
+        assertFalse(RummyValidator.isValidDeclaration(hand, wildRank = Rank.FIVE))
     }
 
     @Test

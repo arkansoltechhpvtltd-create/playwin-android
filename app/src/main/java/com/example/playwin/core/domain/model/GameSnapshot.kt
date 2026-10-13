@@ -111,7 +111,7 @@ sealed interface GameSnapshot {
     /**
      * A declared 13-card hand, handed to
      * [com.example.playwin.core.domain.rummy.RummyValidator] to authoritatively
-     * confirm it forms valid groups with at least one pure sequence - never
+     * confirm it forms valid groups with at least two sequences, one of them pure - never
      * decided by the UI.
      */
     data class Rummy(

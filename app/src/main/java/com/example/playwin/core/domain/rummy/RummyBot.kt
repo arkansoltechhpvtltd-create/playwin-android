@@ -4,8 +4,8 @@ package com.example.playwin.core.domain.rummy
  * The "Play vs Computer" rummy opponent. Every decision is driven by
  * [deadwood]: the lowest total points left in cards that can't be placed in
  * a valid set or sequence (using exactly [RummyValidator]'s group rules),
- * with a heavy penalty if the hand has no pure sequence yet - a declaration
- * needs one.
+ * with a heavy penalty if the hand has no pure sequence yet and a lighter one
+ * if it lacks a second sequence - a declaration needs both.
  *
  * On its turn it:
  *  1. takes the top discard only if that genuinely lowers its best deadwood
@@ -19,6 +19,9 @@ object RummyBot {
 
     /** Deadwood charged for a hand with no pure sequence: in real rummy nothing counts as melded without one. */
     private const val NO_PURE_SEQUENCE_PENALTY = 40
+
+    /** Deadwood charged for a hand that has its pure sequence but can't yet form the second sequence a declaration needs. */
+    private const val NO_SECOND_SEQUENCE_PENALTY = 20
     private const val MAX_GROUP_SIZE = 5 // a longer run can always be split into two groups of 3+
 
     sealed interface Discard {
@@ -68,7 +71,7 @@ object RummyBot {
     /** With a 14-card [hand] after drawing: declare if possible, otherwise the best card to throw. */
     fun chooseDiscard(hand: List<Card>, wildRank: Rank): Discard {
         val (card, remaining) = bestDiscard(hand, wildRank)
-        // Zero deadwood with a pure sequence is exactly a valid declaration; confirm with the validator anyway.
+        // Zero deadwood (two sequences, one pure) is exactly a valid declaration; confirm with the validator anyway.
         val declarable = remaining == 0 &&
             RummyValidator.isValidDeclaration(hand.filterNot { it.id == card.id }, wildRank)
         return if (declarable) Discard.Declare(card) else Discard.Play(card)
@@ -93,45 +96,56 @@ object RummyBot {
      * The lowest deadwood achievable by arranging [hand] into valid groups.
      * A bitmask DP over which cards are still unplaced: the lowest remaining
      * card is either left as deadwood, or placed in some valid group of up
-     * to [MAX_GROUP_SIZE] cards drawn from what's left.
+     * to [MAX_GROUP_SIZE] cards drawn from what's left. The DP also tracks
+     * what the arrangement still owes a declaration (a pure sequence, and
+     * [RummyValidator.REQUIRED_SEQUENCES] sequences in all), charging
+     * [NO_PURE_SEQUENCE_PENALTY] or [NO_SECOND_SEQUENCE_PENALTY] when the
+     * hand can't meet that yet.
      */
     fun deadwood(hand: List<Card>, wildRank: Rank): Int {
         val n = hand.size
         require(n <= 20) { "Hand too large to evaluate" }
 
         // Every valid group, as a bitmask, filed under its lowest card index.
-        val groupsByLowest = List(n) { mutableListOf<Pair<Int, Boolean>>() }
+        val groupsByLowest = List(n) { mutableListOf<Pair<Int, GroupKind>>() }
         fun collect(start: Int, chosen: List<Int>) {
             if (chosen.size >= 3) {
-                val isPure = RummyValidator.evaluateGroup(chosen.map { hand[it] }, wildRank)
-                if (isPure != null) groupsByLowest[chosen.first()] += chosen.fold(0) { m, i -> m or (1 shl i) } to isPure
+                val kind = RummyValidator.classifyGroup(chosen.map { hand[it] }, wildRank)
+                if (kind != null) groupsByLowest[chosen.first()] += chosen.fold(0) { m, i -> m or (1 shl i) } to kind
             }
             if (chosen.size == MAX_GROUP_SIZE) return
             for (i in start until n) collect(i + 1, chosen + i)
         }
         for (i in 0 until n) collect(i + 1, listOf(i))
 
-        // memo[mask] = (best deadwood with no requirement, best deadwood that includes a pure sequence)
-        val memo = HashMap<Int, Pair<Int, Int>>()
+        // best(mask, needPure, needSequences) = lowest deadwood of the cards in mask, given the
+        // groups placed among them must still supply a pure sequence (if needPure) and
+        // needSequences more sequences.
+        val memo = HashMap<Long, Int>()
         val impossible = Int.MAX_VALUE / 4
-        fun best(mask: Int): Pair<Int, Int> {
-            if (mask == 0) return 0 to impossible
-            memo[mask]?.let { return it }
+        fun best(mask: Int, needPure: Boolean, needSequences: Int): Int {
+            if (mask == 0) return if (needPure || needSequences > 0) impossible else 0
+            val key = (mask.toLong() shl 3) or ((if (needPure) 4L else 0L) or needSequences.toLong())
+            memo[key]?.let { return it }
             val lowest = Integer.numberOfTrailingZeros(mask)
-            val rest = best(mask and (1 shl lowest).inv())
-            val cost = points(hand[lowest], wildRank)
-            var any = cost + rest.first
-            var pure = cost + rest.second
-            for ((group, isPure) in groupsByLowest[lowest]) {
+            var result = minOf(impossible, points(hand[lowest], wildRank) + best(mask and (1 shl lowest).inv(), needPure, needSequences))
+            for ((group, kind) in groupsByLowest[lowest]) {
                 if (group and mask != group) continue
-                val after = best(mask and group.inv())
-                any = minOf(any, after.first)
-                pure = minOf(pure, if (isPure) after.first else after.second)
+                val after = best(
+                    mask and group.inv(),
+                    needPure && kind != GroupKind.PURE_SEQUENCE,
+                    if (kind.isSequence) maxOf(0, needSequences - 1) else needSequences
+                )
+                result = minOf(result, after)
             }
-            return (any to pure).also { memo[mask] = it }
+            return result.also { memo[key] = it }
         }
 
-        val (any, pure) = best((1 shl n) - 1)
-        return if (pure < impossible) pure else any + NO_PURE_SEQUENCE_PENALTY
+        val full = (1 shl n) - 1
+        val declarable = best(full, needPure = true, needSequences = RummyValidator.REQUIRED_SEQUENCES)
+        if (declarable < impossible) return declarable
+        val pureOnly = best(full, needPure = true, needSequences = 1)
+        if (pureOnly < impossible) return pureOnly + NO_SECOND_SEQUENCE_PENALTY
+        return best(full, needPure = false, needSequences = 0) + NO_PURE_SEQUENCE_PENALTY
     }
 }
