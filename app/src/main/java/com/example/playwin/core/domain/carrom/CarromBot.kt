@@ -43,15 +43,14 @@ object CarromBot {
     fun evaluate(match: CarromMatch, shot: Shot): Double {
         val result = CarromPhysics.simulate(CarromRules.launch(match.coins, shot.direction, shot.power))
         val outcome = CarromRules.resolveShot(match, result.coins, result.newlyPocketed)
-        val myColor = outcome.after.playerColors[match.currentPlayer]
-        val theirColor = myColor?.other()
 
         var score = outcome.pointsGained * 10.0
         if (outcome.fouled) score -= 15.0
         if (!outcome.fouled && outcome.after.currentPlayer == match.currentPlayer) score += 3.0
         // An uncovered queen is only worth something if the cover then goes in.
         if (outcome.queenEvent == QueenEvent.COVER_OWED) score += QUEEN_POINTS * 5.0
-        score -= 6.0 * outcome.potted.count { it != STRIKER_ID && theirColor != null && coinColorOf(it) == theirColor }
+        // A coin of theirs it pots is a point for them.
+        score -= outcome.opponentPointsGained * 10.0
         return score
     }
 

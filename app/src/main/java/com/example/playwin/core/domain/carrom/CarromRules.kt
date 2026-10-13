@@ -65,6 +65,8 @@ data class CarromShotOutcome(
     val fouled: Boolean,
     val pointsGained: Int,
     val queenEvent: QueenEvent? = null,
+    /** Points the shot gave the opponent: their coins count for them, whoever pots them. */
+    val opponentPointsGained: Int = 0,
     val dueEvent: DueEvent? = null,
     /** Coins put back at the centre by this shot (the queen included, if it went back). */
     val returnedToCentre: List<Int> = emptyList()
@@ -72,7 +74,8 @@ data class CarromShotOutcome(
 
 /**
  * Carrom scoring and turn rules, shared by vs-Computer play, online play and
- * [CarromBot]. Potting your own color scores 1, and scoring earns another shot.
+ * [CarromBot]. Every coin scores 1 for its owner, whoever pots it, but only
+ * potting your own color earns another shot.
  *
  * Fouls follow the standard rule: potting the striker passes the turn, every
  * coin potted on that shot goes back to the centre, and the fouler pays a
@@ -123,6 +126,8 @@ object CarromRules {
         val duesOwed = match.duesOwed[shooter] ?: 0
         val payingDues = ownPotted.take(duesOwed)
         val pointsGained = ownPotted.size - payingDues.size + if (queenEvent == QueenEvent.CLAIMED) QUEEN_POINTS else 0
+        // The opponent's coins count for the opponent, whoever pots them.
+        val opponentPointsGained = pottedCoins.count { coinColorOf(it) != CoinColor.QUEEN && coinColorOf(it) == colors[match.opponent] }
 
         val keepsTurn = covered || queenEvent == QueenEvent.CLAIMED || queenEvent == QueenEvent.COVER_OWED
         val nextPlayer = if (keepsTurn) shooter else match.opponent
@@ -131,12 +136,15 @@ object CarromRules {
             coins = returnToCentre(respotStriker(finalCoins, nextPlayer), returned),
             currentPlayer = nextPlayer,
             playerColors = colors,
-            scores = match.scores + (shooter to match.scores.getValue(shooter) + pointsGained),
+            scores = match.scores +
+                (shooter to match.scores.getValue(shooter) + pointsGained) +
+                (match.opponent to match.scores.getValue(match.opponent) + opponentPointsGained),
             queenCoverOwedBy = shooter.takeIf { queenEvent == QueenEvent.COVER_OWED },
             duesOwed = withDues(match.duesOwed, shooter, duesOwed - payingDues.size)
         )
         return CarromShotOutcome(
             shooter, after, potted, fouled = false, pointsGained, queenEvent,
+            opponentPointsGained = opponentPointsGained,
             dueEvent = DueEvent.PAID_FROM_POT.takeIf { payingDues.isNotEmpty() },
             returnedToCentre = returned
         )

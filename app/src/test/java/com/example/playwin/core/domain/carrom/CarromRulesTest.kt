@@ -148,11 +148,48 @@ class CarromRulesTest {
     }
 
     @Test
-    fun `potting only the opponent's coin scores nothing and passes the turn`() {
+    fun `player - potting only the opponent's coin scores it for them and passes the turn`() {
         val match = CarromMatch(playerColors = mapOf(1 to CoinColor.WHITE, 2 to CoinColor.BLACK))
         val outcome = CarromRules.resolveShot(match, pocket(match, 10), potted = listOf(10))
         assertEquals(0, outcome.pointsGained)
+        assertEquals(1, outcome.opponentPointsGained)
+        assertEquals(mapOf(1 to 0, 2 to 1), outcome.after.scores)
         assertEquals(2, outcome.after.currentPlayer)
+    }
+
+    @Test
+    fun `computer - potting only the opponent's coin scores it for them and passes the turn`() {
+        val match = CarromMatch(currentPlayer = 2, playerColors = mapOf(1 to CoinColor.WHITE, 2 to CoinColor.BLACK))
+        val outcome = CarromRules.resolveShot(match, pocket(match, 1), potted = listOf(1))
+        assertEquals(mapOf(1 to 1, 2 to 0), outcome.after.scores)
+        assertEquals(1, outcome.after.currentPlayer)
+    }
+
+    @Test
+    fun `potting your own and their coins scores each for its owner, and keeps your turn`() {
+        val match = CarromMatch(playerColors = mapOf(1 to CoinColor.WHITE, 2 to CoinColor.BLACK))
+        val outcome = CarromRules.resolveShot(match, pocket(match, 1, 2, 10), potted = listOf(1, 2, 10))
+        assertEquals(mapOf(1 to 2, 2 to 1), outcome.after.scores)
+        assertEquals(1, outcome.after.currentPlayer)
+    }
+
+    @Test
+    fun `the first pot's other-colour coins count for the opponent`() {
+        val open = CarromMatch()
+        // 10 decides colours (player 1 black), so white 1 potted alongside it is player 2's.
+        val outcome = CarromRules.resolveShot(open, pocket(open, 10, 1), potted = listOf(10, 1))
+        assertEquals(mapOf(1 to 1, 2 to 1), outcome.after.scores)
+    }
+
+    @Test
+    fun `a coin the opponent potted for you can pay your due, taking back its point`() {
+        val match = CarromMatch(currentPlayer = 2, playerColors = mapOf(1 to CoinColor.WHITE, 2 to CoinColor.BLACK))
+        val gift = CarromRules.resolveShot(match, pocket(match, 1), potted = listOf(1)).after
+        assertEquals(1, gift.scores[1])
+        // Player 1 fouls: the coin the computer potted for them pays the due.
+        val foul = CarromRules.resolveShot(gift, pocket(gift, STRIKER_ID), potted = listOf(STRIKER_ID))
+        assertEquals(DueEvent.PAID_ON_FOUL, foul.dueEvent)
+        assertEquals(0, foul.after.scores[1])
     }
 
     @Test
