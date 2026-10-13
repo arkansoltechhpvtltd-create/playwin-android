@@ -59,7 +59,8 @@ fun EightBallOnlineRoute(
                     onShoot = viewModel::onShoot
                 )
             }
-            GroupLegend(myGroup = stored.toMatch().playerGroups[me], modifier = Modifier.padding(top = 12.dp))
+            val match = stored.toMatch()
+            GroupLegend(myGroup = match.playerGroups[me], modifier = Modifier.padding(top = 12.dp), beforeBreak = match.isBreak)
         },
         finishedBoard = { room ->
             BoardSlot {

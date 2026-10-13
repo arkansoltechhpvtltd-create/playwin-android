@@ -214,7 +214,11 @@ fun EightBallScreen(
                 }
             }
 
-            GroupLegend(myGroup = uiState.playerGroups[EIGHT_BALL_HUMAN], modifier = Modifier.padding(top = 10.dp))
+            GroupLegend(
+                myGroup = uiState.playerGroups[EIGHT_BALL_HUMAN],
+                modifier = Modifier.padding(top = 10.dp),
+                beforeBreak = uiState.match.isBreak
+            )
 
             if (uiState.winner == EIGHT_BALL_COMPUTER) {
                 PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
@@ -276,7 +280,7 @@ private fun StatusBanner(text: String, modifier: Modifier = Modifier, trophy: Bo
 
 /** Which group is yours, shown as a chip with a sample ball of that group and the 8 you finish on. */
 @Composable
-fun GroupLegend(myGroup: BallGroup?, modifier: Modifier = Modifier) {
+fun GroupLegend(myGroup: BallGroup?, modifier: Modifier = Modifier, beforeBreak: Boolean = false) {
     val shape = RoundedCornerShape(14.dp)
     Row(
         modifier = modifier
@@ -293,9 +297,11 @@ fun GroupLegend(myGroup: BallGroup?, modifier: Modifier = Modifier) {
             }
         }
         Text(
-            text = when (myGroup) {
-                null -> "Table open - first pot picks your group"
-                else -> "You: ${myGroup.name.lowercase()} · then sink the 8"
+            text = when {
+                myGroup != null -> "You: ${myGroup.name.lowercase()} · then sink the 8"
+                // Pots on the break don't assign groups; the first legal pot after it does.
+                beforeBreak -> "Table open - groups are set after the break"
+                else -> "Table open - next pot picks your group"
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
