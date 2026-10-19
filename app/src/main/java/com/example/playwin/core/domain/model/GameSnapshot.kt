@@ -1,6 +1,7 @@
 package com.example.playwin.core.domain.model
 
 import com.example.playwin.core.domain.chess.ChessPosition
+import com.example.playwin.core.domain.chess.PieceColor
 import com.example.playwin.core.domain.rummy.Card
 import com.example.playwin.core.domain.rummy.Rank
 import com.example.playwin.core.domain.wordhunt.WordHuntClaim
@@ -108,10 +109,14 @@ sealed interface GameSnapshot {
      *
      * @param earlierPositions [com.example.playwin.core.domain.chess.ChessEngine.repetitionKey]
      * of every earlier position in the game, oldest first, for threefold repetition.
+     * @param timedOut the side whose clock has run out, if one has: they lose -
+     * unless the other side has no mating material, which draws. The result is
+     * then from the point of view of the side that moved last, as usual.
      */
     data class Chess(
         val position: ChessPosition,
-        val earlierPositions: List<String> = emptyList()
+        val earlierPositions: List<String> = emptyList(),
+        val timedOut: PieceColor? = null
     ) : GameSnapshot
 
     /**

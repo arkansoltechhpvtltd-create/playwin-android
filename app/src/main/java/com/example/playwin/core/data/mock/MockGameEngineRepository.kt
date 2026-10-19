@@ -135,6 +135,13 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
     }
 
     private fun resolveChess(snapshot: GameSnapshot.Chess): GameOutcome {
+        snapshot.timedOut?.let { flagged ->
+            // Out of time loses - unless the other side couldn't mate anyway (FIDE 6.9).
+            val other = flagged.opposite()
+            if (!ChessEngine.hasMatingMaterial(snapshot.position, other)) return GameOutcome.DRAW
+            val lastMover = snapshot.position.sideToMove.opposite()
+            return if (other == lastMover) GameOutcome.WIN else GameOutcome.LOSE
+        }
         // Checkmate and draws are re-derived here from the full rules engine,
         // never trusted from the client - the mover wins on checkmate.
         val status = ChessEngine.gameStatus(snapshot.position, snapshot.earlierPositions)

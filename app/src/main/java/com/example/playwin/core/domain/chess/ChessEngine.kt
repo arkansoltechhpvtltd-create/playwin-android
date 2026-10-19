@@ -125,6 +125,21 @@ object ChessEngine {
         return others.all { (piece, _) -> piece.type == PieceType.BISHOP } && others.map { it.second }.toSet().size == 1
     }
 
+    /**
+     * Whether [color] could still checkmate here, for ruling on a player who
+     * runs out of time (FIDE 6.9: it's a draw if the opponent can't mate). No,
+     * with a lone king, or a king and one knight or bishop against a bare king;
+     * otherwise yes. The rare positions where a lone minor piece could still
+     * mate a king hemmed in by its own pieces are counted as no, so they draw.
+     */
+    fun hasMatingMaterial(position: ChessPosition, color: PieceColor): Boolean {
+        fun piecesOf(side: PieceColor) = position.board.flatten().filterNotNull().filter { it.color == side && it.type != PieceType.KING }
+        val mine = piecesOf(color)
+        if (mine.isEmpty()) return false
+        val loneMinor = mine.size == 1 && mine.single().type in setOf(PieceType.KNIGHT, PieceType.BISHOP)
+        return !(loneMinor && piecesOf(color.opposite()).isEmpty())
+    }
+
     /** Applies a move (assumed legal) and returns the resulting position, side to move flipped. */
     fun applyMove(position: ChessPosition, move: ChessMove): ChessPosition {
         val board = position.board.map { it.toMutableList() }.toMutableList()

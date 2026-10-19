@@ -14,6 +14,14 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -69,6 +77,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -83,11 +92,13 @@ import com.example.playwin.core.designsystem.theme.PwGoldDark
 import com.example.playwin.core.designsystem.theme.PwGoldLight
 import com.example.playwin.core.domain.chess.ChessEngine
 import com.example.playwin.core.domain.chess.ChessPiece
+import com.example.playwin.core.domain.chess.CHESS_TIME_CONTROLS
+import com.example.playwin.core.domain.chess.ChessClock
+import com.example.playwin.core.domain.chess.TimeControl
 import com.example.playwin.core.domain.chess.ChessPosition
 import com.example.playwin.core.domain.chess.PieceColor
 import com.example.playwin.core.domain.chess.PieceType
 import com.example.playwin.core.domain.chess.Square
-import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.CelebrationBurst
 import com.example.playwin.feature.game.GameStatusBanner
 import com.example.playwin.feature.game.chess.online.ChessOnlineRoute
@@ -137,8 +148,210 @@ private fun ChessComputerRoute(
         onSquareTap = viewModel::onSquareTap,
         onPlayAgain = viewModel::onPlayAgain,
         onPromotionChosen = viewModel::onPromotionChosen,
-        onPromotionCancelled = viewModel::onPromotionCancelled
+        onPromotionCancelled = viewModel::onPromotionCancelled,
+        onTimeControlChosen = viewModel::onTimeControlChosen
     )
+}
+
+/** The board's margin either side: about 2% of a phone's width, so the board itself spans about 96%. */
+private val BoardSideMargin = 8.dp
+
+/** The slim gold edge round the board, in place of the artwork's wide ornamental frame. */
+private val BoardEdge = 3.dp
+
+/** The least height the captured-pieces and moves panel keeps under the board; the board shrinks before it does. */
+private val MovesPanelMinHeight = 150.dp
+
+/**
+ * Under the board: the pieces each side has taken, then the moves so far in
+ * standard algebraic notation, numbered in pairs (1. e4 e5), scrolling to
+ * keep the latest in view.
+ */
+@Composable
+private fun MovesPanel(
+    moves: List<PlayedMove>,
+    capturedByYou: List<ChessPiece>,
+    capturedByComputer: List<ChessPiece>,
+    modifier: Modifier = Modifier,
+    /** The chosen time control while it can still be changed (before the first move); null hides the picker. */
+    timeControl: TimeControl? = null,
+    onTimeControlChosen: (TimeControl) -> Unit = {}
+) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(PickerNavyTop, PickerNavyBottom)))
+            .border(1.dp, PickerGoldRim, shape)
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        CapturedRow(label = "You took", pieces = capturedByYou)
+        CapturedRow(label = "Computer took", pieces = capturedByComputer, modifier = Modifier.padding(top = 4.dp))
+        HorizontalDivider(
+            modifier = Modifier.padding(vertical = 8.dp),
+            color = PwGoldDark.copy(alpha = 0.35f)
+        )
+
+        val pairs = moves.chunked(2)
+        val listState = rememberLazyListState()
+        LaunchedEffect(pairs.size) {
+            if (pairs.isNotEmpty()) listState.animateScrollToItem(pairs.lastIndex)
+        }
+        if (pairs.isEmpty()) {
+            if (timeControl != null) {
+                TimeControlPicker(selected = timeControl, onChoose = onTimeControlChosen)
+            } else {
+                Text(
+                    text = "No moves yet - you play White",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f)) {
+                itemsIndexed(pairs) { index, pair ->
+                    val latest = index == pairs.lastIndex
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                        MoveText("${index + 1}.", latest, Modifier.width(40.dp), dim = true)
+                        MoveText(pair[0].san, latest, Modifier.weight(1f))
+                        MoveText(pair.getOrNull(1)?.san ?: "", latest, Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Before the first move: the time controls to pick from ([CHESS_TIME_CONTROLS]), the chosen one in gold. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TimeControlPicker(selected: TimeControl, onChoose: (TimeControl) -> Unit) {
+    Text(
+        text = "Time control, each side - the clock starts with your first move",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    FlowRow(
+        modifier = Modifier.padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        CHESS_TIME_CONTROLS.forEach { control ->
+            val chosen = control == selected
+            val shape = RoundedCornerShape(50)
+            Text(
+                text = control.label,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (chosen) FontWeight.Bold else FontWeight.Medium),
+                color = if (chosen) PickerNavyBottom else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .clip(shape)
+                    .background(if (chosen) Brush.linearGradient(listOf(PwGoldLight, PwGoldDark)) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
+                    .border(1.dp, if (chosen) PickerGoldRim else Brush.linearGradient(listOf(PwGoldDark.copy(alpha = 0.6f), PwGoldDark.copy(alpha = 0.6f))), shape)
+                    .clickable { onChoose(control) }
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            )
+        }
+    }
+}
+
+/**
+ * Both clocks: the computer's and yours, the running one outlined in gold,
+ * turning red in its last [CLOCK_LOW_SECONDS] seconds.
+ */
+@Composable
+private fun ClockRow(clock: ChessClock, modifier: Modifier = Modifier) {
+    Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        ClockFace(label = "Computer", clock = clock, color = CHESS_HUMAN.opposite(), modifier = Modifier.weight(1f))
+        ClockFace(label = "You", clock = clock, color = CHESS_HUMAN, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun ClockFace(label: String, clock: ChessClock, color: PieceColor, modifier: Modifier = Modifier) {
+    val running = clock.running == color
+    val millis = clock.millisLeft(color)
+    val low = millis <= CLOCK_LOW_SECONDS * 1000L
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier = modifier
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(PickerNavyTop, PickerNavyBottom)))
+            .border(
+                width = if (running) 2.dp else 1.dp,
+                brush = if (running) PickerGoldRim else Brush.linearGradient(listOf(PwGoldDark.copy(alpha = 0.45f), PwGoldDark.copy(alpha = 0.45f))),
+                shape = shape
+            )
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = formatClock(millis, showHours = (clock.control.seconds ?: 0) >= 3600),
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"),
+            color = when {
+                low -> CheckRed
+                running -> PwGoldLight
+                else -> MaterialTheme.colorScheme.onSurface
+            }
+        )
+    }
+}
+
+/** A clock reading: m:ss, or h:mm:ss when [showHours]. Rounded up, so it reads 0:00 only once time is really out. */
+private fun formatClock(millis: Long, showHours: Boolean): String {
+    val total = ((millis + 999) / 1000).toInt()
+    val h = total / 3600
+    val m = total % 3600 / 60
+    val s = total % 60
+    return if (showHours) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(total / 60, s)
+}
+
+/** Below this many seconds a clock shows red. */
+private const val CLOCK_LOW_SECONDS = 20
+
+@Composable
+private fun MoveText(text: String, latest: Boolean, modifier: Modifier = Modifier, dim: Boolean = false) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = if (latest && !dim) FontWeight.SemiBold else FontWeight.Normal),
+        color = when {
+            dim -> MaterialTheme.colorScheme.onSurfaceVariant
+            latest -> PwGoldLight
+            else -> MaterialTheme.colorScheme.onSurface
+        },
+        modifier = modifier
+    )
+}
+
+/** One side's captures as small pieces, or a dash before any. */
+@Composable
+private fun CapturedRow(label: String, pieces: List<ChessPiece>, modifier: Modifier = Modifier) {
+    val glyphSize = with(LocalDensity.current) { 18.dp.toSp() }
+    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(112.dp)
+        )
+        if (pieces.isEmpty()) {
+            Text(text = "-", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                pieces.forEach { piece ->
+                    Box(modifier = Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+                        PieceGlyph(piece = piece, fontSize = glyphSize)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -150,7 +363,8 @@ fun ChessScreen(
     onPlayAgain: () -> Unit,
     modifier: Modifier = Modifier,
     onPromotionChosen: (PieceType) -> Unit = {},
-    onPromotionCancelled: () -> Unit = {}
+    onPromotionCancelled: () -> Unit = {},
+    onTimeControlChosen: (TimeControl) -> Unit = {}
 ) {
     uiState.promotion?.let { PromotionPicker(it, onChoose = onPromotionChosen, onCancel = onPromotionCancelled) }
     GameScaffold(
@@ -161,37 +375,76 @@ fun ChessScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
+                // A narrow side margin so the board runs about 96% of the screen width;
+                // the banners add their own inset to keep the usual 16dp edge.
+                .padding(horizontal = BoardSideMargin, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val humanWon = uiState.winner == 1
+            val bannerInset = Modifier.padding(horizontal = 16.dp - BoardSideMargin)
             when {
-                uiState.isDraw -> StatusBanner(text = drawBannerText(uiState.drawReason))
+                uiState.isDraw && uiState.timedOut != null ->
+                    StatusBanner(text = "Time's up - draw, no mating material left", modifier = bannerInset)
+                uiState.isDraw -> StatusBanner(text = drawBannerText(uiState.drawReason), modifier = bannerInset)
                 uiState.winner != null -> StatusBanner(
-                    text = if (humanWon) "Checkmate - you win! Claiming your coupon…" else "Checkmate - the computer wins",
+                    text = when {
+                        uiState.timedOut != null && humanWon -> "The computer ran out of time - you win! Claiming your coupon…"
+                        uiState.timedOut != null -> "You ran out of time - the computer wins"
+                        humanWon -> "Checkmate - you win! Claiming your coupon…"
+                        else -> "Checkmate - the computer wins"
+                    },
+                    modifier = bannerInset,
                     trophy = humanWon
                 )
-                else -> TurnBanner(uiState)
+                else -> TurnBanner(uiState, modifier = bannerInset)
             }
 
-            BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
-                ChessBoard(
-                    position = uiState.position,
-                    selectedSquare = uiState.selectedSquare,
-                    legalTargets = uiState.legalTargets,
-                    enabled = !uiState.isGameOver && !uiState.isResolving && uiState.isHumanTurn && !uiState.isComputerThinking,
-                    onSquareTap = onSquareTap
-                )
-                if (humanWon) {
-                    CelebrationBurst(
-                        colors = listOf(PwGoldDark, PwGoldLight, MaterialTheme.colorScheme.secondary, Color.White),
-                        modifier = Modifier.matchParentSize()
+            if (!uiState.clock.control.isUnlimited) {
+                ClockRow(clock = uiState.clock, modifier = bannerInset.padding(top = 10.dp))
+            }
+
+            // The board sits right under the banner at full width; the height left
+            // below it holds the captured pieces and the moves. On a short screen the
+            // board gives way first, so the panel always keeps MovesPanelMinHeight.
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(top = 12.dp)
+            ) {
+                val boardSize = minOf(maxWidth, maxHeight - MovesPanelMinHeight).coerceAtLeast(0.dp)
+                Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(modifier = Modifier.size(boardSize)) {
+                        ChessBoard(
+                            position = uiState.position,
+                            selectedSquare = uiState.selectedSquare,
+                            legalTargets = uiState.legalTargets,
+                            enabled = !uiState.isGameOver && !uiState.isResolving && uiState.isHumanTurn && !uiState.isComputerThinking,
+                            onSquareTap = onSquareTap
+                        )
+                        if (humanWon) {
+                            CelebrationBurst(
+                                colors = listOf(PwGoldDark, PwGoldLight, MaterialTheme.colorScheme.secondary, Color.White),
+                                modifier = Modifier.matchParentSize()
+                            )
+                        }
+                    }
+
+                    MovesPanel(
+                        moves = uiState.moveHistory,
+                        capturedByYou = uiState.capturedByWhite,
+                        capturedByComputer = uiState.capturedByBlack,
+                        timeControl = uiState.clock.control.takeIf { uiState.canChooseTimeControl },
+                        onTimeControlChosen = onTimeControlChosen,
+                        modifier = bannerInset
+                            .padding(top = 12.dp)
+                            .weight(1f)
                     )
-                }
-            }
 
-            if (uiState.isDraw || uiState.winner == 2) {
-                PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
+                    if (uiState.isDraw || uiState.winner == 2) {
+                        PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 12.dp))
+                    }
+                }
             }
         }
     }
@@ -392,28 +645,36 @@ fun ChessBoard(
 
     val boardImage = rememberBoardImage()
     val frameShape = RoundedCornerShape(4.dp)
+    // A slim gold edge, then the artwork cropped close around its squares (see [BoardArt]).
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(BoardArt.SIZE / (BoardArt.SIZE * BoardArt.ROW_STRETCH))
+            .aspectRatio(1f)
             .shadow(elevation = 12.dp, shape = frameShape)
             .clip(frameShape)
             .background(FrameDark)
+            .border(BoardEdge, Brush.linearGradient(listOf(PwGoldLight, PwGoldDark, PwGoldLight, PwGoldDark)), frameShape)
+            .padding(BoardEdge)
     ) {
         if (boardImage != null) {
             Canvas(modifier = Modifier.matchParentSize()) {
                 drawImage(
                     image = boardImage,
+                    srcOffset = IntOffset(BoardArt.CROP_LEFT, BoardArt.CROP_TOP),
+                    srcSize = IntSize(BoardArt.CROP_WIDTH, BoardArt.CROP_HEIGHT),
                     dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
                     filterQuality = FilterQuality.High
                 )
             }
         }
         // The squares are the artwork's; the play area sits exactly on its 8x8 grid.
-        val artPixel = maxWidth / BoardArt.SIZE
+        val artPixel = maxWidth / BoardArt.CROP_WIDTH
         BoxWithConstraints(
             modifier = Modifier
-                .padding(start = artPixel * BoardArt.GRID_LEFT, top = artPixel * BoardArt.ROW_STRETCH * BoardArt.GRID_TOP)
+                .padding(
+                    start = artPixel * (BoardArt.GRID_LEFT - BoardArt.CROP_LEFT),
+                    top = maxHeight / BoardArt.CROP_HEIGHT * (BoardArt.GRID_TOP - BoardArt.CROP_TOP)
+                )
                 .width(artPixel * BoardArt.GRID_WIDTH)
                 .aspectRatio(1f)
         ) {
@@ -540,13 +801,22 @@ private object BoardArt {
     const val SIZE = 1024f
 
     // The outer edge of the 8x8 grid, after the mirror.
-    const val GRID_LEFT = 110f
-    const val GRID_TOP = 116f
-    const val GRID_WIDTH = 801f
-    const val GRID_HEIGHT = 795f
+    const val GRID_LEFT = 110
+    const val GRID_TOP = 116
+    const val GRID_WIDTH = 801
+    const val GRID_HEIGHT = 795
 
-    /** The grid is a touch short; the image is stretched by this much vertically so the squares are square. */
-    const val ROW_STRETCH = GRID_WIDTH / GRID_HEIGHT
+    /**
+     * The part of the artwork the board shows: the grid and the thin dark band
+     * round it (inside [labelBands], so it's evenly near-black), leaving out the
+     * wide ornamental frame - the board's gold edge is drawn instead, so the
+     * squares fill about 96% of the board. Drawn into a square, the grid's
+     * squares come out square: 801/819 across and 795/813 down match to 0.02%.
+     */
+    const val CROP_LEFT = 101
+    const val CROP_TOP = 107
+    const val CROP_WIDTH = 920 - CROP_LEFT
+    const val CROP_HEIGHT = 920 - CROP_TOP
 
     /**
      * The narrow band between the grid and the inner gold rule carries garbled

@@ -3,11 +3,14 @@ package com.example.playwin.feature.game.chess
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.playwin.core.domain.chess.ChessBot
+import com.example.playwin.core.domain.chess.ChessClock
 import com.example.playwin.core.domain.chess.ChessEngine
+import com.example.playwin.core.domain.chess.ChessNotation
 import com.example.playwin.core.domain.chess.ChessMove
 import com.example.playwin.core.domain.chess.PieceColor
 import com.example.playwin.core.domain.chess.PieceType
 import com.example.playwin.core.domain.chess.Square
+import com.example.playwin.core.domain.chess.TimeControl
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
@@ -27,6 +30,9 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 private const val COMPUTER_THINK_MILLIS = 500L
+
+/** How often the chess clock ticks. */
+private const val CLOCK_TICK_MILLIS = 100L
 
 /**
  * Chess against the computer: the human plays White ([CHESS_HUMAN]),
@@ -102,7 +108,78 @@ class ChessViewModel @Inject constructor(
 
     fun onPlayAgain() {
         computerJob?.cancel()
-        _uiState.value = ChessUiState()
+        // A new game keeps the time control the player last chose.
+        _uiState.value = ChessUiState(clock = ChessClock(_uiState.value.clock.control))
+    }
+
+    /** Picks the time control; only before the first move. */
+    fun onTimeControlChosen(control: TimeControl) {
+        if (!_uiState.value.canChooseTimeControl) return
+        _uiState.update { it.copy(clock = ChessClock(control)) }
+    }
+
+    init {
+        // The chess clock: counts down whichever side's clock is running, on a
+        // monotonic timer so it can't drift, and flags a side that runs out.
+        viewModelScope.launch {
+            var last = System.nanoTime()
+            while (true) {
+                delay(CLOCK_TICK_MILLIS)
+                val now = System.nanoTime()
+                val elapsed = (now - last) / 1_000_000
+                last = now
+                val state = _uiState.value
+                if (state.isGameOver || state.clock.running == null) continue
+                val clock = state.clock.tick(elapsed)
+                _uiState.update { it.copy(clock = clock) }
+                clock.flagged?.let { onFlag(it) }
+            }
+        }
+    }
+
+    /**
+     * [flagged] has run out of time. The game engine rules on it - a loss,
+     * or a draw if the other side couldn't mate - and the game ends there.
+     */
+    private fun onFlag(flagged: PieceColor) {
+        computerJob?.cancel()
+        val state = _uiState.value
+        _uiState.update {
+            it.copy(
+                clock = it.clock.stopped(),
+                isComputerThinking = false,
+                selectedSquare = null,
+                pendingMoves = emptyList(),
+                promotion = null,
+                isResolving = true
+            )
+        }
+        viewModelScope.launch {
+            val outcome = gameEngineRepository.resolve(
+                GameId.CHESS,
+                GameSnapshot.Chess(state.position, state.earlierPositions, timedOut = flagged)
+            )
+            // The engine answers for the side that moved last.
+            val lastMover = state.position.sideToMove.opposite()
+            val winner = when (outcome) {
+                GameOutcome.WIN -> lastMover
+                GameOutcome.LOSE -> lastMover.opposite()
+                GameOutcome.DRAW, GameOutcome.IN_PROGRESS -> null
+            }
+            _uiState.update {
+                it.copy(
+                    winner = winner?.let { color -> if (color == PieceColor.WHITE) 1 else 2 },
+                    isDraw = winner == null,
+                    timedOut = flagged,
+                    isResolving = false
+                )
+            }
+            if (winner == CHESS_HUMAN) {
+                val coupon = rewardsRepository.claimReward(GameId.CHESS)
+                couponsRepository.addCoupon(coupon)
+                _uiState.update { it.copy(wonCouponId = coupon.id) }
+            }
+        }
     }
 
     private fun selectIfOwnPiece(state: ChessUiState, square: Square) {
@@ -117,15 +194,21 @@ class ChessViewModel @Inject constructor(
 
     private fun playMove(move: ChessMove) {
         val state = _uiState.value
+        // The game may have ended on time while this move was being chosen.
+        if (state.isGameOver) return
         val position = state.position
         val mover = position.sideToMove
         val newPosition = ChessEngine.applyMove(position, move)
         val history = state.earlierPositions + ChessEngine.repetitionKey(position)
+        val played = PlayedMove(ChessNotation.san(position, move), mover, ChessNotation.captured(position, move))
 
         _uiState.update {
             it.copy(
                 position = newPosition,
                 earlierPositions = history,
+                moveHistory = it.moveHistory + played,
+                // The mover's clock stops and the opponent's starts, the moment the move is made.
+                clock = it.clock.afterMove(mover),
                 selectedSquare = null,
                 pendingMoves = emptyList(),
                 isResolving = true
@@ -135,7 +218,9 @@ class ChessViewModel @Inject constructor(
         viewModelScope.launch {
             when (gameEngineRepository.resolve(GameId.CHESS, GameSnapshot.Chess(newPosition, history))) {
                 GameOutcome.WIN -> {
-                    _uiState.update { it.copy(winner = if (mover == PieceColor.WHITE) 1 else 2, isResolving = false) }
+                    _uiState.update {
+                        it.copy(winner = if (mover == PieceColor.WHITE) 1 else 2, clock = it.clock.stopped(), isResolving = false)
+                    }
                     if (mover == CHESS_HUMAN) {
                         val coupon = rewardsRepository.claimReward(GameId.CHESS)
                         couponsRepository.addCoupon(coupon)
@@ -144,7 +229,12 @@ class ChessViewModel @Inject constructor(
                 }
 
                 GameOutcome.DRAW -> _uiState.update {
-                    it.copy(isDraw = true, drawReason = ChessEngine.gameStatus(newPosition, history), isResolving = false)
+                    it.copy(
+                        isDraw = true,
+                        drawReason = ChessEngine.gameStatus(newPosition, history),
+                        clock = it.clock.stopped(),
+                        isResolving = false
+                    )
                 }
 
                 GameOutcome.LOSE, GameOutcome.IN_PROGRESS -> {

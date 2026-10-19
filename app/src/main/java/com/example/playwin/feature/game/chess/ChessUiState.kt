@@ -1,12 +1,15 @@
 package com.example.playwin.feature.game.chess
 
+import com.example.playwin.core.domain.chess.ChessClock
 import com.example.playwin.core.domain.chess.ChessEngine
 import com.example.playwin.core.domain.chess.ChessMove
+import com.example.playwin.core.domain.chess.ChessPiece
 import com.example.playwin.core.domain.chess.ChessPosition
 import com.example.playwin.core.domain.chess.GameStatus
 import com.example.playwin.core.domain.chess.PieceColor
 import com.example.playwin.core.domain.chess.PieceType
 import com.example.playwin.core.domain.chess.Square
+import com.example.playwin.core.domain.chess.DEFAULT_TIME_CONTROL
 
 data class ChessUiState(
     val position: ChessPosition = ChessEngine.initialPosition(),
@@ -22,8 +25,23 @@ data class ChessUiState(
     val isComputerThinking: Boolean = false,
     val wonCouponId: String? = null,
     /** A pawn move onto the last rank, held until the player picks what it becomes. */
-    val promotion: PendingPromotion? = null
+    val promotion: PendingPromotion? = null,
+    /** Every move played so far, oldest first, for the move list and captured pieces. */
+    val moveHistory: List<PlayedMove> = emptyList(),
+    /** Both sides' clocks, and whose is running. */
+    val clock: ChessClock = ChessClock(DEFAULT_TIME_CONTROL),
+    /** The side whose clock ran out, when that ended the game. */
+    val timedOut: PieceColor? = null
 ) {
+    /** The time control can be changed until the first move is played. */
+    val canChooseTimeControl: Boolean get() = moveHistory.isEmpty() && !isGameOver
+
+    /** Black's pieces White has taken, in the order they fell. */
+    val capturedByWhite: List<ChessPiece> get() = moveHistory.filter { it.mover == PieceColor.WHITE }.mapNotNull { it.captured }
+
+    /** White's pieces Black has taken, in the order they fell. */
+    val capturedByBlack: List<ChessPiece> get() = moveHistory.filter { it.mover == PieceColor.BLACK }.mapNotNull { it.captured }
+
     /** 1 = White (the human, in vs-Computer play), 2 = Black. */
     val currentPlayer: Int get() = if (position.sideToMove == PieceColor.WHITE) 1 else 2
     val isInCheck: Boolean get() = ChessEngine.isInCheck(position, position.sideToMove)
@@ -31,6 +49,9 @@ data class ChessUiState(
     val isHumanTurn: Boolean get() = position.sideToMove == CHESS_HUMAN
     val isGameOver: Boolean get() = winner != null || isDraw
 }
+
+/** One move as played: its [san] (standard algebraic notation), who played it, and what it took. */
+data class PlayedMove(val san: String, val mover: PieceColor, val captured: ChessPiece?)
 
 /** In "Play vs Computer" the human plays White and moves first. */
 val CHESS_HUMAN = PieceColor.WHITE
