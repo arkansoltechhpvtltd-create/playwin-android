@@ -131,7 +131,7 @@ class ChessDrawTest {
             var position = ChessEngine.initialPosition()
             var plies = 0
             while (ChessEngine.gameStatus(position) == GameStatus.IN_PROGRESS) {
-                position = ChessEngine.applyMove(position, requireNotNull(ChessBot.chooseMove(position, random)))
+                position = ChessEngine.applyMove(position, requireNotNull(ChessBot.chooseMove(position, ChessDifficulty.EASY, random = random)))
                 plies++
                 // 16 pawns x 6 steps and 30 captures bound a game under the fifty-move rule.
                 assertTrue("seed $seed still going after $plies plies", plies < 6000)

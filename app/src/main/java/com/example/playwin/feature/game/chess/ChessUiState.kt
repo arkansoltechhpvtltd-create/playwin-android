@@ -1,6 +1,8 @@
 package com.example.playwin.feature.game.chess
 
 import com.example.playwin.core.domain.chess.ChessClock
+import com.example.playwin.core.domain.chess.ChessDifficulty
+import com.example.playwin.core.domain.chess.DEFAULT_CHESS_DIFFICULTY
 import com.example.playwin.core.domain.chess.ChessEngine
 import com.example.playwin.core.domain.chess.ChessMove
 import com.example.playwin.core.domain.chess.ChessPiece
@@ -31,9 +33,11 @@ data class ChessUiState(
     /** Both sides' clocks, and whose is running. */
     val clock: ChessClock = ChessClock(DEFAULT_TIME_CONTROL),
     /** The side whose clock ran out, when that ended the game. */
-    val timedOut: PieceColor? = null
+    val timedOut: PieceColor? = null,
+    /** How strongly the computer plays. */
+    val difficulty: ChessDifficulty = DEFAULT_CHESS_DIFFICULTY
 ) {
-    /** The time control can be changed until the first move is played. */
+    /** The time control and difficulty can be changed until the first move is played. */
     val canChooseTimeControl: Boolean get() = moveHistory.isEmpty() && !isGameOver
 
     /** Black's pieces White has taken, in the order they fell. */

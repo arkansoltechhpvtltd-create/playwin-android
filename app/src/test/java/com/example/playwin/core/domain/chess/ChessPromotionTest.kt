@@ -81,7 +81,7 @@ class ChessPromotionTest {
     fun `the computer promotes on its own, to a queen when that's best`() {
         val position = fen("8/P7/8/7k/8/8/8/4K3 w - - 0 1")
         repeat(5) {
-            val move = requireNotNull(ChessBot.chooseMove(position, Random(it)))
+            val move = requireNotNull(ChessBot.chooseMove(position, random = Random(it)))
             assertEquals(sq("a8"), move.to)
             assertEquals(PieceType.QUEEN, move.promotion)
         }
@@ -89,7 +89,7 @@ class ChessPromotionTest {
 
     @Test
     fun `the computer finds mate by promotion`() {
-        val move = requireNotNull(ChessBot.chooseMove(promoteToMate, Random(3)))
+        val move = requireNotNull(ChessBot.chooseMove(promoteToMate, random = Random(3)))
         assertEquals(GameStatus.CHECKMATE, ChessEngine.gameStatus(ChessEngine.applyMove(promoteToMate, move)))
     }
 }

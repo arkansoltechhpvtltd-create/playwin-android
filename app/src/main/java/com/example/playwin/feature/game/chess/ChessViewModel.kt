@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.playwin.core.domain.chess.ChessBot
 import com.example.playwin.core.domain.chess.ChessClock
+import com.example.playwin.core.domain.chess.ChessDifficulty
 import com.example.playwin.core.domain.chess.ChessEngine
 import com.example.playwin.core.domain.chess.ChessNotation
 import com.example.playwin.core.domain.chess.ChessMove
@@ -29,7 +30,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
-private const val COMPUTER_THINK_MILLIS = 500L
+/** The computer never answers faster than this, so its reply doesn't land the instant yours does. */
+private const val COMPUTER_MIN_THINK_MILLIS = 500L
+
+/** On a clock, the computer spends at most 1/this of its remaining time on one move. */
+private const val COMPUTER_CLOCK_FRACTION = 30
 
 /** How often the chess clock ticks. */
 private const val CLOCK_TICK_MILLIS = 100L
@@ -108,8 +113,14 @@ class ChessViewModel @Inject constructor(
 
     fun onPlayAgain() {
         computerJob?.cancel()
-        // A new game keeps the time control the player last chose.
-        _uiState.value = ChessUiState(clock = ChessClock(_uiState.value.clock.control))
+        // A new game keeps the time control and difficulty the player last chose.
+        _uiState.value = ChessUiState(clock = ChessClock(_uiState.value.clock.control), difficulty = _uiState.value.difficulty)
+    }
+
+    /** Picks how strongly the computer plays; only before the first move. */
+    fun onDifficultyChosen(difficulty: ChessDifficulty) {
+        if (!_uiState.value.canChooseTimeControl) return
+        _uiState.update { it.copy(difficulty = difficulty) }
     }
 
     /** Picks the time control; only before the first move. */
@@ -249,8 +260,17 @@ class ChessViewModel @Inject constructor(
         computerJob?.cancel()
         _uiState.update { it.copy(isComputerThinking = true) }
         computerJob = viewModelScope.launch {
-            delay(COMPUTER_THINK_MILLIS)
-            val move = withContext(Dispatchers.Default) { ChessBot.chooseMove(_uiState.value.position) }
+            val state = _uiState.value
+            val start = System.nanoTime()
+            val budget = if (state.clock.control.isUnlimited) {
+                state.difficulty.timeBudgetMillis
+            } else {
+                minOf(state.difficulty.timeBudgetMillis, state.clock.millisLeft(state.position.sideToMove) / COMPUTER_CLOCK_FRACTION)
+            }
+            val move = withContext(Dispatchers.Default) {
+                ChessBot.chooseMove(state.position, state.difficulty, state.earlierPositions, timeBudgetMillis = budget)
+            }
+            delay(COMPUTER_MIN_THINK_MILLIS - (System.nanoTime() - start) / 1_000_000)
             _uiState.update { it.copy(isComputerThinking = false) }
             move?.let(::playMove)
         }

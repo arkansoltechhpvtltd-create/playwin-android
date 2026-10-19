@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -28,6 +29,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -94,6 +97,7 @@ import com.example.playwin.core.domain.chess.ChessEngine
 import com.example.playwin.core.domain.chess.ChessPiece
 import com.example.playwin.core.domain.chess.CHESS_TIME_CONTROLS
 import com.example.playwin.core.domain.chess.ChessClock
+import com.example.playwin.core.domain.chess.ChessDifficulty
 import com.example.playwin.core.domain.chess.TimeControl
 import com.example.playwin.core.domain.chess.ChessPosition
 import com.example.playwin.core.domain.chess.PieceColor
@@ -149,7 +153,8 @@ private fun ChessComputerRoute(
         onPlayAgain = viewModel::onPlayAgain,
         onPromotionChosen = viewModel::onPromotionChosen,
         onPromotionCancelled = viewModel::onPromotionCancelled,
-        onTimeControlChosen = viewModel::onTimeControlChosen
+        onTimeControlChosen = viewModel::onTimeControlChosen,
+        onDifficultyChosen = viewModel::onDifficultyChosen
     )
 }
 
@@ -175,7 +180,10 @@ private fun MovesPanel(
     modifier: Modifier = Modifier,
     /** The chosen time control while it can still be changed (before the first move); null hides the picker. */
     timeControl: TimeControl? = null,
-    onTimeControlChosen: (TimeControl) -> Unit = {}
+    onTimeControlChosen: (TimeControl) -> Unit = {},
+    /** The computer's difficulty, shown with the time control picker; null leaves it out. */
+    difficulty: ChessDifficulty? = null,
+    onDifficultyChosen: (ChessDifficulty) -> Unit = {}
 ) {
     val shape = RoundedCornerShape(16.dp)
     Column(
@@ -200,7 +208,14 @@ private fun MovesPanel(
         }
         if (pairs.isEmpty()) {
             if (timeControl != null) {
-                TimeControlPicker(selected = timeControl, onChoose = onTimeControlChosen)
+                // Both pickers may not fit the panel's least height, so they scroll.
+                Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    if (difficulty != null) {
+                        DifficultyPicker(selected = difficulty, onChoose = onDifficultyChosen)
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    TimeControlPicker(selected = timeControl, onChoose = onTimeControlChosen)
+                }
             } else {
                 Text(
                     text = "No moves yet - you play White",
@@ -238,21 +253,46 @@ private fun TimeControlPicker(selected: TimeControl, onChoose: (TimeControl) -> 
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         CHESS_TIME_CONTROLS.forEach { control ->
-            val chosen = control == selected
-            val shape = RoundedCornerShape(50)
-            Text(
-                text = control.label,
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (chosen) FontWeight.Bold else FontWeight.Medium),
-                color = if (chosen) PickerNavyBottom else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier
-                    .clip(shape)
-                    .background(if (chosen) Brush.linearGradient(listOf(PwGoldLight, PwGoldDark)) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
-                    .border(1.dp, if (chosen) PickerGoldRim else Brush.linearGradient(listOf(PwGoldDark.copy(alpha = 0.6f), PwGoldDark.copy(alpha = 0.6f))), shape)
-                    .clickable { onChoose(control) }
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
-            )
+            PickerChip(label = control.label, chosen = control == selected, onClick = { onChoose(control) })
         }
     }
+}
+
+/** Before the first move: how strongly the computer plays, the chosen level in gold. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DifficultyPicker(selected: ChessDifficulty, onChoose: (ChessDifficulty) -> Unit) {
+    Text(
+        text = "Computer difficulty",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    FlowRow(
+        modifier = Modifier.padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        ChessDifficulty.entries.forEach { difficulty ->
+            PickerChip(label = difficulty.label, chosen = difficulty == selected, onClick = { onChoose(difficulty) })
+        }
+    }
+}
+
+/** One option in a pre-game picker: a gold-rimmed pill, filled gold when [chosen]. */
+@Composable
+private fun PickerChip(label: String, chosen: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(50)
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (chosen) FontWeight.Bold else FontWeight.Medium),
+        color = if (chosen) PickerNavyBottom else MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier
+            .clip(shape)
+            .background(if (chosen) Brush.linearGradient(listOf(PwGoldLight, PwGoldDark)) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
+            .border(1.dp, if (chosen) PickerGoldRim else Brush.linearGradient(listOf(PwGoldDark.copy(alpha = 0.6f), PwGoldDark.copy(alpha = 0.6f))), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    )
 }
 
 /**
@@ -364,12 +404,13 @@ fun ChessScreen(
     modifier: Modifier = Modifier,
     onPromotionChosen: (PieceType) -> Unit = {},
     onPromotionCancelled: () -> Unit = {},
-    onTimeControlChosen: (TimeControl) -> Unit = {}
+    onTimeControlChosen: (TimeControl) -> Unit = {},
+    onDifficultyChosen: (ChessDifficulty) -> Unit = {}
 ) {
     uiState.promotion?.let { PromotionPicker(it, onChoose = onPromotionChosen, onCancel = onPromotionCancelled) }
     GameScaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { PwTopBar(title = "Chess · vs Computer", onBack = onBack) }
+        topBar = { PwTopBar(title = "Chess · vs Computer (${uiState.difficulty.label})", onBack = onBack) }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -436,6 +477,8 @@ fun ChessScreen(
                         capturedByComputer = uiState.capturedByBlack,
                         timeControl = uiState.clock.control.takeIf { uiState.canChooseTimeControl },
                         onTimeControlChosen = onTimeControlChosen,
+                        difficulty = uiState.difficulty.takeIf { uiState.canChooseTimeControl },
+                        onDifficultyChosen = onDifficultyChosen,
                         modifier = bannerInset
                             .padding(top = 12.dp)
                             .weight(1f)
