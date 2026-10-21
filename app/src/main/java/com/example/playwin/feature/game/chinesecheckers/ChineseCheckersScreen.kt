@@ -33,8 +33,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -65,19 +67,40 @@ import com.example.playwin.core.designsystem.theme.PwGoldLight
 import com.example.playwin.core.domain.chinesecheckers.ChineseCheckersBoard
 import com.example.playwin.core.domain.chinesecheckers.ChineseCheckersDifficulty
 import com.example.playwin.core.domain.chinesecheckers.ChineseCheckersMove
+import com.example.playwin.core.domain.chinesecheckers.ChineseCheckersPosition
 import com.example.playwin.core.domain.chinesecheckers.Hole
 import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.CelebrationBurst
 import com.example.playwin.feature.game.GameScaffold
 import com.example.playwin.feature.game.GameStatusBanner
+import com.example.playwin.feature.game.chinesecheckers.online.ChineseCheckersOnlineRoute
+import com.example.playwin.feature.game.online.GameModeSelectScreen
+import com.example.playwin.feature.game.online.PlayMode
 import kotlin.math.PI
 import kotlin.math.floor
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/** Entry point for Chinese Checkers: you against the computer. */
+/** Entry point for Chinese Checkers: play the computer, or get paired with a random online player. */
 @Composable
 fun ChineseCheckersRoute(
+    onBack: () -> Unit,
+    onWin: (couponId: String) -> Unit
+) {
+    var mode by remember { mutableStateOf<PlayMode?>(null) }
+    when (mode) {
+        null -> GameModeSelectScreen(title = "Chinese Checkers", onBack = onBack, onSelectMode = { mode = it })
+        PlayMode.COMPUTER -> ChineseCheckersComputerRoute(onBack = { mode = null }, onWin = onWin)
+        PlayMode.ONLINE -> ChineseCheckersOnlineRoute(
+            onBack = { mode = null },
+            onWin = onWin,
+            onPlayComputer = { mode = PlayMode.COMPUTER }
+        )
+    }
+}
+
+@Composable
+private fun ChineseCheckersComputerRoute(
     onBack: () -> Unit,
     onWin: (couponId: String) -> Unit,
     viewModel: ChineseCheckersViewModel = hiltViewModel()
@@ -132,11 +155,14 @@ fun ChineseCheckersScreen(
 
             BoardSlot(modifier = Modifier.padding(top = 12.dp)) {
                 StarBoard(
-                    uiState = uiState,
-                    onHoleTap = onHoleTap,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(BOARD_ASPECT)
+                    position = uiState.position,
+                    me = CHINESE_CHECKERS_HUMAN,
+                    selected = uiState.selected,
+                    targets = uiState.legalTargets,
+                    lastMove = uiState.lastMove,
+                    moveKey = uiState.moveCount,
+                    enabled = uiState.canPlay,
+                    onHoleTap = onHoleTap
                 )
                 if (humanWon) {
                     CelebrationBurst(
@@ -161,7 +187,7 @@ private fun StatusLine(text: String, peg: Int?, modifier: Modifier = Modifier, t
     GameStatusBanner(accent = if (peg == CHINESE_CHECKERS_COMPUTER) RubyMid else gold, modifier = modifier) {
         when {
             trophy -> Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = gold, modifier = Modifier.size(26.dp))
-            peg != null -> PegIcon(player = peg, modifier = Modifier.size(24.dp))
+            peg != null -> PegIcon(mine = peg == CHINESE_CHECKERS_HUMAN, modifier = Modifier.size(24.dp))
         }
         Text(
             text = text,
@@ -229,7 +255,7 @@ private fun ProgressPanel(
 @Composable
 private fun PegsHome(label: String, player: Int, count: Int, modifier: Modifier = Modifier) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        PegIcon(player = player, modifier = Modifier.size(18.dp))
+        PegIcon(mine = player == CHINESE_CHECKERS_HUMAN, modifier = Modifier.size(18.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
@@ -264,10 +290,11 @@ private fun DifficultyChip(label: String, chosen: Boolean, enabled: Boolean, onC
     )
 }
 
+/** One peg on its own: gold if it's [mine], ruby for the other side. */
 @Composable
-private fun PegIcon(player: Int, modifier: Modifier = Modifier) {
+internal fun PegIcon(mine: Boolean, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
-        drawPeg(center = center, radius = size.minDimension * 0.45f, player = player)
+        drawPeg(center = center, radius = size.minDimension * 0.45f, mine = mine)
     }
 }
 
@@ -290,25 +317,35 @@ private val BOARD_ASPECT = BOARD_WIDTH_UNITS / BOARD_HEIGHT_UNITS
 private fun holeOffset(hole: Hole): Offset = Offset(hole.q + hole.r / 2f, hole.r * SQRT3 / 2f)
 
 /**
- * The star: a navy plate with a gold rim, each player's home point tinted in
- * their colour, a well for every hole and the pegs in them. The selected peg
- * glows, its destinations pulse gold, and the last move's route is traced
- * faintly while the peg hops along it.
+ * The star, seen by player [me]: their home point at the bottom and their
+ * pegs gold, the other side's at the top in ruby (for player 2 the board is
+ * turned round). A navy plate with a gold rim, a well for every hole and the
+ * pegs in them; the [selected] peg glows, its [targets] pulse gold, and
+ * [lastMove]'s route is traced faintly while the peg hops along it - each
+ * time [moveKey] changes.
  */
 @Composable
-private fun StarBoard(
-    uiState: ChineseCheckersUiState,
+internal fun StarBoard(
+    position: ChineseCheckersPosition,
+    me: Int,
+    selected: Int?,
+    targets: List<Int>,
+    lastMove: ChineseCheckersMove?,
+    moveKey: Int,
+    enabled: Boolean,
     onHoleTap: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val holes = ChineseCheckersBoard.holes
     val currentOnTap by rememberUpdatedState(onHoleTap)
-    val canPlay = uiState.canPlay
+    // Player 2 sees the board turned half round, so their home is at the bottom too.
+    val view = if (me == 2) -1f else 1f
+    fun offset(i: Int): Offset = holeOffset(holes[i]) * view
 
     // The last move, hop by hop: 0 at the start, one more per hole landed on.
     val hop = remember { Animatable(0f) }
-    val shownMove = uiState.lastMove
-    LaunchedEffect(uiState.moveCount) {
+    val shownMove = lastMove
+    LaunchedEffect(moveKey) {
         val hops = shownMove?.path?.size ?: 0
         hop.snapTo(0f)
         if (hops > 0) hop.animateTo(hops.toFloat(), tween((hops * CHINESE_CHECKERS_HOP_MILLIS).toInt(), easing = LinearEasing))
@@ -323,36 +360,39 @@ private fun StarBoard(
 
     Canvas(
         modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(BOARD_ASPECT)
             .semantics { contentDescription = "Chinese checkers board" }
-            .pointerInput(canPlay) {
-                if (!canPlay) return@pointerInput
+            .pointerInput(enabled, me) {
+                if (!enabled) return@pointerInput
                 detectTapGestures { tap ->
                     val unit = size.width / BOARD_WIDTH_UNITS
                     val centre = Offset(size.width / 2f, size.height / 2f)
                     // The nearest hole, if the tap is within about half a spacing of it.
-                    val nearest = holes.indices.minBy { (centre + holeOffset(holes[it]) * unit - tap).getDistanceSquared() }
-                    if ((centre + holeOffset(holes[nearest]) * unit - tap).getDistance() < unit * 0.6f) currentOnTap(nearest)
+                    val nearest = holes.indices.minBy { (centre + offset(it) * unit - tap).getDistanceSquared() }
+                    if ((centre + offset(nearest) * unit - tap).getDistance() < unit * 0.6f) currentOnTap(nearest)
                 }
             }
     ) {
         val unit = size.width / BOARD_WIDTH_UNITS
         val centre = Offset(size.width / 2f, size.height / 2f)
-        fun at(i: Int): Offset = centre + holeOffset(holes[i]) * unit
+        fun at(i: Int): Offset = centre + offset(i) * unit
 
         drawStarPlate(centre, unit)
-        for (player in 1..2) drawHomePoint(player, centre, unit)
+        drawHomePoint(mine = true, centre, unit)
+        drawHomePoint(mine = false, centre, unit)
 
         val animating = shownMove != null && hop.value < shownMove.path.size
         shownMove?.let { drawRoute(it, ::at, unit) }
 
         // Wells, then destinations, then pegs on top.
         holes.indices.forEach { drawWell(at(it), unit) }
-        uiState.legalTargets.forEach { drawTarget(at(it), unit, pulse) }
+        targets.forEach { drawTarget(at(it), unit, pulse) }
         holes.indices.forEach { i ->
-            val player = uiState.position.cells[i]
+            val player = position.cells[i]
             if (player == 0 || (animating && i == shownMove!!.to)) return@forEach
-            if (i == uiState.selected) drawSelection(at(i), unit)
-            drawPeg(at(i), unit * PEG_RADIUS, player)
+            if (i == selected) drawSelection(at(i), unit)
+            drawPeg(at(i), unit * PEG_RADIUS, mine = player == me)
         }
 
         // The moving peg, hopping from hole to hole along its route.
@@ -361,11 +401,11 @@ private fun StarBoard(
             val stops = listOf(move.from) + move.path
             val leg = floor(hop.value).toInt().coerceIn(0, move.path.size - 1)
             val t = hop.value - leg
-            val position = at(stops[leg]) + (at(stops[leg + 1]) - at(stops[leg])) * t
+            val flying = at(stops[leg]) + (at(stops[leg + 1]) - at(stops[leg])) * t
             val lift = sin(PI.toFloat() * t)
-            val player = uiState.position.cells[move.to]
-            drawCircle(Color.Black.copy(alpha = 0.25f), radius = unit * PEG_RADIUS, center = position + Offset(0f, unit * (0.08f + 0.18f * lift)))
-            drawPeg(position - Offset(0f, unit * 0.22f * lift), unit * PEG_RADIUS * (1f + 0.18f * lift), player)
+            val mine = position.cells[move.to] == me
+            drawCircle(Color.Black.copy(alpha = 0.25f), radius = unit * PEG_RADIUS, center = flying + Offset(0f, unit * (0.08f + 0.18f * lift)))
+            drawPeg(flying - Offset(0f, unit * 0.22f * lift), unit * PEG_RADIUS * (1f + 0.18f * lift), mine)
         }
     }
 }
@@ -409,10 +449,13 @@ private fun DrawScope.drawStarPlate(centre: Offset, unit: Float) {
     drawPath(starOutline(centre, unit, margin = 0.3f), PwGoldDark.copy(alpha = 0.35f), style = Stroke(width = unit * 0.04f, join = StrokeJoin.Round))
 }
 
-/** [player]'s home point, tinted in their colour; the opposite point is where they're heading. */
-private fun DrawScope.drawHomePoint(player: Int, centre: Offset, unit: Float) {
+/**
+ * A home point, tinted: the viewer's own at the bottom in gold if [mine], the
+ * other side's at the top in ruby. Each is where the other player is heading.
+ */
+private fun DrawScope.drawHomePoint(mine: Boolean, centre: Offset, unit: Float) {
     // The three corner holes of the point, then pushed out round them.
-    val corners = if (player == CHINESE_CHECKERS_HUMAN) listOf(Hole(-4, 8), Hole(-4, 5), Hole(-1, 5)) else listOf(Hole(4, -8), Hole(4, -5), Hole(1, -5))
+    val corners = if (mine) listOf(Hole(-4, 8), Hole(-4, 5), Hole(-1, 5)) else listOf(Hole(4, -8), Hole(4, -5), Hole(1, -5))
     val points = corners.map { centre + holeOffset(it) * unit }
     val middle = Offset(points.sumOf { it.x.toDouble() }.toFloat() / 3f, points.sumOf { it.y.toDouble() }.toFloat() / 3f)
     val path = Path().apply {
@@ -422,7 +465,7 @@ private fun DrawScope.drawHomePoint(player: Int, centre: Offset, unit: Float) {
         }
         close()
     }
-    val colour = if (player == CHINESE_CHECKERS_HUMAN) PwGoldDark else RubyMid
+    val colour = if (mine) PwGoldDark else RubyMid
     drawPath(path, colour.copy(alpha = 0.13f))
     drawPath(path, colour.copy(alpha = 0.45f), style = Stroke(width = unit * 0.05f, join = StrokeJoin.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(unit * 0.18f, unit * 0.12f))))
 }
@@ -462,9 +505,9 @@ private fun DrawScope.drawRoute(move: ChineseCheckersMove, at: (Int) -> Offset, 
     drawCircle(PwGoldLight.copy(alpha = 0.5f), radius = unit * 0.2f, center = stops[0], style = Stroke(width = unit * 0.05f))
 }
 
-/** A polished peg: gold for you, ruby for the computer, lit from the top left. */
-private fun DrawScope.drawPeg(center: Offset, radius: Float, player: Int) {
-    val (light, mid, dark) = if (player == CHINESE_CHECKERS_HUMAN) Triple(GoldPegLight, PwGoldDark, GoldPegDark) else Triple(RubyLight, RubyMid, RubyDark)
+/** A polished peg: gold if it's [mine], ruby for the other side, lit from the top left. */
+private fun DrawScope.drawPeg(center: Offset, radius: Float, mine: Boolean) {
+    val (light, mid, dark) = if (mine) Triple(GoldPegLight, PwGoldDark, GoldPegDark) else Triple(RubyLight, RubyMid, RubyDark)
     drawCircle(Color.Black.copy(alpha = 0.35f), radius = radius, center = center + Offset(0f, radius * 0.18f))
     drawCircle(
         Brush.radialGradient(listOf(light, mid, dark), center = center + Offset(-radius * 0.35f, -radius * 0.4f), radius = radius * 1.6f),
