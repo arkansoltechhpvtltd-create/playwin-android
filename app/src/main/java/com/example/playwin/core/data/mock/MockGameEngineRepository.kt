@@ -135,6 +135,11 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
     }
 
     private fun resolveChess(snapshot: GameSnapshot.Chess): GameOutcome {
+        snapshot.resigned?.let { resigner ->
+            // Resigning loses outright, whatever the material on the board.
+            val lastMover = snapshot.position.sideToMove.opposite()
+            return if (resigner == lastMover) GameOutcome.LOSE else GameOutcome.WIN
+        }
         snapshot.timedOut?.let { flagged ->
             // Out of time loses - unless the other side couldn't mate anyway (FIDE 6.9).
             val other = flagged.opposite()

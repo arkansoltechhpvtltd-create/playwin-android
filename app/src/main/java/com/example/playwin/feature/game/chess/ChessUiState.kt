@@ -34,11 +34,16 @@ data class ChessUiState(
     val clock: ChessClock = ChessClock(DEFAULT_TIME_CONTROL),
     /** The side whose clock ran out, when that ended the game. */
     val timedOut: PieceColor? = null,
+    /** The side that resigned, when that ended the game. */
+    val resigned: PieceColor? = null,
     /** How strongly the computer plays. */
     val difficulty: ChessDifficulty = DEFAULT_CHESS_DIFFICULTY
 ) {
     /** The time control and difficulty can be changed until the first move is played. */
     val canChooseTimeControl: Boolean get() = moveHistory.isEmpty() && !isGameOver
+
+    /** The player can resign once the first move is played, until the game is over. */
+    val canResign: Boolean get() = moveHistory.isNotEmpty() && !isGameOver
 
     /** Black's pieces White has taken, in the order they fell. */
     val capturedByWhite: List<ChessPiece> get() = moveHistory.filter { it.mover == PieceColor.WHITE }.mapNotNull { it.captured }

@@ -112,11 +112,14 @@ sealed interface GameSnapshot {
      * @param timedOut the side whose clock has run out, if one has: they lose -
      * unless the other side has no mating material, which draws. The result is
      * then from the point of view of the side that moved last, as usual.
+     * @param resigned the side that has resigned, if one has: they lose, whatever
+     * is on the board - again from the point of view of the side that moved last.
      */
     data class Chess(
         val position: ChessPosition,
         val earlierPositions: List<String> = emptyList(),
-        val timedOut: PieceColor? = null
+        val timedOut: PieceColor? = null,
+        val resigned: PieceColor? = null
     ) : GameSnapshot
 
     /**

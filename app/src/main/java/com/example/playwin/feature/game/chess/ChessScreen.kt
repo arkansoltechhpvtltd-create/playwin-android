@@ -14,9 +14,15 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -154,7 +160,8 @@ private fun ChessComputerRoute(
         onPromotionChosen = viewModel::onPromotionChosen,
         onPromotionCancelled = viewModel::onPromotionCancelled,
         onTimeControlChosen = viewModel::onTimeControlChosen,
-        onDifficultyChosen = viewModel::onDifficultyChosen
+        onDifficultyChosen = viewModel::onDifficultyChosen,
+        onResign = viewModel::onResign
     )
 }
 
@@ -164,8 +171,11 @@ private val BoardSideMargin = 8.dp
 /** The slim gold edge round the board, in place of the artwork's wide ornamental frame. */
 private val BoardEdge = 3.dp
 
-/** The least height the captured-pieces and moves panel keeps under the board; the board shrinks before it does. */
-private val MovesPanelMinHeight = 150.dp
+/**
+ * The least height kept under the board - the pre-game pickers in full, or the
+ * moves panel plus the Resign / Play again button; the board shrinks before it does.
+ */
+private val BelowBoardMinHeight = 216.dp
 
 /**
  * Under the board: the pieces each side has taken, then the moves so far in
@@ -194,21 +204,24 @@ private fun MovesPanel(
             .border(1.dp, PickerGoldRim, shape)
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
-        CapturedRow(label = "You took", pieces = capturedByYou)
-        CapturedRow(label = "Computer took", pieces = capturedByComputer, modifier = Modifier.padding(top = 4.dp))
-        HorizontalDivider(
-            modifier = Modifier.padding(vertical = 8.dp),
-            color = PwGoldDark.copy(alpha = 0.35f)
-        )
-
         val pairs = moves.chunked(2)
+        // Before the first move nothing has been taken, so the pickers get the whole panel.
+        if (timeControl == null || pairs.isNotEmpty()) {
+            CapturedRow(label = "You took", pieces = capturedByYou)
+            CapturedRow(label = "Computer took", pieces = capturedByComputer, modifier = Modifier.padding(top = 4.dp))
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 8.dp),
+                color = PwGoldDark.copy(alpha = 0.35f)
+            )
+        }
+
         val listState = rememberLazyListState()
         LaunchedEffect(pairs.size) {
             if (pairs.isNotEmpty()) listState.animateScrollToItem(pairs.lastIndex)
         }
         if (pairs.isEmpty()) {
             if (timeControl != null) {
-                // Both pickers may not fit the panel's least height, so they scroll.
+                // Both pickers fit BelowBoardMinHeight; they scroll only if larger text pushes them past it.
                 Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                     if (difficulty != null) {
                         DifficultyPicker(selected = difficulty, onChoose = onDifficultyChosen)
@@ -239,60 +252,170 @@ private fun MovesPanel(
 }
 
 /** Before the first move: the time controls to pick from ([CHESS_TIME_CONTROLS]), the chosen one in gold. */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TimeControlPicker(selected: TimeControl, onChoose: (TimeControl) -> Unit) {
-    Text(
-        text = "Time control, each side - the clock starts with your first move",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    FlowRow(
-        modifier = Modifier.padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        CHESS_TIME_CONTROLS.forEach { control ->
-            PickerChip(label = control.label, chosen = control == selected, onClick = { onChoose(control) })
-        }
-    }
+    PickerLabel("Time per side · starts on your first move")
+    PickerGrid(options = CHESS_TIME_CONTROLS, label = { it.label }, selected = selected, onChoose = onChoose)
 }
 
 /** Before the first move: how strongly the computer plays, the chosen level in gold. */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DifficultyPicker(selected: ChessDifficulty, onChoose: (ChessDifficulty) -> Unit) {
+    PickerLabel("Computer difficulty")
+    PickerGrid(options = ChessDifficulty.entries, label = { it.label }, selected = selected, onChoose = onChoose)
+}
+
+@Composable
+private fun PickerLabel(text: String) {
     Text(
-        text = "Computer difficulty",
+        text = text,
         style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
     )
-    FlowRow(
-        modifier = Modifier.padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+}
+
+/** How many options sit side by side in a pre-game picker. */
+private const val PICKER_COLUMNS = 3
+
+/**
+ * A pre-game picker's options as an even grid of equal-width pills,
+ * [PICKER_COLUMNS] to a row, so no row runs ragged or spills out of the panel.
+ */
+@Composable
+private fun <T> PickerGrid(options: List<T>, label: (T) -> String, selected: T, onChoose: (T) -> Unit) {
+    Column(
+        modifier = Modifier
+            .padding(top = 8.dp)
+            .selectableGroup(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        ChessDifficulty.entries.forEach { difficulty ->
-            PickerChip(label = difficulty.label, chosen = difficulty == selected, onClick = { onChoose(difficulty) })
+        options.chunked(PICKER_COLUMNS).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { option ->
+                    PickerChip(
+                        label = label(option),
+                        chosen = option == selected,
+                        onClick = { onChoose(option) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                // Keeps a short last row's pills the same width as the rest.
+                repeat(PICKER_COLUMNS - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+            }
         }
     }
 }
 
-/** One option in a pre-game picker: a gold-rimmed pill, filled gold when [chosen]. */
+/** One option in a pre-game picker: a gold-rimmed pill, filled gold with a tick when [chosen]. */
 @Composable
-private fun PickerChip(label: String, chosen: Boolean, onClick: () -> Unit) {
+private fun PickerChip(label: String, chosen: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(50)
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (chosen) FontWeight.Bold else FontWeight.Medium),
-        color = if (chosen) PickerNavyBottom else MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier
+    Row(
+        modifier = modifier
+            .height(40.dp)
             .clip(shape)
             .background(if (chosen) Brush.linearGradient(listOf(PwGoldLight, PwGoldDark)) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
             .border(1.dp, if (chosen) PickerGoldRim else Brush.linearGradient(listOf(PwGoldDark.copy(alpha = 0.6f), PwGoldDark.copy(alpha = 0.6f))), shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp)
-    )
+            .selectable(selected = chosen, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (chosen) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = PickerNavyBottom,
+                modifier = Modifier
+                    .padding(end = 4.dp)
+                    .size(16.dp)
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (chosen) FontWeight.Bold else FontWeight.Medium),
+            color = if (chosen) PickerNavyBottom else MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+/** During play: a gold-rimmed navy pill that asks before resigning. */
+@Composable
+private fun ResignButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(50)
+    Row(
+        modifier = modifier
+            .height(44.dp)
+            .widthIn(min = 180.dp)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(PickerNavyTop, PickerNavyBottom)))
+            .border(1.5.dp, PickerGoldRim, shape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 24.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Flag,
+            contentDescription = null,
+            tint = PwGoldLight,
+            modifier = Modifier
+                .padding(end = 8.dp)
+                .size(18.dp)
+        )
+        Text(
+            text = "Resign",
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = PwGoldLight
+        )
+    }
+}
+
+/** "Resign this game?" - confirming gives the game to the computer; cancelling plays on. */
+@Composable
+private fun ResignDialog(onConfirm: () -> Unit, onCancel: () -> Unit) {
+    Dialog(onDismissRequest = onCancel) {
+        val shape = RoundedCornerShape(22.dp)
+        Column(
+            modifier = Modifier
+                .shadow(elevation = 16.dp, shape = shape)
+                .clip(shape)
+                .background(Brush.verticalGradient(listOf(PickerNavyTop, PickerNavyBottom)))
+                .border(2.dp, PickerGoldRim, shape)
+                .padding(horizontal = 22.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Resign this game?",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = Color.White
+            )
+            Text(
+                text = "The computer will win this game.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = PwGoldDark,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Row(
+                modifier = Modifier.padding(top = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onCancel) {
+                    Text(text = "Keep playing", color = PwGoldDark, style = MaterialTheme.typography.labelLarge)
+                }
+                PrimaryButton(
+                    text = "Resign",
+                    onClick = onConfirm,
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp)
+                )
+            }
+        }
+    }
 }
 
 /**
@@ -405,9 +528,21 @@ fun ChessScreen(
     onPromotionChosen: (PieceType) -> Unit = {},
     onPromotionCancelled: () -> Unit = {},
     onTimeControlChosen: (TimeControl) -> Unit = {},
-    onDifficultyChosen: (ChessDifficulty) -> Unit = {}
+    onDifficultyChosen: (ChessDifficulty) -> Unit = {},
+    onResign: () -> Unit = {}
 ) {
     uiState.promotion?.let { PromotionPicker(it, onChoose = onPromotionChosen, onCancel = onPromotionCancelled) }
+    var askingToResign by remember { mutableStateOf(false) }
+    // The question closes by itself if the game ends some other way while it's open.
+    if (askingToResign && uiState.canResign) {
+        ResignDialog(
+            onConfirm = {
+                askingToResign = false
+                onResign()
+            },
+            onCancel = { askingToResign = false }
+        )
+    }
     GameScaffold(
         modifier = modifier.fillMaxSize(),
         topBar = { PwTopBar(title = "Chess · vs Computer (${uiState.difficulty.label})", onBack = onBack) }
@@ -429,6 +564,7 @@ fun ChessScreen(
                 uiState.isDraw -> StatusBanner(text = drawBannerText(uiState.drawReason), modifier = bannerInset)
                 uiState.winner != null -> StatusBanner(
                     text = when {
+                        uiState.resigned != null -> "You resigned - the computer wins"
                         uiState.timedOut != null && humanWon -> "The computer ran out of time - you win! Claiming your coupon…"
                         uiState.timedOut != null -> "You ran out of time - the computer wins"
                         humanWon -> "Checkmate - you win! Claiming your coupon…"
@@ -453,7 +589,7 @@ fun ChessScreen(
                     .weight(1f)
                     .padding(top = 12.dp)
             ) {
-                val boardSize = minOf(maxWidth, maxHeight - MovesPanelMinHeight).coerceAtLeast(0.dp)
+                val boardSize = minOf(maxWidth, maxHeight - BelowBoardMinHeight).coerceAtLeast(0.dp)
                 Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(modifier = Modifier.size(boardSize)) {
                         ChessBoard(
@@ -486,6 +622,8 @@ fun ChessScreen(
 
                     if (uiState.isDraw || uiState.winner == 2) {
                         PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 12.dp))
+                    } else if (uiState.canResign) {
+                        ResignButton(onClick = { askingToResign = true }, modifier = Modifier.padding(top = 12.dp))
                     }
                 }
             }

@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -115,6 +116,53 @@ class ChessViewModel @Inject constructor(
         computerJob?.cancel()
         // A new game keeps the time control and difficulty the player last chose.
         _uiState.value = ChessUiState(clock = ChessClock(_uiState.value.clock.control), difficulty = _uiState.value.difficulty)
+    }
+
+    /**
+     * The player resigns: the computer's thinking stops, both clocks stop, and
+     * the game engine rules on it - the resigning side loses.
+     */
+    fun onResign() {
+        if (!_uiState.value.canResign) return
+        viewModelScope.launch {
+            // A move being ruled on is settled first - it may already have ended the game.
+            val state = _uiState.first { !it.isResolving }
+            if (!state.canResign) return@launch
+            resign(state)
+        }
+    }
+
+    private suspend fun resign(state: ChessUiState) {
+        computerJob?.cancel()
+        _uiState.update {
+            it.copy(
+                clock = it.clock.stopped(),
+                isComputerThinking = false,
+                selectedSquare = null,
+                pendingMoves = emptyList(),
+                promotion = null,
+                isResolving = true
+            )
+        }
+        val outcome = gameEngineRepository.resolve(
+            GameId.CHESS,
+            GameSnapshot.Chess(state.position, state.earlierPositions, resigned = CHESS_HUMAN)
+        )
+        // The engine answers for the side that moved last.
+        val lastMover = state.position.sideToMove.opposite()
+        val winner = when (outcome) {
+            GameOutcome.WIN -> lastMover
+            GameOutcome.LOSE -> lastMover.opposite()
+            GameOutcome.DRAW, GameOutcome.IN_PROGRESS -> null
+        }
+        _uiState.update {
+            it.copy(
+                winner = winner?.let { color -> if (color == PieceColor.WHITE) 1 else 2 },
+                isDraw = winner == null,
+                resigned = CHESS_HUMAN,
+                isResolving = false
+            )
+        }
     }
 
     /** Picks how strongly the computer plays; only before the first move. */
