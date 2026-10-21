@@ -12,11 +12,19 @@ class ChineseCheckersRulesTest {
     private fun at(q: Int, r: Int): Int = requireNotNull(ChineseCheckersBoard.indexOf(Hole(q, r))) { "($q, $r) is off the star" }
 
     /** An otherwise empty board with [pegs] placed, [toMove] to move. */
-    private fun board(vararg pegs: Pair<Int, Int>, toMove: Int = 1): ChineseCheckersPosition {
+    private fun board(vararg pegs: Pair<Int, Int>, toMove: Int = 1, turns: Int = 0): ChineseCheckersPosition {
         val cells = MutableList(ChineseCheckersBoard.holes.size) { 0 }
         pegs.forEach { (hole, player) -> cells[hole] = player }
-        return ChineseCheckersPosition(cells, toMove)
+        return ChineseCheckersPosition(cells, toMove, turns)
     }
+
+    /** Player 1's goal (the top point) with [mine] of player 1's pegs in it and player 2's in the rest. */
+    private fun goalSplit(mine: Int, turns: Int): ChineseCheckersPosition {
+        val goal = ChineseCheckersBoard.goal(1).toList()
+        return board(*goal.mapIndexed { i, hole -> hole to if (i < mine) 1 else 2 }.toTypedArray(), turns = turns)
+    }
+
+    private val guard = 2 * ChineseCheckersRules.ANTI_SPOILING_MOVES
 
     private fun destinations(position: ChineseCheckersPosition, from: Int): Set<Int> =
         ChineseCheckersRules.movesFrom(position, from).map { it.to }.toSet()
@@ -121,7 +129,7 @@ class ChineseCheckersRulesTest {
     }
 
     @Test
-    fun `a win is all 10 pegs in the opposite point, and only then`() {
+    fun `before the anti-spoiling count, a win is all 10 pegs in the opposite point and only that`() {
         val goal = ChineseCheckersBoard.goal(1).toList()
         val nine = goal.drop(1).map { it to 1 }.toTypedArray()
         val lastHole = goal.first()
@@ -131,6 +139,40 @@ class ChineseCheckersRulesTest {
         assertTrue(ChineseCheckersRules.hasWon(all, 1))
         assertFalse(ChineseCheckersRules.hasWon(all, 2))
         assertEquals(10, ChineseCheckersRules.pegsInGoal(all, 1))
+    }
+
+    @Test
+    fun `anti-spoiling - after 30 moves each, a full goal with a peg of yours in it wins`() {
+        // The opponent has left one peg at home, in your goal.
+        assertTrue(ChineseCheckersRules.hasWon(goalSplit(mine = 9, turns = guard), 1))
+        assertTrue(ChineseCheckersRules.hasWon(goalSplit(mine = 9, turns = guard + 25), 1))
+        // ...but not one turn sooner.
+        assertFalse(ChineseCheckersRules.hasWon(goalSplit(mine = 9, turns = guard - 1), 1))
+    }
+
+    @Test
+    fun `anti-spoiling - hopping into the first hole the other side vacates is no early win`() {
+        // Move 3 or so: nine of theirs still at home, one of yours in the hole they left.
+        assertFalse(ChineseCheckersRules.hasWon(goalSplit(mine = 1, turns = 3), 1))
+    }
+
+    @Test
+    fun `anti-spoiling - a goal full of only their pegs, or with a gap, never wins`() {
+        // None of yours there, however late.
+        assertFalse(ChineseCheckersRules.hasWon(goalSplit(mine = 0, turns = guard + 100), 1))
+        // Late, but a hole is still empty.
+        val goal = ChineseCheckersBoard.goal(1).toList()
+        val withGap = board(*goal.drop(1).mapIndexed { i, hole -> hole to if (i < 8) 1 else 2 }.toTypedArray(), turns = guard + 10)
+        assertFalse(ChineseCheckersRules.hasWon(withGap, 1))
+    }
+
+    @Test
+    fun `every move and every pass counts as a turn`() {
+        val start = ChineseCheckersRules.initialPosition()
+        assertEquals(0, start.turnsPlayed)
+        val moved = ChineseCheckersRules.play(start, ChineseCheckersRules.legalMoves(start).first())
+        assertEquals(1, moved.turnsPlayed)
+        assertEquals(2, ChineseCheckersRules.pass(moved).turnsPlayed)
     }
 
     @Test

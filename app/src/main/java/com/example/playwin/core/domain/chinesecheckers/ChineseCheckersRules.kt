@@ -2,11 +2,13 @@ package com.example.playwin.core.domain.chinesecheckers
 
 /**
  * Whose peg is in each hole of [ChineseCheckersBoard.holes] - 0 empty, else
- * the player (1 or 2) - and whose turn it is.
+ * the player (1 or 2) - whose turn it is, and how many turns (moves and
+ * passes, both sides together) have been played.
  */
 data class ChineseCheckersPosition(
     val cells: List<Int>,
-    val sideToMove: Int = 1
+    val sideToMove: Int = 1,
+    val turnsPlayed: Int = 0
 ) {
     fun pegsOf(player: Int): List<Int> = cells.indices.filter { cells[it] == player }
 }
@@ -28,9 +30,18 @@ data class ChineseCheckersMove(
  * hole, or jumps over any one adjacent peg - its own or the opponent's - into
  * the empty hole straight beyond, and may keep jumping in the same turn.
  * Nothing is ever captured. A player wins with all 10 pegs in the opposite
- * point. Pure functions; the game engine re-checks every move with these.
+ * point - or, once both sides have had [ANTI_SPOILING_MOVES] moves, with that
+ * point full and at least one of their pegs in it (see [hasWon]). Pure
+ * functions; the game engine re-checks every move with these.
  */
 object ChineseCheckersRules {
+
+    /**
+     * Moves each side gets before pegs left behind in their own home stop
+     * blocking the opponent. Until then only a full set of your own 10 pegs
+     * wins; after it, the opponent's stragglers count towards filling your goal.
+     */
+    const val ANTI_SPOILING_MOVES = 30
 
     fun initialPosition(): ChineseCheckersPosition {
         val cells = MutableList(ChineseCheckersBoard.holes.size) { 0 }
@@ -98,18 +109,30 @@ object ChineseCheckersRules {
         val cells = position.cells.toMutableList()
         cells[move.to] = cells[move.from]
         cells[move.from] = 0
-        return ChineseCheckersPosition(cells, ChineseCheckersBoard.opponent(position.sideToMove))
+        return ChineseCheckersPosition(cells, ChineseCheckersBoard.opponent(position.sideToMove), position.turnsPlayed + 1)
     }
 
     /** [position] with the turn passed and nothing moved - for a side with no move at all. */
     fun pass(position: ChineseCheckersPosition): ChineseCheckersPosition =
-        position.copy(sideToMove = ChineseCheckersBoard.opponent(position.sideToMove))
+        position.copy(sideToMove = ChineseCheckersBoard.opponent(position.sideToMove), turnsPlayed = position.turnsPlayed + 1)
 
     /** How many of [player]'s pegs are in their goal. */
     fun pegsInGoal(position: ChineseCheckersPosition, player: Int): Int =
         ChineseCheckersBoard.goal(player).count { position.cells[it] == player }
 
-    /** [player] has all 10 pegs in the opposite point. */
-    fun hasWon(position: ChineseCheckersPosition, player: Int): Boolean =
-        pegsInGoal(position, player) == ChineseCheckersBoard.PEGS_PER_PLAYER
+    /**
+     * [player] has won: all 10 of their pegs are in the opposite point - or,
+     * once both sides have had [ANTI_SPOILING_MOVES] moves, that point is full
+     * and at least one peg in it is theirs. The goal is the opponent's home, so
+     * any opponent peg still there has never got out of the way; after that
+     * many moves it no longer blocks the win (the anti-spoiling rule). Before
+     * then it does, so nobody wins early by hopping into the first hole the
+     * other side vacates.
+     */
+    fun hasWon(position: ChineseCheckersPosition, player: Int): Boolean {
+        val mine = pegsInGoal(position, player)
+        if (mine == ChineseCheckersBoard.PEGS_PER_PLAYER) return true
+        if (mine == 0 || position.turnsPlayed < 2 * ANTI_SPOILING_MOVES) return false
+        return ChineseCheckersBoard.goal(player).all { position.cells[it] != 0 }
+    }
 }

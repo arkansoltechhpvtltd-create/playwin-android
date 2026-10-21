@@ -3,6 +3,7 @@ package com.example.playwin.core.data.mock
 import com.example.playwin.core.domain.chinesecheckers.ChineseCheckersBoard
 import com.example.playwin.core.domain.chinesecheckers.ChineseCheckersPosition
 import com.example.playwin.core.domain.chinesecheckers.ChineseCheckersRules
+import com.example.playwin.core.domain.chinesecheckers.Hole
 import com.example.playwin.core.domain.ludo.LudoEngine
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
@@ -37,6 +38,25 @@ class GameVerdictResolveTest {
         assertEquals(GameOutcome.WIN, chineseCheckers(position, outside, open))
         val elsewhere = ChineseCheckersRules.movesFrom(position, outside).first { it.to != open }
         assertEquals(GameOutcome.IN_PROGRESS, chineseCheckers(position, outside, elsewhere.to))
+    }
+
+    @Test
+    fun `chinese checkers - the move that reaches the anti-spoiling count loses if the other side's goal is already full`() {
+        // Player 1's goal: nine of player 1's pegs and one of player 2's that never left home.
+        val goal = ChineseCheckersBoard.goal(1).toList()
+        val cells = MutableList(ChineseCheckersBoard.holes.size) { 0 }
+        goal.forEachIndexed { i, hole -> cells[hole] = if (i < 9) 1 else 2 }
+        // Player 2 has a free peg in the middle to move with.
+        val middle = requireNotNull(ChineseCheckersBoard.indexOf(Hole(0, 0)))
+        cells[middle] = 2
+        val step = ChineseCheckersBoard.neighbours[middle].first { it >= 0 }
+        val lastTurnBefore = 2 * ChineseCheckersRules.ANTI_SPOILING_MOVES - 1
+
+        // Player 2's move is the 60th turn: player 1's goal now counts as filled.
+        val position = ChineseCheckersPosition(cells, sideToMove = 2, turnsPlayed = lastTurnBefore)
+        assertEquals(GameOutcome.LOSE, chineseCheckers(position, middle, step))
+        // A turn earlier, the same move plays on.
+        assertEquals(GameOutcome.IN_PROGRESS, chineseCheckers(position.copy(turnsPlayed = lastTurnBefore - 1), middle, step))
     }
 
     @Test

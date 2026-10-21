@@ -122,7 +122,7 @@ fun ChineseCheckersScreen(
             val humanWon = uiState.winner == CHINESE_CHECKERS_HUMAN
             val inset = Modifier.padding(horizontal = 16.dp - BoardSideMargin)
             when {
-                humanWon -> StatusLine("All 10 pegs home - you win! Claiming your coupon…", peg = null, modifier = inset, trophy = true)
+                humanWon -> StatusLine("Your point is filled - you win! Claiming your coupon…", peg = null, modifier = inset, trophy = true)
                 uiState.winner != null -> StatusLine("The computer filled its point - it wins", peg = CHINESE_CHECKERS_COMPUTER, modifier = inset)
                 uiState.isComputerThinking || !uiState.isHumanTurn -> StatusLine("Computer is moving…", peg = CHINESE_CHECKERS_COMPUTER, modifier = inset, busy = true)
                 uiState.selected != null && uiState.pendingMoves.isEmpty() -> StatusLine("That peg is boxed in - pick another", peg = CHINESE_CHECKERS_HUMAN, modifier = inset)

@@ -104,25 +104,30 @@ class ChineseCheckersViewModel @Inject constructor(
 
         viewModelScope.launch {
             when (gameEngineRepository.resolve(GameId.CHINESE_CHECKERS, GameSnapshot.ChineseCheckers(before, move.from, move.to))) {
-                GameOutcome.WIN -> {
-                    _uiState.update { it.copy(winner = mover, isResolving = false) }
-                    if (mover == CHINESE_CHECKERS_HUMAN) {
-                        delay(hopMillis(move) + WIN_PAUSE_MILLIS)
-                        val coupon = rewardsRepository.claimReward(GameId.CHINESE_CHECKERS)
-                        couponsRepository.addCoupon(coupon)
-                        _uiState.update { it.copy(wonCouponId = coupon.id) }
-                    }
-                }
+                GameOutcome.WIN -> finish(winner = mover, lastMove = move)
 
-                // The engine rejected the move: an illegal move forfeits. Moves only
-                // ever come from the rules, so this is a guard, not a path in play.
-                GameOutcome.LOSE -> _uiState.update { it.copy(winner = ChineseCheckersBoard.opponent(mover), isResolving = false) }
+                // The other side has won: this move took the game past the
+                // anti-spoiling move count with their goal already full. (Or the
+                // engine rejected the move as illegal - moves only ever come from
+                // the rules, so that's a guard, not a path in play.)
+                GameOutcome.LOSE -> finish(winner = ChineseCheckersBoard.opponent(mover), lastMove = move)
 
                 GameOutcome.DRAW, GameOutcome.IN_PROGRESS -> {
                     _uiState.update { it.copy(isResolving = false) }
                     startTurn(after, waitMillis = hopMillis(move))
                 }
             }
+        }
+    }
+
+    /** The game is over and [winner] has won; your win claims the reward once [lastMove] has landed. */
+    private suspend fun finish(winner: Int, lastMove: ChineseCheckersMove) {
+        _uiState.update { it.copy(winner = winner, isResolving = false) }
+        if (winner == CHINESE_CHECKERS_HUMAN) {
+            delay(hopMillis(lastMove) + WIN_PAUSE_MILLIS)
+            val coupon = rewardsRepository.claimReward(GameId.CHINESE_CHECKERS)
+            couponsRepository.addCoupon(coupon)
+            _uiState.update { it.copy(wonCouponId = coupon.id) }
         }
     }
 

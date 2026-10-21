@@ -23,7 +23,9 @@ sealed interface GameSnapshot {
      * hole [to] out of [before], by the side to move there. The engine re-checks
      * the move against
      * [com.example.playwin.core.domain.chinesecheckers.ChineseCheckersRules] -
-     * an illegal one loses - and rules whether it filled the mover's goal.
+     * an illegal one loses - and rules on the result: a win once the mover's goal
+     * is filled ([com.example.playwin.core.domain.chinesecheckers.ChineseCheckersRules.hasWon]),
+     * a loss if the move completes the other side's.
      */
     data class ChineseCheckers(
         val before: ChineseCheckersPosition,

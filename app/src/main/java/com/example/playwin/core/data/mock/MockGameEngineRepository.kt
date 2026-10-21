@@ -43,11 +43,17 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
 
     private fun resolveChineseCheckers(snapshot: GameSnapshot.ChineseCheckers): GameOutcome {
         // The move is re-checked against the full rules, never trusted from the
-        // client - an illegal move loses. The mover wins once their goal is full.
+        // client - an illegal move loses. The mover wins once their goal is
+        // full; and since the anti-spoiling rule kicks in on a move count, the
+        // move that reaches it can complete the *other* side's win - a loss.
         val mover = snapshot.before.sideToMove
         val move = ChineseCheckersRules.legalMove(snapshot.before, snapshot.from, snapshot.to) ?: return GameOutcome.LOSE
         val after = ChineseCheckersRules.play(snapshot.before, move)
-        return if (ChineseCheckersRules.hasWon(after, mover)) GameOutcome.WIN else GameOutcome.IN_PROGRESS
+        return when {
+            ChineseCheckersRules.hasWon(after, mover) -> GameOutcome.WIN
+            ChineseCheckersRules.hasWon(after, after.sideToMove) -> GameOutcome.LOSE
+            else -> GameOutcome.IN_PROGRESS
+        }
     }
 
     private fun resolveTwentyFortyEight(snapshot: GameSnapshot.TwentyFortyEight): GameOutcome {
