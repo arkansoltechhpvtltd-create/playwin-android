@@ -9,17 +9,66 @@ class EightBallTableTest {
 
     private val r = EightBallTable.BALL_RADIUS
 
+    /** Float rounding allowed on "exactly touching"; far below anything visible. */
+    private val rounding = 0.01f
+
+    private fun assertNoOverlaps(balls: List<Ball>) {
+        val on = balls.filter { !it.pocketed }
+        for (i in on.indices) for (j in i + 1 until on.size) {
+            val dist = (on[i].position - on[j].position).length
+            assertTrue("balls ${on[i].id} and ${on[j].id} overlap by ${2 * r - dist}", dist >= 2 * r - rounding)
+        }
+    }
+
     @Test
-    fun `the rack and cue ball sit on the table without touching a rail or each other`() {
+    fun `the rack and cue ball sit on the table, the rack's neighbours touching without overlapping`() {
         val balls = EightBallTable.initialRack()
         assertEquals(16, balls.size)
         balls.forEach { ball ->
             assertTrue("ball ${ball.id} off the felt", ball.position.x in r..EightBallTable.WIDTH - r)
             assertTrue("ball ${ball.id} off the felt", ball.position.y in r..EightBallTable.HEIGHT - r)
         }
-        for (i in balls.indices) for (j in i + 1 until balls.size) {
-            assertTrue("balls ${balls[i].id} and ${balls[j].id} overlap", (balls[i].position - balls[j].position).length >= 2 * r)
+        assertNoOverlaps(balls)
+        // A tight rack: every ball touches at least two others (the apex has exactly two).
+        val rack = balls.filter { it.id != CUE_BALL_ID }
+        rack.forEach { ball ->
+            val touching = rack.count { it.id != ball.id && kotlin.math.abs((it.position - ball.position).length - 2 * r) < rounding }
+            assertTrue("ball ${ball.id} touches only $touching", touching >= 2)
         }
+    }
+
+    @Test
+    fun `two overlapping balls are pushed apart until they just touch`() {
+        val a = Ball(id = 1, position = Vec2(500f, 250f))
+        val b = Ball(id = 2, position = Vec2(500f + r, 250f)) // half overlapping
+        val separated = EightBallPhysics.separate(listOf(a, b))
+        val dist = (separated[0].position - separated[1].position).length
+        assertEquals(2 * r, dist, rounding)
+        // Pushed along the line between them, half each way.
+        assertEquals(500f - r / 2f, separated[0].position.x, rounding)
+        assertEquals(250f, separated[0].position.y, rounding)
+    }
+
+    @Test
+    fun `balls on the very same spot are pushed apart`() {
+        val separated = EightBallPhysics.separate(listOf(Ball(1, Vec2(500f, 250f)), Ball(2, Vec2(500f, 250f))))
+        assertNoOverlaps(separated)
+    }
+
+    @Test
+    fun `a ball pressed against a cushion stays on the table while the other gives way`() {
+        val wall = Ball(id = 1, position = Vec2(r, 250f))
+        val pressing = Ball(id = 2, position = Vec2(r + r / 2f, 250f))
+        val separated = EightBallPhysics.separate(listOf(wall, pressing))
+        assertNoOverlaps(separated)
+        separated.forEach { assertTrue("ball ${it.id} pushed into the cushion", it.position.x >= r - rounding) }
+    }
+
+    @Test
+    fun `after a full break nothing is left overlapping`() {
+        val match = EightBallMatch()
+        val result = EightBallPhysics.simulate(EightBallRules.launch(match, Vec2(1f, 0f), 1f))
+        assertNoOverlaps(result.balls)
     }
 
     @Test

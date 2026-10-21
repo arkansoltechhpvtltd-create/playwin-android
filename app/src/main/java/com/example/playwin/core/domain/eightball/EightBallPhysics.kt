@@ -1,9 +1,9 @@
 package com.example.playwin.core.domain.eightball
 
-import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.sqrt
 
 /** Table geometry, in logical units independent of screen pixels/density. */
 object EightBallTable {
@@ -63,8 +63,10 @@ object EightBallTable {
             listOf(11, 4, 12, 5),
             listOf(13, 6, 14, 7, 15)
         )
-        val spacing = BALL_RADIUS * 2.05f
-        val rowSpacingX = spacing * 0.9f
+        // Balls a diameter apart in each row, and rows of a tight triangle
+        // (√3/2 of that), so every neighbour just touches without overlapping.
+        val spacing = BALL_RADIUS * 2f
+        val rowSpacingX = spacing * sqrt(3f) / 2f
 
         val balls = mutableListOf(Ball(id = 0, position = Vec2(CUE_START_X, CENTER_Y)))
         rows.forEachIndexed { row, ids ->
@@ -100,16 +102,47 @@ sealed interface TableEvent {
 
 /** Simple arcade physics: friction, wall bounces, elastic ball-ball collisions, six pockets. */
 object EightBallPhysics {
-    private const val FRICTION_PER_SECOND = 0.72f
+    // --- Speed and feel: tune these. ---
+
+    /** The cue ball's launch speed at full power, in table units a second; power scales it linearly. */
+    const val MAX_SHOT_SPEED = 2000f
+
+    /** The share of its speed a ball loses each second (0..1). Lower carries further. */
+    private const val FRICTION_PER_SECOND = 0.68f
+
+    /**
+     * A steady slow-down on top of [FRICTION_PER_SECOND], in units a second per
+     * second. Friction alone fades a ball out slowly; this ends its last crawl
+     * crisply, so every shot still comes to rest.
+     */
+    private const val ROLLING_DECELERATION = 45f
+
+    // --- Physics. ---
+
     private const val MIN_SPEED = 3f
     private const val WALL_RESTITUTION = 0.9f
     private const val BALL_RESTITUTION = 0.98f
+
+    /** The longest substep, however slowly things move. */
     private const val SUBSTEP_DT = 1f / 240f
-    const val MAX_SHOT_SPEED = 1400f
+
+    /**
+     * The furthest any ball moves in one substep. Substeps shorten as balls
+     * speed up, so at any speed a ball can't skip past a cushion, a pocket's
+     * mouth or another ball between two checks.
+     */
+    const val MAX_TRAVEL_PER_SUBSTEP = EightBallTable.BALL_RADIUS / 4f
 
     /** How long [simulate] lets a shot run before calling it settled, as a guard against a never-quite-stopping table. */
     private const val MAX_SIMULATED_SECONDS = 12f
     private const val SIMULATION_FRAME = 1f / 60f
+
+    /** Overlaps smaller than this are rounding, not contact: balls placed exactly touching stay put. */
+    private const val CONTACT_SLOP = 0.01f
+
+    /** Separation passes after each substep's collisions, and when balls come to rest (see [separate]). */
+    private const val SEPARATION_PASSES = 3
+    private const val SETTLE_PASSES = 32
 
     /**
      * Runs a shot to completion off-screen in fixed 1/60s frames and returns
@@ -138,22 +171,81 @@ object EightBallPhysics {
     }
 
     fun step(balls: List<Ball>, dtSeconds: Float): PhysicsStepResult {
-        val clampedDt = min(dtSeconds, 1f / 30f).coerceAtLeast(0f)
-        val subSteps = max(1, ceil(clampedDt / SUBSTEP_DT).toInt())
-        val subDt = clampedDt / subSteps
+        var remaining = min(dtSeconds, 1f / 30f).coerceAtLeast(0f)
 
         var current = balls
         val newlyPocketed = mutableListOf<Int>()
         val events = mutableListOf<TableEvent>()
-        repeat(subSteps) {
+        while (remaining > 0f) {
+            val subDt = substepLength(current, remaining)
             current = substep(current, subDt, newlyPocketed, events)
+            remaining -= subDt
         }
 
         val anyMoving = current.any { !it.pocketed && it.velocity.length > MIN_SPEED }
         if (!anyMoving) {
-            current = current.map { if (it.pocketed) it else it.copy(velocity = Vec2.Zero) }
+            // Coming to rest: settle fully, so no two balls are left overlapping.
+            current = separate(current.map { if (it.pocketed) it else it.copy(velocity = Vec2.Zero) })
         }
         return PhysicsStepResult(current, newlyPocketed, anyMoving, events)
+    }
+
+    /**
+     * [balls] with every overlapping pair pushed apart along the line between
+     * their centres until they just touch - half each way - and every ball kept
+     * inside the cushions. A ball pushed against a cushion holds there and the
+     * other moves on, so repeating converges; [passes] caps the repeats (each
+     * pass at least halves what overlap is left). Two balls on the very same
+     * spot are pushed apart sideways.
+     */
+    fun separate(balls: List<Ball>, passes: Int = SETTLE_PASSES): List<Ball> {
+        val result = balls.toMutableList()
+        val minDist = EightBallTable.BALL_RADIUS * 2f
+        repeat(passes) {
+            var moved = false
+            for (i in result.indices) {
+                if (result[i].pocketed) continue
+                for (j in i + 1 until result.size) {
+                    if (result[j].pocketed) continue
+                    val a = result[i]
+                    val b = result[j]
+                    val delta = b.position - a.position
+                    val dist = delta.length
+                    if (dist >= minDist - CONTACT_SLOP) continue
+                    val normal = if (dist < 0.0001f) Vec2(1f, 0f) else delta * (1f / dist)
+                    val push = normal * ((minDist - dist) / 2f)
+                    result[i] = a.copy(position = keepOnTable(a.position - push))
+                    result[j] = b.copy(position = keepOnTable(b.position + push))
+                    moved = true
+                }
+            }
+            if (!moved) return result
+        }
+        return result
+    }
+
+    /**
+     * The next substep: at most [SUBSTEP_DT] and what's [remaining] of the frame,
+     * and short enough that the fastest ball moves no more than [MAX_TRAVEL_PER_SUBSTEP].
+     */
+    private fun substepLength(balls: List<Ball>, remaining: Float): Float {
+        val fastest = balls.maxOfOrNull { if (it.pocketed) 0f else it.velocity.length } ?: 0f
+        val bySpeed = if (fastest > 0f) MAX_TRAVEL_PER_SUBSTEP / fastest else SUBSTEP_DT
+        return min(remaining, min(SUBSTEP_DT, bySpeed))
+    }
+
+    /** [velocity] after [dt] more of friction and [ROLLING_DECELERATION], [decay] being friction's share for [dt]. */
+    private fun slowed(velocity: Vec2, dt: Float, decay: Float): Vec2 {
+        val speed = velocity.length
+        if (speed <= 0f) return Vec2.Zero
+        val newSpeed = max(0f, speed * decay - ROLLING_DECELERATION * dt)
+        return velocity * (newSpeed / speed)
+    }
+
+    /** [p] moved inside the cushions, a ball's radius in from each. */
+    private fun keepOnTable(p: Vec2): Vec2 {
+        val r = EightBallTable.BALL_RADIUS
+        return Vec2(p.x.coerceIn(r, EightBallTable.WIDTH - r), p.y.coerceIn(r, EightBallTable.HEIGHT - r))
     }
 
     private fun substep(
@@ -167,7 +259,7 @@ object EightBallPhysics {
         val moved = balls.map { ball ->
             if (ball.pocketed) return@map ball
             val v = if (ball.velocity.length < MIN_SPEED) Vec2.Zero else ball.velocity
-            ball.copy(position = ball.position + v * dt, velocity = v * decay)
+            ball.copy(position = ball.position + v * dt, velocity = slowed(v, dt, decay))
         }
 
         val afterPockets = moved.map { ball ->
@@ -213,7 +305,9 @@ object EightBallPhysics {
             ball.copy(position = Vec2(x, y), velocity = Vec2(vx, vy))
         }
 
-        return resolveBallCollisions(afterWalls, events)
+        // Resolving one collision can nudge a ball into a third; a few separation
+        // passes clear what's left, so overlaps never build up while balls roll.
+        return separate(resolveBallCollisions(afterWalls, events), SEPARATION_PASSES)
     }
 
     private fun resolveBallCollisions(balls: List<Ball>, events: MutableList<TableEvent>): List<Ball> {
@@ -228,7 +322,8 @@ object EightBallPhysics {
                 val b = result[j]
                 val delta = b.position - a.position
                 val dist = delta.length
-                if (dist <= 0.0001f || dist >= minDist) continue
+                // Balls just touching (a rack, or a ball at rest against another) aren't colliding.
+                if (dist <= 0.0001f || dist >= minDist - CONTACT_SLOP) continue
 
                 val normal = delta.normalizedOrZero()
                 val overlap = minDist - dist

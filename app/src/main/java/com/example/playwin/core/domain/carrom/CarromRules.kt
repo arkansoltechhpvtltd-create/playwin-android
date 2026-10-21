@@ -248,9 +248,32 @@ object CarromRules {
         }
     }
 
-    fun respotStriker(coins: List<Coin>, player: Int): List<Coin> = coins.map {
-        if (it.id == STRIKER_ID) it.copy(position = CarromBoard.baselineFor(player), velocity = Vec2.Zero, pocketed = false) else it
+    /**
+     * The striker back on [player]'s baseline: at its centre, or - if a coin rests
+     * there - the nearest spot along the baseline clear of every piece, trying
+     * either side in turn, no further out than the striker can be slid
+     * ([CarromBoard.STRIKER_SLIDE_HALF_SPAN]). A baseline blocked end to end
+     * leaves it at the centre, and the physics push the pieces apart.
+     */
+    fun respotStriker(coins: List<Coin>, player: Int): List<Coin> {
+        val home = CarromBoard.baselineFor(player)
+        val others = coins.filter { it.id != STRIKER_ID && !it.pocketed }
+        fun isFree(spot: Vec2) = others.all { (it.position - spot).length >= CarromBoard.radiusOf(it.id) + CarromBoard.STRIKER_RADIUS }
+
+        val spot = sequence {
+            yield(home)
+            var offset = STRIKER_RESPOT_STEP
+            while (offset <= CarromBoard.STRIKER_SLIDE_HALF_SPAN) {
+                yield(Vec2(home.x - offset, home.y))
+                yield(Vec2(home.x + offset, home.y))
+                offset += STRIKER_RESPOT_STEP
+            }
+        }.firstOrNull(::isFree) ?: home
+        return coins.map { if (it.id == STRIKER_ID) it.copy(position = spot, velocity = Vec2.Zero, pocketed = false) else it }
     }
+
+    /** How finely [respotStriker] searches along the baseline for a free spot, in board units. */
+    private const val STRIKER_RESPOT_STEP = 1f
 
     /** The queen back on the board at the centre, or the nearest free spot (see [respotAtCentre]). */
     fun respotQueen(coins: List<Coin>): List<Coin> = respotAtCentre(coins, QUEEN_ID)

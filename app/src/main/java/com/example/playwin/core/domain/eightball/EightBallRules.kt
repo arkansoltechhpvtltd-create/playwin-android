@@ -45,8 +45,10 @@ const val BREAK_MIN_BALLS_TO_CUSHION = 4
  * friction stops balls quickly; at normal top speed even a full break sends
  * only two balls to a cushion, so the break gets the extra pace it needs to
  * spread the rack (a full break then reaches 7+ cushions or pots a ball).
+ * A full break is struck at 3500 units a second, already the fastest shot in
+ * the game; raise this to break harder still.
  */
-const val BREAK_SPEED_MULTIPLIER = 2.5f
+const val BREAK_SPEED_MULTIPLIER = 1.75f
 
 /**
  * What one shot did, with exactly the facts the game engine needs
@@ -229,12 +231,31 @@ object EightBallRules {
         return null
     }
 
-    private fun respotCueBall(balls: List<Ball>): List<Ball> = balls.map {
-        if (it.id == CUE_BALL_ID) {
-            it.copy(position = Vec2(EightBallTable.CUE_START_X, EightBallTable.CENTER_Y), velocity = Vec2.Zero, pocketed = false)
-        } else {
-            it
-        }
+    /**
+     * The cue ball back on the table after a scratch: on its starting spot, or
+     * - if a ball lies there - the nearest free spot along the head string,
+     * then further back into the kitchen. Never on top of another ball.
+     */
+    private fun respotCueBall(balls: List<Ball>): List<Ball> {
+        val r = EightBallTable.BALL_RADIUS
+        val others = balls.filter { it.id != CUE_BALL_ID && !it.pocketed }
+        fun isFree(spot: Vec2) = others.all { (it.position - spot).length >= 2 * r } &&
+            EightBallTable.pockets.none { (it.center - spot).length <= it.radius + r }
+        val step = r / 2f
+        val spot = sequence {
+            var x = EightBallTable.CUE_START_X
+            while (x >= r) {
+                yield(Vec2(x, EightBallTable.CENTER_Y))
+                var offset = step
+                while (offset <= EightBallTable.CENTER_Y - r) {
+                    yield(Vec2(x, EightBallTable.CENTER_Y - offset))
+                    yield(Vec2(x, EightBallTable.CENTER_Y + offset))
+                    offset += step
+                }
+                x -= step
+            }
+        }.firstOrNull(::isFree) ?: Vec2(EightBallTable.CUE_START_X, EightBallTable.CENTER_Y)
+        return withCueAt(balls, spot)
     }
 
     /** The 8 back on the foot spot, or the nearest free spot behind it along the table's long axis. */

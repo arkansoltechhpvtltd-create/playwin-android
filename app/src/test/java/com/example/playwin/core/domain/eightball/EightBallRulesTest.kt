@@ -121,6 +121,19 @@ class EightBallRulesTest {
     }
 
     @Test
+    fun `a scratched cue ball is never re-spotted on top of another ball`() {
+        // A ball has come to rest right on the cue ball's starting spot.
+        val start = Vec2(EightBallTable.CUE_START_X, EightBallTable.CENTER_Y)
+        val match = afterBreak(groups).let { m -> m.copy(balls = m.balls.map { if (it.id == 3) it.copy(position = start) else it }) }
+        val outcome = shot(match, cleanHit(3), CUE_BALL_ID)
+        val cue = outcome.after.balls.first { it.id == CUE_BALL_ID }
+        assertFalse(cue.pocketed)
+        outcome.after.balls.filter { it.id != CUE_BALL_ID && !it.pocketed }.forEach {
+            assertTrue("cue ball on ball ${it.id}", (it.position - cue.position).length >= 2 * EightBallTable.BALL_RADIUS)
+        }
+    }
+
+    @Test
     fun `missing every ball is a foul`() {
         val outcome = shot(afterBreak(groups), listOf(TableEvent.Cushion(CUE_BALL_ID)))
         assertEquals(EightBallFoul.NO_CONTACT, outcome.foul)
