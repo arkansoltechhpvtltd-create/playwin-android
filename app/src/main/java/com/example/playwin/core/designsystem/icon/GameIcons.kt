@@ -6,7 +6,7 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Hexagon
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.TextFields
@@ -22,7 +22,7 @@ import com.example.playwin.core.designsystem.theme.PwGameSudoku
 import com.example.playwin.core.designsystem.theme.PwGameCards
 import com.example.playwin.core.designsystem.theme.PwGameCarrom
 import com.example.playwin.core.designsystem.theme.PwGameChess
-import com.example.playwin.core.designsystem.theme.PwGameFourInARow
+import com.example.playwin.core.designsystem.theme.PwGameChineseCheckers
 import com.example.playwin.core.designsystem.theme.PwGameGrid
 import com.example.playwin.core.designsystem.theme.PwGameLudo
 import com.example.playwin.core.designsystem.theme.PwGameWordHunt
@@ -37,7 +37,7 @@ fun GameIconKey.toImageVector(): ImageVector = when (this) {
     GameIconKey.GRID -> Icons.Filled.GridOn
     GameIconKey.BILLIARDS -> Icons.Filled.Circle
     GameIconKey.CARROM -> Icons.Filled.ViewModule
-    GameIconKey.FOUR_IN_A_ROW -> Icons.Filled.SportsEsports
+    GameIconKey.CHINESE_CHECKERS -> Icons.Filled.Hexagon
     GameIconKey.SUDOKU -> Icons.Filled.Apps
     GameIconKey.WORD_HUNT -> Icons.Filled.TextFields
     GameIconKey.CHESS -> Icons.Filled.Extension
@@ -50,7 +50,7 @@ fun GameIconKey.toAccentColor(): Color = when (this) {
     GameIconKey.GRID -> PwGameGrid
     GameIconKey.BILLIARDS -> PwGameBilliards
     GameIconKey.CARROM -> PwGameCarrom
-    GameIconKey.FOUR_IN_A_ROW -> PwGameFourInARow
+    GameIconKey.CHINESE_CHECKERS -> PwGameChineseCheckers
     GameIconKey.SUDOKU -> PwGameSudoku
     GameIconKey.WORD_HUNT -> PwGameWordHunt
     GameIconKey.CHESS -> PwGameChess
@@ -64,7 +64,7 @@ fun GameIconKey.badgeRes(): Int? = when (this) {
     GameIconKey.GRID -> R.drawable.twozerofoureight_logo
     GameIconKey.BILLIARDS -> R.drawable.eightball_logo
     GameIconKey.CARROM -> R.drawable.carrom_logo
-    GameIconKey.FOUR_IN_A_ROW -> R.drawable.connect4_logo
+    GameIconKey.CHINESE_CHECKERS -> R.drawable.chinesecheckers_logo
     GameIconKey.SUDOKU -> R.drawable.sudoku_logo
     GameIconKey.WORD_HUNT -> R.drawable.wordhunt_logo
     GameIconKey.CHESS -> R.drawable.chess_logo

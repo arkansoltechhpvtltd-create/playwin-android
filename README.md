@@ -35,7 +35,7 @@ Lobby catalogue.
 
 ### `GameEngineRepository`
 The single authority on "who won" — the client never decides a game's outcome itself.
-- `resolve(gameId: GameId, snapshot: GameSnapshot): GameOutcome` — take the client's reported end-of-round board state (`GameSnapshot`, one sealed subtype per game: `ConnectFour`, `TwentyFortyEight`, `EightBall`, `Carrom`, `Sudoku`, `WordHunt`, `Chess`, `Ludo`, `Rummy`) and authoritatively return `WIN` / `LOSE` / `DRAW` / `IN_PROGRESS`. A real implementation should independently re-derive or verify the result server-side (e.g. replay moves, validate against game rules) rather than trust the client's claim, so a modified client can't fabricate a win.
+- `resolve(gameId: GameId, snapshot: GameSnapshot): GameOutcome` — take the client's reported end-of-round board state (`GameSnapshot`, one sealed subtype per game: `ChineseCheckers`, `TwentyFortyEight`, `EightBall`, `Carrom`, `Sudoku`, `WordHunt`, `Chess`, `Ludo`, `Rummy`) and authoritatively return `WIN` / `LOSE` / `DRAW` / `IN_PROGRESS`. A real implementation should independently re-derive or verify the result server-side (e.g. replay moves, validate against game rules) rather than trust the client's claim, so a modified client can't fabricate a win.
 
 ### `RewardsRepository`
 Issues rewards for a confirmed win — deliberately separate from `GameEngineRepository`: that decides *whether* a round was won, this decides *what the player gets*.
@@ -63,8 +63,8 @@ unlocks, including tightening the `coupons` table's RLS to drop client
 1. Authenticate the caller from the Supabase JWT (`auth.uid()`), never from a
    field in the request body.
 2. Re-derive the outcome itself from the submitted `snapshot`, per `gameId` —
-   reusing the exact rules in `MockGameEngineRepository` (Connect Four
-   win-line scan, 2048 tile-reached/no-moves-left, 8-ball
+   reusing the exact rules in `MockGameEngineRepository` (Chinese Checkers
+   move re-check + all-10-pegs-in-the-opposite-point, 2048 tile-reached/no-moves-left, 8-ball
    group-cleared-and-no-scratch, Carrom score comparison once cleared, Sudoku
    givens-kept + full grid with no repeats, Word Hunt claim validation + score comparison, Chess checkmate/draws
    via a full rules engine, Ludo all-tokens-home, Rummy valid-declaration
@@ -80,12 +80,12 @@ unlocks, including tightening the `coupons` table's RLS to drop client
 **Request** (`POST`, `Authorization: Bearer <user JWT>`):
 ```json
 {
-  "gameId": "CONNECT_FOUR",
-  "snapshot": { "type": "ConnectFour", "board": [[0,0,0,0,0,0,0]], "lastPlayer": 1, "isBoardFull": false }
+  "gameId": "CHINESE_CHECKERS",
+  "snapshot": { "type": "ChineseCheckers", "before": { "cells": [0, 0, 2, 1], "sideToMove": 1 }, "from": 3, "to": 0 }
 }
 ```
 `gameId` is one of the nine `GameId` enum names; `snapshot.type` is one of
-`GameSnapshot`'s nine sealed subtypes (`ConnectFour`, `TwentyFortyEight`,
+`GameSnapshot`'s nine sealed subtypes (`ChineseCheckers`, `TwentyFortyEight`,
 `EightBall`, `Carrom`, `Sudoku`, `WordHunt`, `Chess`, `Ludo`, `Rummy`), and the
 remaining fields match that subtype's constructor 1:1 — see
 `core/domain/model/GameSnapshot.kt`.
@@ -96,7 +96,7 @@ remaining fields match that subtype's constructor 1:1 — see
   "outcome": "WIN",
   "coupon": {
     "id": "...", "partnerName": "...", "discountText": "...",
-    "source": "Won in Connect 4", "expiry": "...", "code": "...", "status": "WON"
+    "source": "Won in Chinese Checkers", "expiry": "...", "code": "...", "status": "WON"
   }
 }
 ```

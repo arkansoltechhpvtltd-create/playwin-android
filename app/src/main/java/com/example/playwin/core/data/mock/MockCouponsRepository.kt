@@ -32,7 +32,7 @@ class MockCouponsRepository @Inject constructor() : CouponsRepository {
                 id = "seed-2",
                 partnerName = "StreetStyle Fashion",
                 discountText = "₹200 off",
-                source = "Won in Connect 4",
+                source = "Won in Chinese Checkers",
                 expiry = "Expires 15 Oct 2026",
                 code = "STYLE200X",
                 status = CouponStatus.WON

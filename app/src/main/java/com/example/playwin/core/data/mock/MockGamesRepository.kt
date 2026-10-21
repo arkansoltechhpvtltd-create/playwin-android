@@ -38,10 +38,10 @@ class MockGamesRepository @Inject constructor() : GamesRepository {
                 isFullyPlayable = false
             ),
             Game(
-                id = GameId.CONNECT_FOUR,
-                title = "Connect 4",
-                tagline = "4 in a row wins",
-                icon = GameIconKey.FOUR_IN_A_ROW,
+                id = GameId.CHINESE_CHECKERS,
+                title = "Chinese Checkers",
+                tagline = "Hop to the far point",
+                icon = GameIconKey.CHINESE_CHECKERS,
                 isFullyPlayable = true
             ),
             Game(

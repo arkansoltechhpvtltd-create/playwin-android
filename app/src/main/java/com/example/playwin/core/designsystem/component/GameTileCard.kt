@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Hexagon
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -137,8 +137,8 @@ private val LABEL_GAP = 12.dp
 private fun GameTileCardPreview() {
     PlayWinTheme {
         GameTileCard(
-            title = "Connect 4",
-            icon = Icons.Filled.SportsEsports,
+            title = "Chinese Checkers",
+            icon = Icons.Filled.Hexagon,
             onClick = {}
         )
     }

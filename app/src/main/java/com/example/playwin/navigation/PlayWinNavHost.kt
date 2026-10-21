@@ -103,7 +103,7 @@ fun PlayWinNavHost(
                 val gameId = entry.arguments
                     ?.getString(Routes.GAME_ARG)
                     ?.let { runCatching { GameId.valueOf(it) }.getOrNull() }
-                    ?: GameId.CONNECT_FOUR
+                    ?: GameId.CHINESE_CHECKERS
 
                 GameRoute(
                     gameId = gameId,

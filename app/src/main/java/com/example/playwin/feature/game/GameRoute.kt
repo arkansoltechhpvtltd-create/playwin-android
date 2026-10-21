@@ -5,7 +5,7 @@ import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.feature.game.sudoku.SudokuRoute
 import com.example.playwin.feature.game.carrom.CarromRoute
 import com.example.playwin.feature.game.chess.ChessRoute
-import com.example.playwin.feature.game.connectfour.Connect4Route
+import com.example.playwin.feature.game.chinesecheckers.ChineseCheckersRoute
 import com.example.playwin.feature.game.eightball.EightBallRoute
 import com.example.playwin.feature.game.ludo.LudoRoute
 import com.example.playwin.feature.game.rummy.RummyRoute
@@ -20,7 +20,7 @@ fun GameRoute(
     onWin: (couponId: String) -> Unit
 ) {
     when (gameId) {
-        GameId.CONNECT_FOUR -> Connect4Route(onBack = onBack, onWin = onWin)
+        GameId.CHINESE_CHECKERS -> ChineseCheckersRoute(onBack = onBack, onWin = onWin)
         GameId.TWENTY_FORTY_EIGHT -> Twenty48Route(onBack = onBack, onWin = onWin)
         GameId.EIGHT_BALL -> EightBallRoute(onBack = onBack, onWin = onWin)
         GameId.CARROM -> CarromRoute(onBack = onBack, onWin = onWin)

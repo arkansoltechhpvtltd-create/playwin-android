@@ -77,6 +77,6 @@ fun PwTopBar(
 @Composable
 private fun PwTopBarPreview() {
     PlayWinTheme {
-        PwTopBar(title = "Connect 4", onBack = {})
+        PwTopBar(title = "Chinese Checkers", onBack = {})
     }
 }

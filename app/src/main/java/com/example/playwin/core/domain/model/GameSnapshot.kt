@@ -1,6 +1,7 @@
 package com.example.playwin.core.domain.model
 
 import com.example.playwin.core.domain.chess.ChessPosition
+import com.example.playwin.core.domain.chinesecheckers.ChineseCheckersPosition
 import com.example.playwin.core.domain.chess.PieceColor
 import com.example.playwin.core.domain.rummy.Card
 import com.example.playwin.core.domain.rummy.Rank
@@ -18,14 +19,16 @@ import com.example.playwin.core.domain.wordhunt.WordHuntClaim
 sealed interface GameSnapshot {
 
     /**
-     * @param board 6 rows x 7 columns, 0 = empty, 1 = player one, 2 = player two.
-     * @param lastPlayer the player who just moved (1 or 2).
-     * @param isBoardFull true when no columns remain playable.
+     * One Chinese checkers move, as played: the peg moved from hole [from] to
+     * hole [to] out of [before], by the side to move there. The engine re-checks
+     * the move against
+     * [com.example.playwin.core.domain.chinesecheckers.ChineseCheckersRules] -
+     * an illegal one loses - and rules whether it filled the mover's goal.
      */
-    data class ConnectFour(
-        val board: List<List<Int>>,
-        val lastPlayer: Int,
-        val isBoardFull: Boolean
+    data class ChineseCheckers(
+        val before: ChineseCheckersPosition,
+        val from: Int,
+        val to: Int
     ) : GameSnapshot
 
     /**

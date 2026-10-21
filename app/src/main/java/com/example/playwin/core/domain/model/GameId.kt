@@ -8,7 +8,7 @@ enum class GameId {
     TWENTY_FORTY_EIGHT,
     EIGHT_BALL,
     CARROM,
-    CONNECT_FOUR,
+    CHINESE_CHECKERS,
     SUDOKU,
     WORD_HUNT,
     CHESS,

@@ -9,7 +9,7 @@ enum class GameIconKey {
     GRID,
     BILLIARDS,
     CARROM,
-    FOUR_IN_A_ROW,
+    CHINESE_CHECKERS,
     SUDOKU,
     WORD_HUNT,
     CHESS,

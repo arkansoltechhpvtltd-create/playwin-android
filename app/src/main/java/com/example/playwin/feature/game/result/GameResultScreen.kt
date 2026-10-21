@@ -87,7 +87,7 @@ private fun GameResultScreenPreview() {
                 id = "1",
                 partnerName = "Brew & Bean Cafe",
                 discountText = "30% off",
-                source = "Won in Connect 4",
+                source = "Won in Chinese Checkers",
                 expiry = "Expires in 30 days",
                 code = "BREW4821",
                 status = CouponStatus.WON

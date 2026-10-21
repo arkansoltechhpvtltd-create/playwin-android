@@ -2,6 +2,7 @@ package com.example.playwin.core.data.mock
 
 import com.example.playwin.core.domain.chess.ChessEngine
 import com.example.playwin.core.domain.chess.GameStatus
+import com.example.playwin.core.domain.chinesecheckers.ChineseCheckersRules
 import com.example.playwin.core.domain.ludo.LudoEngine
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
@@ -28,7 +29,7 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
         delay(120)
 
         return when (snapshot) {
-            is GameSnapshot.ConnectFour -> resolveConnectFour(snapshot)
+            is GameSnapshot.ChineseCheckers -> resolveChineseCheckers(snapshot)
             is GameSnapshot.TwentyFortyEight -> resolveTwentyFortyEight(snapshot)
             is GameSnapshot.EightBall -> resolveEightBall(snapshot)
             is GameSnapshot.Carrom -> resolveCarrom(snapshot)
@@ -40,34 +41,13 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
         }
     }
 
-    private fun resolveConnectFour(snapshot: GameSnapshot.ConnectFour): GameOutcome {
-        if (hasConnectFourWin(snapshot.board, snapshot.lastPlayer)) return GameOutcome.WIN
-        if (snapshot.isBoardFull) return GameOutcome.DRAW
-        return GameOutcome.IN_PROGRESS
-    }
-
-    private fun hasConnectFourWin(board: List<List<Int>>, player: Int): Boolean {
-        val rows = board.size
-        val cols = if (rows > 0) board[0].size else 0
-        val directions = listOf(0 to 1, 1 to 0, 1 to 1, 1 to -1)
-
-        for (r in 0 until rows) {
-            for (c in 0 until cols) {
-                if (board[r][c] != player) continue
-                for ((dr, dc) in directions) {
-                    var count = 1
-                    var rr = r + dr
-                    var cc = c + dc
-                    while (rr in 0 until rows && cc in 0 until cols && board[rr][cc] == player) {
-                        count++
-                        if (count >= 4) return true
-                        rr += dr
-                        cc += dc
-                    }
-                }
-            }
-        }
-        return false
+    private fun resolveChineseCheckers(snapshot: GameSnapshot.ChineseCheckers): GameOutcome {
+        // The move is re-checked against the full rules, never trusted from the
+        // client - an illegal move loses. The mover wins once their goal is full.
+        val mover = snapshot.before.sideToMove
+        val move = ChineseCheckersRules.legalMove(snapshot.before, snapshot.from, snapshot.to) ?: return GameOutcome.LOSE
+        val after = ChineseCheckersRules.play(snapshot.before, move)
+        return if (ChineseCheckersRules.hasWon(after, mover)) GameOutcome.WIN else GameOutcome.IN_PROGRESS
     }
 
     private fun resolveTwentyFortyEight(snapshot: GameSnapshot.TwentyFortyEight): GameOutcome {

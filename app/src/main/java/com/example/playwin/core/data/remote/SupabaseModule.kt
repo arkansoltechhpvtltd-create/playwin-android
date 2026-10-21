@@ -15,7 +15,7 @@ import javax.inject.Singleton
 /**
  * Provides the single [SupabaseClient] for the app, configured from
  * `local.properties` (via [BuildConfig]) so the URL/key are never hardcoded
- * or committed. [Realtime] powers the Connect 4 online-multiplayer room
+ * or committed. [Realtime] powers the online-multiplayer room
  * subscription; it reuses whatever session [Auth] currently holds, so a
  * signed-in user's JWT (and therefore the `rooms` table's RLS) applies to
  * its socket automatically.
