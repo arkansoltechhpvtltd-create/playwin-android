@@ -53,24 +53,37 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.center
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Canvas as ImageCanvas
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Paint as ComposePaint
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -111,6 +124,7 @@ import com.example.playwin.feature.game.online.PlayMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /** Entry point for 8-Ball: play the computer, or get paired with a random online player. */
@@ -244,7 +258,7 @@ fun EightBallScreen(
 fun TurnBanner(text: String, secondsLeft: Int?, isBusy: Boolean, modifier: Modifier = Modifier) {
     GameStatusBanner(accent = MaterialTheme.colorScheme.secondary, modifier = modifier) {
         Canvas(modifier = Modifier.size(26.dp)) {
-            drawBall(id = CUE_BALL_ID, center = center, radius = size.minDimension * 0.42f, stripeClip = Path(), label = null)
+            drawBall(id = CUE_BALL_ID, center = center, radius = size.minDimension * 0.42f, label = null)
         }
         Text(
             text = text,
@@ -306,7 +320,7 @@ fun GroupLegend(myGroup: BallGroup?, modifier: Modifier = Modifier, beforeBreak:
         if (myGroup != null) {
             val sample = if (myGroup == BallGroup.SOLIDS) 3 else 10
             Canvas(modifier = Modifier.size(22.dp)) {
-                drawBall(id = sample, center = center, radius = size.minDimension * 0.42f, stripeClip = Path(), label = null)
+                drawBall(id = sample, center = center, radius = size.minDimension * 0.42f, label = null)
             }
         }
         Text(
@@ -322,7 +336,7 @@ fun GroupLegend(myGroup: BallGroup?, modifier: Modifier = Modifier, beforeBreak:
         )
         if (myGroup != null) {
             Canvas(modifier = Modifier.size(22.dp)) {
-                drawBall(id = 8, center = center, radius = size.minDimension * 0.42f, stripeClip = Path(), label = null)
+                drawBall(id = 8, center = center, radius = size.minDimension * 0.42f, label = null)
             }
         }
     }
@@ -388,6 +402,29 @@ private object TableArt {
 
     /** Rounds the frame off with the chrome corner caps, as a percentage of the table's height. */
     const val CORNER_PERCENT = 7
+
+    // The rest of the table in the reshaped image, for the light [drawTableDepth]
+    // lays over it: the felt's far edges, then each rail's inner edge (the
+    // cushions run from there to the felt).
+    const val FELT_END = FELT_X + FELT_WIDTH
+    const val FELT_BOTTOM = FELT_Y + FELT_WIDTH / 2
+    const val RAIL_TOP = 41
+    const val RAIL_BOTTOM = 400
+    const val RAIL_LEFT = 39
+    const val RAIL_RIGHT = 695
+
+    /** The straight runs of rail and cushion between the pockets' chrome: x on the long sides... */
+    val LONG_STRAIGHTS = listOf(85f to 336f, 396f to 648f)
+
+    /** ...and y on the short sides. */
+    val SHORT_STRAIGHT = 85f to 360f
+
+    /** The middles of the painted pockets' holes: the corners, then the side pockets. */
+    val POCKETS = listOf(
+        Offset(45.5f, 43.5f), Offset(685.5f, 44f), Offset(45.5f, 395f), Offset(685.5f, 395f),
+        Offset(367f, 34f), Offset(366f, 409f)
+    )
+    const val POCKET_HOLE = 17f
 }
 
 /** The reshaped table, built once per process by [loadTableImage]. */
@@ -530,7 +567,9 @@ fun PoolTable(
             (1..15).associateWith { textMeasurer.measure(it.toString(), style(if (it < 10) 0.98f else 0.8f)) }
         }
     }
-    val stripeClip = remember { Path() }
+    val sprites = remember(labels) {
+        if (scale <= 0f) null else ballSprites(EightBallTable.BALL_RADIUS * scale, labels, density)
+    }
     val tableImage = rememberTableImage()
     val frameShape = RoundedCornerShape(TableArt.CORNER_PERCENT)
 
@@ -541,7 +580,22 @@ fun PoolTable(
             .quarterTurn()
             .fillMaxWidth()
             .aspectRatio(TableArt.WIDTH / TableArt.HEIGHT.toFloat())
-            .shadow(elevation = 12.dp, shape = frameShape)
+            .drawBehind {
+                // A soft drop shadow, lifting the table off the background. It falls towards
+                // the bottom of the screen, which is -x here on the turned table.
+                val corner = size.minDimension * TableArt.CORNER_PERCENT / 100f
+                val step = 2.5.dp.toPx()
+                for (i in 1..8) {
+                    val grow = i * step
+                    drawRoundRect(
+                        color = Color.Black.copy(alpha = 0.05f),
+                        topLeft = Offset(-grow - 4 * step, -grow),
+                        size = Size(size.width + 2 * grow, size.height + 2 * grow),
+                        cornerRadius = CornerRadius(corner + grow)
+                    )
+                }
+            }
+            .shadow(elevation = 16.dp, shape = frameShape, ambientColor = Color.Black, spotColor = Color.Black)
             .clip(frameShape)
             .background(RailDark)
     ) {
@@ -552,6 +606,7 @@ fun PoolTable(
                     dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
                     filterQuality = FilterQuality.High
                 )
+                drawTableDepth()
             }
         }
         // The play area sits on the artwork's felt, between the cushion noses.
@@ -619,17 +674,18 @@ fun PoolTable(
                     drawRect(Color.White.copy(alpha = 0.08f), size = Size(EightBallTable.HEAD_STRING_X * s, size.height))
                 }
 
-                sinking.forEach { sink ->
-                    val t = sink.progress.value
-                    drawBall(
-                        id = sink.id,
-                        center = toScreen(sink.from + (sink.pocket - sink.from) * t),
-                        radius = ballRadius * (1f - 0.6f * t),
-                        stripeClip = stripeClip,
-                        label = null,
-                        alpha = 1f - t,
-                        turn = BALL_TURN_BACK
-                    )
+                if (sprites != null) {
+                    // Every shadow first, so none falls across a neighbouring ball.
+                    balls.forEach { ball ->
+                        if (!ball.pocketed) drawImage(sprites.shadow, toScreen(ball.position) - sprites.offset)
+                    }
+                    sinking.forEach { sink ->
+                        val t = sink.progress.value
+                        val center = toScreen(sink.from + (sink.pocket - sink.from) * t)
+                        scale(1f - 0.6f * t, pivot = center) {
+                            drawImage(sprites.balls.getValue(sink.id), center - sprites.offset, alpha = 1f - t)
+                        }
+                    }
                 }
 
                 balls.forEach { ball ->
@@ -645,7 +701,7 @@ fun PoolTable(
                             style = Stroke(width = ballRadius * 0.14f)
                         )
                     }
-                    drawBall(id = ball.id, center = center, radius = ballRadius, stripeClip = stripeClip, label = labels[ball.id], turn = BALL_TURN_BACK)
+                    sprites?.let { drawImage(it.balls.getValue(ball.id), center - it.offset) }
                 }
 
                 val start = cueScreenPos
@@ -725,56 +781,264 @@ private fun DrawScope.drawTableMarkings() {
 }
 
 /**
- * One ball as a lit sphere: a cast shadow, the colour (a band of it on a white
- * ball for stripes), a darkened edge, then the number the standard way - a
- * white spot in the middle with the number in bold dark ink filling it - and a
- * catch-light kept clear of the spot. Flat colours only, as every ball is
- * redrawn each physics frame; [stripeClip] is a scratch path reused between
- * balls for the same reason. [turn] rotates the ball about its centre, so a
- * ball on the turned table still reads upright, lit from the top-left.
+ * The light on the artwork: the felt brighter in the middle and falling off to
+ * its edges, with a faint sheen; the rails and cushions rounded off; the pockets
+ * deepened. Drawn over it in the reshaped image's pixels (see [TableArt]).
+ */
+private fun DrawScope.drawTableDepth() = withTransform({ scale(size.width / TableArt.WIDTH, pivot = Offset.Zero) }) {
+    val felt = Rect(
+        TableArt.FELT_X.toFloat(), TableArt.FELT_Y.toFloat(),
+        TableArt.FELT_END.toFloat(), TableArt.FELT_BOTTOM.toFloat()
+    )
+
+    // Felt: a vignette, squashed to the felt's 2:1 so all four edges darken alike...
+    scale(scaleX = 1f, scaleY = 0.5f, pivot = felt.center) {
+        drawRect(
+            brush = Brush.radialGradient(
+                0f to Color.White.copy(alpha = 0.08f),
+                0.45f to Color.Transparent,
+                1f to Color.Black.copy(alpha = 0.34f),
+                center = felt.center,
+                radius = felt.width * 0.72f
+            ),
+            topLeft = Offset(felt.left, felt.center.y - felt.width / 2f),
+            size = Size(felt.width, felt.width)
+        )
+    }
+    // ...and the cloth's sheen, from the light at the top-left of the screen (top-right here).
+    drawRect(
+        brush = Brush.linearGradient(
+            0f to Color.White.copy(alpha = 0.07f),
+            1f to Color.Transparent,
+            start = felt.topRight,
+            end = felt.center
+        ),
+        topLeft = felt.topLeft,
+        size = felt.size
+    )
+
+    // Rails, outer edge to inner: falling away at both edges, catching the light on the crown.
+    val railLight = arrayOf(
+        0f to Color.Black.copy(alpha = 0.22f),
+        0.4f to Color.White.copy(alpha = 0.17f),
+        0.75f to Color.Transparent,
+        1f to Color.Black.copy(alpha = 0.2f)
+    )
+    // Cushions, rail to nose: a highlight along the top of the nose.
+    val cushionLight = arrayOf(
+        0f to Color.Black.copy(alpha = 0.12f),
+        0.65f to Color.Transparent,
+        0.86f to Color.White.copy(alpha = 0.2f),
+        1f to Color.Transparent
+    )
+    // The cushions' shadow on the felt, from the nose out.
+    val noseShadow = arrayOf(0f to Color.Black.copy(alpha = 0.3f), 1f to Color.Transparent)
+
+    // Lights a band running [from] -> [to] across it, over the run [along] it: in x on the long sides,
+    // y on the short. Its ends fade out, so it melts into the pockets' jaws rather than stopping short.
+    val fade = 24f
+    fun band(stops: Array<Pair<Float, Color>>, from: Float, to: Float, along: Pair<Float, Float>, longSide: Boolean) {
+        val (a, b) = along
+        val rect = if (longSide) {
+            Rect(a, minOf(from, to), b, maxOf(from, to))
+        } else {
+            Rect(minOf(from, to), a, maxOf(from, to), b)
+        }
+        val ends = arrayOf(
+            0f to Color.Transparent,
+            fade / (b - a) to Color.Black,
+            1f - fade / (b - a) to Color.Black,
+            1f to Color.Transparent
+        )
+        drawIntoCanvas { it.saveLayer(rect, ComposePaint()) }
+        if (longSide) {
+            drawRect(Brush.verticalGradient(*stops, startY = from, endY = to), rect.topLeft, rect.size)
+            drawRect(Brush.horizontalGradient(*ends, startX = a, endX = b), rect.topLeft, rect.size, blendMode = BlendMode.DstIn)
+        } else {
+            drawRect(Brush.horizontalGradient(*stops, startX = from, endX = to), rect.topLeft, rect.size)
+            drawRect(Brush.verticalGradient(*ends, startY = a, endY = b), rect.topLeft, rect.size, blendMode = BlendMode.DstIn)
+        }
+        drawIntoCanvas { it.restore() }
+    }
+    val shade = 10f
+    TableArt.LONG_STRAIGHTS.forEach { run ->
+        band(railLight, 0f, TableArt.RAIL_TOP.toFloat(), run, longSide = true)
+        band(railLight, TableArt.HEIGHT.toFloat(), TableArt.RAIL_BOTTOM.toFloat(), run, longSide = true)
+        band(cushionLight, TableArt.RAIL_TOP.toFloat(), felt.top, run, longSide = true)
+        band(cushionLight, TableArt.RAIL_BOTTOM.toFloat(), felt.bottom, run, longSide = true)
+        band(noseShadow, felt.top, felt.top + shade, run, longSide = true)
+        band(noseShadow, felt.bottom, felt.bottom - shade, run, longSide = true)
+    }
+    TableArt.SHORT_STRAIGHT.let { run ->
+        band(railLight, 0f, TableArt.RAIL_LEFT.toFloat(), run, longSide = false)
+        band(railLight, TableArt.WIDTH.toFloat(), TableArt.RAIL_RIGHT.toFloat(), run, longSide = false)
+        band(cushionLight, TableArt.RAIL_LEFT.toFloat(), felt.left, run, longSide = false)
+        band(cushionLight, TableArt.RAIL_RIGHT.toFloat(), felt.right, run, longSide = false)
+        band(noseShadow, felt.left, felt.left + shade, run, longSide = false)
+        band(noseShadow, felt.right, felt.right - shade, run, longSide = false)
+    }
+
+    // Pockets: darkest at the bottom of the hole, with a little light on the far
+    // wall (bottom-right on screen; 90-180 degrees here).
+    val hole = TableArt.POCKET_HOLE
+    TableArt.POCKETS.forEach { pocket ->
+        drawCircle(
+            brush = Brush.radialGradient(
+                0f to Color.Black,
+                0.55f to Color.Black.copy(alpha = 0.85f),
+                1f to Color.Transparent,
+                center = pocket,
+                radius = hole * 1.15f
+            ),
+            radius = hole * 1.15f,
+            center = pocket
+        )
+        drawArc(
+            color = Color.White.copy(alpha = 0.16f),
+            startAngle = 100f,
+            sweepAngle = 70f,
+            useCenter = false,
+            topLeft = pocket - Offset(hole * 0.85f, hole * 0.85f),
+            size = Size(hole * 1.7f, hole * 1.7f),
+            style = Stroke(width = 1.4f, cap = StrokeCap.Round)
+        )
+    }
+}
+
+/**
+ * Every ball drawn once at the table's size - already turned upright for the
+ * turned table - and its shadow, so a physics frame only stamps images: the
+ * shading takes gradients, too costly to rebuild for sixteen balls each frame.
+ */
+private class BallSprites(val balls: Map<Int, ImageBitmap>, val shadow: ImageBitmap) {
+    /** From a ball's centre to its sprite's top-left. */
+    val offset = Offset(shadow.width / 2f, shadow.height / 2f)
+}
+
+private fun ballSprites(radius: Float, labels: Map<Int, TextLayoutResult>, density: Density): BallSprites {
+    // Room for the shadow, which reaches past the ball.
+    val side = ceil(radius * 3.4f).toInt()
+    val size = Size(side.toFloat(), side.toFloat())
+    fun sprite(draw: DrawScope.() -> Unit) = ImageBitmap(side, side).also {
+        CanvasDrawScope().draw(density, LayoutDirection.Ltr, ImageCanvas(it), size) {
+            rotate(degrees = BALL_TURN_BACK, pivot = size.center) { draw() }
+        }
+    }
+    return BallSprites(
+        balls = (0..15).associateWith { id ->
+            sprite { drawBall(id = id, center = size.center, radius = radius, label = labels[id], shadow = false) }
+        },
+        shadow = sprite { drawBallShadow(size.center, radius) }
+    )
+}
+
+/** Where a ball meets the cloth: a soft shadow, cast away from the top-left light. */
+private fun DrawScope.drawBallShadow(center: Offset, radius: Float) {
+    val c = center + Offset(radius * 0.2f, radius * 0.3f)
+    drawCircle(
+        brush = Brush.radialGradient(
+            0f to Color.Black.copy(alpha = 0.6f),
+            0.55f to Color.Black.copy(alpha = 0.35f),
+            1f to Color.Transparent,
+            center = c,
+            radius = radius * 1.3f
+        ),
+        radius = radius * 1.3f,
+        center = c
+    )
+}
+
+/**
+ * One ball as a glossy sphere lit from the top-left: its shadow (unless
+ * [shadow] is off), the body shaded from a light tint to a dark far edge (for
+ * stripes, a white ball with a band of colour round it), the edge falling away,
+ * a little light bounced off the cloth, then the number the standard way - a
+ * white spot with the number in bold dark ink filling it - and the gloss.
+ * [turn] rotates the ball about its centre, so a ball on the turned table still
+ * reads upright.
  */
 private fun DrawScope.drawBall(
     id: Int,
     center: Offset,
     radius: Float,
-    stripeClip: Path,
     label: TextLayoutResult?,
-    alpha: Float = 1f,
+    shadow: Boolean = true,
     turn: Float = 0f
 ) = rotate(degrees = turn, pivot = center) {
-    val color = colorForBall(id).copy(alpha = alpha)
-    drawCircle(Color.Black.copy(alpha = 0.35f * alpha), radius, center + Offset(radius * 0.18f, radius * 0.3f))
+    if (shadow) drawBallShadow(center, radius)
 
+    val light = center - Offset(radius * 0.38f, radius * 0.42f)
+    fun body(base: Color) = Brush.radialGradient(
+        0f to lerp(base, Color.White, 0.4f),
+        0.4f to base,
+        1f to lerp(base, Color.Black, 0.55f),
+        center = light,
+        radius = radius * 1.7f
+    )
     if (ballGroupOf(id) == BallGroup.STRIPES) {
-        drawCircle(color = BallIvory.copy(alpha = alpha), radius = radius, center = center)
-        stripeClip.reset()
-        stripeClip.addOval(Rect(center = center, radius = radius))
-        clipPath(stripeClip) {
+        drawCircle(brush = body(BallIvory), radius = radius, center = center)
+        clipPath(Path().apply { addOval(Rect(center = center, radius = radius)) }) {
             drawRect(
-                color = color,
+                brush = body(colorForBall(id)),
                 topLeft = Offset(center.x - radius, center.y - radius * 0.62f),
                 size = Size(radius * 2f, radius * 1.24f)
             )
         }
     } else {
-        drawCircle(color = color, radius = radius, center = center)
+        drawCircle(brush = body(colorForBall(id)), radius = radius, center = center)
     }
-    // Limb darkening: the edge of a sphere turns away from the light.
-    drawCircle(Color.Black.copy(alpha = 0.26f * alpha), radius * 0.91f, center, style = Stroke(width = radius * 0.18f))
-    drawCircle(Color.White.copy(alpha = 0.2f * alpha), radius * 0.36f, center - Offset(radius * 0.3f, radius * 0.36f))
+    // The edge turning away from the light, and the cloth's light bounced back into the bottom-right.
+    drawCircle(
+        brush = Brush.radialGradient(
+            0.72f to Color.Transparent,
+            1f to Color.Black.copy(alpha = 0.32f),
+            center = center,
+            radius = radius
+        ),
+        radius = radius,
+        center = center
+    )
+    drawArc(
+        color = Color.White.copy(alpha = 0.2f),
+        startAngle = 15f,
+        sweepAngle = 70f,
+        useCenter = false,
+        topLeft = center - Offset(radius * 0.84f, radius * 0.84f),
+        size = Size(radius * 1.68f, radius * 1.68f),
+        style = Stroke(width = radius * 0.08f, cap = StrokeCap.Round)
+    )
 
     if (id != CUE_BALL_ID) {
-        drawCircle(Color.White.copy(alpha = alpha), radius * NUMBER_SPOT, center)
-        drawCircle(Color.Black.copy(alpha = 0.18f * alpha), radius * NUMBER_SPOT, center, style = Stroke(width = radius * 0.05f))
+        val spot = radius * NUMBER_SPOT
+        drawCircle(
+            brush = Brush.radialGradient(
+                0.6f to Color.White,
+                1f to Color(0xFFE4E0D6),
+                center = center - Offset(spot * 0.2f, spot * 0.24f),
+                radius = spot * 1.2f
+            ),
+            radius = spot,
+            center = center
+        )
+        drawCircle(Color.Black.copy(alpha = 0.16f), spot, center, style = Stroke(width = radius * 0.04f))
         if (label != null) {
-            drawText(
-                textLayoutResult = label,
-                topLeft = center - Offset(label.size.width / 2f, label.size.height / 2f),
-                alpha = alpha
-            )
+            drawText(textLayoutResult = label, topLeft = center - Offset(label.size.width / 2f, label.size.height / 2f))
         }
     }
-    drawCircle(Color.White.copy(alpha = 0.85f * alpha), radius * 0.13f, center - Offset(radius * 0.55f, radius * 0.55f))
+
+    // The gloss: a soft bloom round a sharp catch-light.
+    val glint = center - Offset(radius * 0.48f, radius * 0.5f)
+    drawCircle(
+        brush = Brush.radialGradient(
+            0f to Color.White.copy(alpha = 0.8f),
+            1f to Color.Transparent,
+            center = glint,
+            radius = radius * 0.32f
+        ),
+        radius = radius * 0.32f,
+        center = glint
+    )
+    drawCircle(Color.White.copy(alpha = 0.95f), radius * 0.1f, glint)
 }
 
 /** The white number spot: 55% of the ball's diameter. */
