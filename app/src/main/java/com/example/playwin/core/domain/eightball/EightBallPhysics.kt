@@ -13,11 +13,13 @@ object EightBallTable {
     const val BALL_RADIUS = 22f
 
     /**
-     * A ball drops once its centre is this close to a corner. Kept in proportion to
-     * the ball, so a ball running down the cushion drops as far from the corner,
-     * relative to its size, as it always has.
+     * A ball drops once its centre is this close to a corner. Tune here: smaller
+     * means a ball has to get further into the corner - nearer the hole - before
+     * it drops. It must stay above √2 radii (31 units), the closest a ball jammed
+     * against both cushions gets, and around 2 radii keeps shallow shots into the
+     * corner dropping rather than rattling out off the cushion.
      */
-    const val POCKET_RADIUS = BALL_RADIUS * 2.25f
+    const val CORNER_POCKET_CATCH_RADIUS = BALL_RADIUS * 2.0f
 
     const val CUE_START_X = WIDTH * 0.25f
 
@@ -34,12 +36,13 @@ object EightBallTable {
     )
 
     /**
-     * The catch radius of the two side pockets. Smaller than a corner's: a side
-     * pocket's mouth is cut straight into the cushion, so with the corners' radius
-     * every ball rolling along the rail past the middle would drop. At this size a
-     * ball against the cushion drops within about a ball's width of the middle.
+     * The catch radius of the two side pockets; tune here. Smaller than a corner's:
+     * a side pocket's mouth is cut straight into the cushion, so with the corners'
+     * radius every ball rolling along the rail past the middle would drop. At this
+     * size a ball has to reach the cushion within a little over a radius of the
+     * middle. It must stay above 1 radius, or a ball can't reach it at all.
      */
-    const val SIDE_POCKET_RADIUS = BALL_RADIUS * 1.6f
+    const val SIDE_POCKET_CATCH_RADIUS = BALL_RADIUS * 1.5f
 
     /** The middle of each long cushion, in the mouth of the painted side pocket. */
     val sidePockets: List<Vec2> = listOf(
@@ -49,7 +52,7 @@ object EightBallTable {
 
     /** All six pockets, each with the distance from its centre at which a ball drops. */
     val pockets: List<Pocket> =
-        corners.map { Pocket(it, POCKET_RADIUS) } + sidePockets.map { Pocket(it, SIDE_POCKET_RADIUS) }
+        corners.map { Pocket(it, CORNER_POCKET_CATCH_RADIUS) } + sidePockets.map { Pocket(it, SIDE_POCKET_CATCH_RADIUS) }
 
     /** Where to aim a ball to pot it: the centre of each of the six pockets. */
     val pocketCentres: List<Vec2> = pockets.map { it.center }

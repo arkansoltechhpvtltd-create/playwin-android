@@ -3,15 +3,19 @@ package com.example.playwin.feature.game.eightball
 import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BitmapShader
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.PointF
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
+import android.graphics.RadialGradient
+import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Rect as AndroidRect
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -377,15 +381,10 @@ private object TableArt {
     const val RIGHT = 882
     const val BOTTOM = 930
 
-    // The cushion noses, which the balls bounce off: the edges of the physics table.
-    const val FELT_LEFT = 216
-    const val FELT_TOP = 168
-    const val FELT_RIGHT = 812
-
     // Rows [CUT_TOP, CUT_BOTTOM) are dropped: centred on the short sides' middle
     // pockets (row ~508), and just tall enough to leave the felt exactly 2:1.
     const val CUT_TOP = 313
-    const val CUT_BOTTOM = 704
+    const val CUT_BOTTOM = 720
 
     /**
      * The row cut is cross-faded over this many rows either side of it rather than
@@ -393,38 +392,72 @@ private object TableArt {
      */
     const val FADE = 100
 
-    // The reshaped image, and the felt within it (exactly 2:1, like the physics table).
+    // The reshaped image.
     const val WIDTH = RIGHT - LEFT
     const val HEIGHT = BOTTOM - TOP - (CUT_BOTTOM - CUT_TOP)
-    const val FELT_X = FELT_LEFT - LEFT
-    const val FELT_Y = FELT_TOP - TOP
-    const val FELT_WIDTH = FELT_RIGHT - FELT_LEFT
 
     /** Rounds the frame off with the chrome corner caps, as a percentage of the table's height. */
     const val CORNER_PERCENT = 7
 
-    // The rest of the table in the reshaped image, for the light [drawTableDepth]
-    // lays over it: the felt's far edges, then each rail's inner edge (the
-    // cushions run from there to the felt).
+    // The rest is in the reshaped image's pixels.
+
+    // The rails' inner edges. Inside them [relaySurface] lays the surface afresh,
+    // with cushions half as wide as the artwork's, so the felt fills more of the table.
+    const val RAIL_LEFT = 39f
+    const val RAIL_TOP = 41.5f
+    const val RAIL_RIGHT = 694f
+    const val RAIL_BOTTOM = 384f
+
+    // The felt, between the cushion noses the balls bounce off: the physics table, exactly 2:1.
+    const val FELT_X = 55f
+    const val FELT_Y = 56.5f
+    const val FELT_WIDTH = 624f
     const val FELT_END = FELT_X + FELT_WIDTH
-    const val FELT_BOTTOM = FELT_Y + FELT_WIDTH / 2
-    const val RAIL_TOP = 41
-    const val RAIL_BOTTOM = 400
-    const val RAIL_LEFT = 39
-    const val RAIL_RIGHT = 695
+    const val FELT_BOTTOM = FELT_Y + FELT_WIDTH / 2f
 
-    /** The straight runs of rail and cushion between the pockets' chrome: x on the long sides... */
-    val LONG_STRAIGHTS = listOf(85f to 336f, 396f to 648f)
+    /** The artwork's own felt, clear of its cushions: stretched over everything inside the rails. */
+    val ART_FELT = AndroidRect(72, 78, 660, 352)
 
-    /** ...and y on the short sides. */
-    val SHORT_STRAIGHT = 85f to 360f
-
-    /** The middles of the painted pockets' holes: the corners, then the side pockets. */
+    /**
+     * The middles of the painted pockets' holes, in the order of EightBallTable.pockets:
+     * the corners - top-left, top-right, bottom-left, bottom-right - then the side
+     * pockets, top and bottom.
+     */
     val POCKETS = listOf(
-        Offset(45.5f, 43.5f), Offset(685.5f, 44f), Offset(45.5f, 395f), Offset(685.5f, 395f),
-        Offset(367f, 34f), Offset(366f, 409f)
+        Offset(47f, 49f), Offset(686.5f, 49f), Offset(48f, 375f), Offset(686.5f, 375f),
+        Offset(366.5f, 39f), Offset(367f, 393f)
     )
     const val POCKET_HOLE = 17f
+
+    // How much of the artwork round each hole goes back over the new surface: the hole, its rim and a little shadow.
+    const val CORNER_STAMP = 22f
+    const val SIDE_STAMP = 19.5f
+
+    // Where the cushions end at each pocket, from the hole's middle along the
+    // cushion: at the rail, and at the nose. The corner jaws keep the artwork's
+    // angle; the side pockets' open a little towards the felt.
+    const val CORNER_JAW_RAIL = 10f
+    const val CORNER_JAW_NOSE = 29f
+    const val SIDE_JAW_RAIL = 20f
+    const val SIDE_JAW_NOSE = 24f
+
+    /** The cushions' straight runs between the pockets: x on the long sides... */
+    val LONG_RUNS = listOf(
+        POCKETS[0].x + CORNER_JAW_NOSE to POCKETS[4].x - SIDE_JAW_NOSE,
+        POCKETS[4].x + SIDE_JAW_NOSE to POCKETS[1].x - CORNER_JAW_NOSE
+    )
+
+    /** ...and y on the short sides. */
+    val SHORT_RUN = POCKETS[0].y + CORNER_JAW_NOSE to POCKETS[2].y - CORNER_JAW_NOSE
+}
+
+/**
+ * The painted holes in table units - beyond the felt, which is the physics
+ * table - in the order of EightBallTable.pockets: where a potted ball drops.
+ */
+private val pocketHoles: List<Vec2> = TableArt.POCKETS.map {
+    val unit = EightBallTable.WIDTH / TableArt.FELT_WIDTH
+    Vec2((it.x - TableArt.FELT_X) * unit, (it.y - TableArt.FELT_Y) * unit)
 }
 
 /** The reshaped table, built once per process by [loadTableImage]. */
@@ -466,7 +499,128 @@ private fun loadTableImage(resources: Resources): ImageBitmap = tableImageCache 
     )
     canvas.restoreToCount(layer)
     source.recycle()
+    relaySurface(table)
     table.asImageBitmap().also { tableImageCache = it }
+}
+
+/**
+ * Lays the playing surface inside the rails afresh, with cushions narrower than
+ * the artwork's so the felt fills more of the table: the artwork's felt
+ * stretched over everything inside the rails, cushions drawn along [TableArt]'s
+ * lines, then the artwork's pockets put back over the top.
+ */
+private fun relaySurface(table: Bitmap) {
+    val art = table.copy(Bitmap.Config.ARGB_8888, false)
+    val canvas = android.graphics.Canvas(table)
+    canvas.drawBitmap(
+        art,
+        TableArt.ART_FELT,
+        RectF(TableArt.RAIL_LEFT, TableArt.RAIL_TOP, TableArt.RAIL_RIGHT, TableArt.RAIL_BOTTOM),
+        Paint(Paint.FILTER_BITMAP_FLAG)
+    )
+
+    val (topLeft, topRight, bottomLeft, bottomRight) = TableArt.POCKETS
+    val top = TableArt.POCKETS[4]
+    val bottom = TableArt.POCKETS[5]
+    val cornerRail = TableArt.CORNER_JAW_RAIL
+    val cornerNose = TableArt.CORNER_JAW_NOSE
+    val sideRail = TableArt.SIDE_JAW_RAIL
+    val sideNose = TableArt.SIDE_JAW_NOSE
+    val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+
+    // A cushion: [rail] is its two ends along the rail, [nose] its two ends along the
+    // nose (the same way round), shaded from the rail out to the lit nose.
+    fun cushion(rail: Pair<PointF, PointF>, nose: Pair<PointF, PointF>) {
+        val path = android.graphics.Path().apply {
+            moveTo(rail.first.x, rail.first.y)
+            lineTo(rail.second.x, rail.second.y)
+            lineTo(nose.second.x, nose.second.y)
+            lineTo(nose.first.x, nose.first.y)
+            close()
+        }
+        canvas.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                rail.first.x, rail.first.y,
+                // Straight across the cushion: the rail and nose ends of a long side share x, a short side's y.
+                if (rail.first.y == rail.second.y) rail.first.x else nose.first.x,
+                if (rail.first.y == rail.second.y) nose.first.y else rail.first.y,
+                intArrayOf(0xFF043F17.toInt(), 0xFF0A7330.toInt(), 0xFF12893C.toInt()),
+                floatArrayOf(0f, 0.7f, 1f),
+                Shader.TileMode.CLAMP
+            )
+        })
+        fun line(from: PointF, to: PointF, color: Long, width: Float) {
+            edge.color = color.toInt()
+            edge.strokeWidth = width
+            canvas.drawLine(from.x, from.y, to.x, to.y, edge)
+        }
+        line(rail.first, rail.second, 0x73000000, 2f)
+        line(rail.first, nose.first, 0x8C03250D, 1.2f)
+        line(rail.second, nose.second, 0x8C03250D, 1.2f)
+        line(nose.first, nose.second, 0x8C5FCB85, 1.3f)
+    }
+    val railTop = TableArt.RAIL_TOP
+    val railBottom = TableArt.RAIL_BOTTOM
+    val railLeft = TableArt.RAIL_LEFT
+    val railRight = TableArt.RAIL_RIGHT
+    val noseTop = TableArt.FELT_Y
+    val noseBottom = TableArt.FELT_BOTTOM
+    val noseLeft = TableArt.FELT_X
+    val noseRight = TableArt.FELT_END
+    // The long sides, either side of the side pockets...
+    cushion(
+        PointF(topLeft.x + cornerRail, railTop) to PointF(top.x - sideRail, railTop),
+        PointF(topLeft.x + cornerNose, noseTop) to PointF(top.x - sideNose, noseTop)
+    )
+    cushion(
+        PointF(top.x + sideRail, railTop) to PointF(topRight.x - cornerRail, railTop),
+        PointF(top.x + sideNose, noseTop) to PointF(topRight.x - cornerNose, noseTop)
+    )
+    cushion(
+        PointF(bottomLeft.x + cornerRail, railBottom) to PointF(bottom.x - sideRail, railBottom),
+        PointF(bottomLeft.x + cornerNose, noseBottom) to PointF(bottom.x - sideNose, noseBottom)
+    )
+    cushion(
+        PointF(bottom.x + sideRail, railBottom) to PointF(bottomRight.x - cornerRail, railBottom),
+        PointF(bottom.x + sideNose, noseBottom) to PointF(bottomRight.x - cornerNose, noseBottom)
+    )
+    // ...and the short sides.
+    cushion(
+        PointF(railLeft, topLeft.y + cornerRail) to PointF(railLeft, bottomLeft.y - cornerRail),
+        PointF(noseLeft, topLeft.y + cornerNose) to PointF(noseLeft, bottomLeft.y - cornerNose)
+    )
+    cushion(
+        PointF(railRight, topRight.y + cornerRail) to PointF(railRight, bottomRight.y - cornerRail),
+        PointF(noseRight, topRight.y + cornerNose) to PointF(noseRight, bottomRight.y - cornerNose)
+    )
+
+    // The pockets' mouths fall away into shadow, then the artwork's pockets go back on top, feathered in.
+    val stampShader = BitmapShader(art, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+    TableArt.POCKETS.forEachIndexed { i, hole ->
+        val mouth = TableArt.POCKET_HOLE * 2f
+        canvas.drawCircle(hole.x, hole.y, mouth, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = RadialGradient(
+                hole.x, hole.y, mouth,
+                intArrayOf(0x8C000000.toInt(), android.graphics.Color.TRANSPARENT),
+                null,
+                Shader.TileMode.CLAMP
+            )
+        })
+        val r = if (i < 4) TableArt.CORNER_STAMP else TableArt.SIDE_STAMP
+        val layer = canvas.saveLayer(hole.x - r, hole.y - r, hole.x + r, hole.y + r, null)
+        canvas.drawCircle(hole.x, hole.y, r, Paint(Paint.ANTI_ALIAS_FLAG).apply { shader = stampShader })
+        canvas.drawCircle(hole.x, hole.y, r, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = RadialGradient(
+                hole.x, hole.y, r,
+                intArrayOf(android.graphics.Color.BLACK, android.graphics.Color.BLACK, android.graphics.Color.TRANSPARENT),
+                floatArrayOf(0f, (r - 3f) / r, 1f),
+                Shader.TileMode.CLAMP
+            )
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+        })
+        canvas.restoreToCount(layer)
+    }
+    art.recycle()
 }
 
 /** The reshaped table; null for the frame or two before it's ready if it wasn't preloaded. */
@@ -479,11 +633,23 @@ private fun rememberTableImage(): ImageBitmap? {
     return image
 }
 
+/** How long a potted ball takes to roll into its hole and sink out of sight. */
+private const val SINK_MILLIS = 420
+
+/** The share of that spent rolling to the middle of the hole... */
+private const val SINK_ROLL = 0.6f
+
+/** ...and when, overlapping the roll, it starts to drop. */
+private const val SINK_DROP_FROM = 0.4f
+
 /** How close to the cue ball (in ball radii) a drag must start to pick it up with ball in hand. */
 private const val CUE_GRAB_RADII = 2f
 
-/** A ball that has just dropped: it rolls from where it was into the pocket, shrinking away. */
-private class SinkingBall(val id: Int, val from: Vec2, val pocket: Vec2) {
+/**
+ * A ball that has just dropped: it rolls on from where it was into the painted
+ * hole, then sinks - shrinking, darkening and fading - before it's gone.
+ */
+private class SinkingBall(val id: Int, val from: Vec2, val hole: Vec2) {
     val progress = Animatable(0f)
 }
 
@@ -526,11 +692,11 @@ fun PoolTable(
             if (balls.count { it.pocketed } > before.count { it.pocketed }) {
                 balls.filter { it.pocketed }.forEach { ball ->
                     val last = before.firstOrNull { it.id == ball.id && !it.pocketed } ?: return@forEach
-                    val pocket = EightBallTable.pockets.minBy { (it.center - last.position).length }.center
-                    val sink = SinkingBall(ball.id, last.position, pocket)
+                    val pocket = EightBallTable.pockets.indices.minBy { (EightBallTable.pockets[it].center - last.position).length }
+                    val sink = SinkingBall(ball.id, last.position, pocketHoles[pocket])
                     sinking += sink
                     scope.launch {
-                        sink.progress.animateTo(1f, tween(300, easing = FastOutLinearInEasing))
+                        sink.progress.animateTo(1f, tween(SINK_MILLIS, easing = LinearEasing))
                         sinking -= sink
                     }
                 }
@@ -681,9 +847,15 @@ fun PoolTable(
                     }
                     sinking.forEach { sink ->
                         val t = sink.progress.value
-                        val center = toScreen(sink.from + (sink.pocket - sink.from) * t)
-                        scale(1f - 0.6f * t, pivot = center) {
-                            drawImage(sprites.balls.getValue(sink.id), center - sprites.offset, alpha = 1f - t)
+                        // Rolling in, slowing as it reaches the middle of the hole...
+                        val roll = 1f - (1f - (t / SINK_ROLL).coerceAtMost(1f)).let { it * it }
+                        val center = toScreen(sink.from + (sink.hole - sink.from) * roll)
+                        // ...and, overlapping that, dropping down it.
+                        val drop = ((t - SINK_DROP_FROM) / (1f - SINK_DROP_FROM)).coerceIn(0f, 1f)
+                        val alpha = 1f - drop * drop
+                        scale(1f - 0.55f * drop, pivot = center) {
+                            drawImage(sprites.balls.getValue(sink.id), center - sprites.offset, alpha = alpha)
+                            drawCircle(Color.Black.copy(alpha = 0.75f * drop * alpha), ballRadius, center)
                         }
                     }
                 }
@@ -787,8 +959,8 @@ private fun DrawScope.drawTableMarkings() {
  */
 private fun DrawScope.drawTableDepth() = withTransform({ scale(size.width / TableArt.WIDTH, pivot = Offset.Zero) }) {
     val felt = Rect(
-        TableArt.FELT_X.toFloat(), TableArt.FELT_Y.toFloat(),
-        TableArt.FELT_END.toFloat(), TableArt.FELT_BOTTOM.toFloat()
+        TableArt.FELT_X, TableArt.FELT_Y,
+        TableArt.FELT_END, TableArt.FELT_BOTTOM
     )
 
     // Felt: a vignette, squashed to the felt's 2:1 so all four edges darken alike...
@@ -818,18 +990,12 @@ private fun DrawScope.drawTableDepth() = withTransform({ scale(size.width / Tabl
     )
 
     // Rails, outer edge to inner: falling away at both edges, catching the light on the crown.
+    // (The cushions are drawn with their own light, by relaySurface.)
     val railLight = arrayOf(
         0f to Color.Black.copy(alpha = 0.22f),
         0.4f to Color.White.copy(alpha = 0.17f),
         0.75f to Color.Transparent,
         1f to Color.Black.copy(alpha = 0.2f)
-    )
-    // Cushions, rail to nose: a highlight along the top of the nose.
-    val cushionLight = arrayOf(
-        0f to Color.Black.copy(alpha = 0.12f),
-        0.65f to Color.Transparent,
-        0.86f to Color.White.copy(alpha = 0.2f),
-        1f to Color.Transparent
     )
     // The cushions' shadow on the felt, from the nose out.
     val noseShadow = arrayOf(0f to Color.Black.copy(alpha = 0.3f), 1f to Color.Transparent)
@@ -861,19 +1027,15 @@ private fun DrawScope.drawTableDepth() = withTransform({ scale(size.width / Tabl
         drawIntoCanvas { it.restore() }
     }
     val shade = 10f
-    TableArt.LONG_STRAIGHTS.forEach { run ->
-        band(railLight, 0f, TableArt.RAIL_TOP.toFloat(), run, longSide = true)
-        band(railLight, TableArt.HEIGHT.toFloat(), TableArt.RAIL_BOTTOM.toFloat(), run, longSide = true)
-        band(cushionLight, TableArt.RAIL_TOP.toFloat(), felt.top, run, longSide = true)
-        band(cushionLight, TableArt.RAIL_BOTTOM.toFloat(), felt.bottom, run, longSide = true)
+    TableArt.LONG_RUNS.forEach { run ->
+        band(railLight, 0f, TableArt.RAIL_TOP, run, longSide = true)
+        band(railLight, TableArt.HEIGHT.toFloat(), TableArt.RAIL_BOTTOM, run, longSide = true)
         band(noseShadow, felt.top, felt.top + shade, run, longSide = true)
         band(noseShadow, felt.bottom, felt.bottom - shade, run, longSide = true)
     }
-    TableArt.SHORT_STRAIGHT.let { run ->
-        band(railLight, 0f, TableArt.RAIL_LEFT.toFloat(), run, longSide = false)
-        band(railLight, TableArt.WIDTH.toFloat(), TableArt.RAIL_RIGHT.toFloat(), run, longSide = false)
-        band(cushionLight, TableArt.RAIL_LEFT.toFloat(), felt.left, run, longSide = false)
-        band(cushionLight, TableArt.RAIL_RIGHT.toFloat(), felt.right, run, longSide = false)
+    TableArt.SHORT_RUN.let { run ->
+        band(railLight, 0f, TableArt.RAIL_LEFT, run, longSide = false)
+        band(railLight, TableArt.WIDTH.toFloat(), TableArt.RAIL_RIGHT, run, longSide = false)
         band(noseShadow, felt.left, felt.left + shade, run, longSide = false)
         band(noseShadow, felt.right, felt.right - shade, run, longSide = false)
     }
