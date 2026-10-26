@@ -10,7 +10,7 @@ enum class GameId {
     CARROM,
     CHINESE_CHECKERS,
     SUDOKU,
-    WORD_HUNT,
+    SNAKES_AND_LADDERS,
     CHESS,
     LUDO,
     RUMMY

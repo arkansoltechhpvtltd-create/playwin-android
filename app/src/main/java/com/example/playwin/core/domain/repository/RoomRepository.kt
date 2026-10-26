@@ -54,6 +54,15 @@ interface RoomConnection {
         winnerId: String?
     ): Result<Unit>
 
+    /**
+     * Takes this player's turn in a dice game whose roll the server throws and
+     * applies itself - today Snakes & Ladders, via the `roll_and_move` RPC.
+     * The client sends no roll and no board: the backend checks it's this
+     * player's turn, rolls, moves, and writes the result (including a win),
+     * which then arrives through [roomUpdates] like any other move.
+     */
+    suspend fun rollAndMove(): Result<Unit>
+
     /** Marks the room abandoned - call when the local player deliberately leaves mid-game. */
     suspend fun markAbandoned(): Result<Unit>
 

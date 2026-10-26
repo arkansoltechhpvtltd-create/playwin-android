@@ -3,13 +3,13 @@ package com.example.playwin.core.designsystem.icon
 import androidx.annotation.DrawableRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Hexagon
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Style
-import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -25,7 +25,7 @@ import com.example.playwin.core.designsystem.theme.PwGameChess
 import com.example.playwin.core.designsystem.theme.PwGameChineseCheckers
 import com.example.playwin.core.designsystem.theme.PwGameGrid
 import com.example.playwin.core.designsystem.theme.PwGameLudo
-import com.example.playwin.core.designsystem.theme.PwGameWordHunt
+import com.example.playwin.core.designsystem.theme.PwGameSnakesAndLadders
 import com.example.playwin.core.domain.model.GameIconKey
 
 /**
@@ -39,7 +39,7 @@ fun GameIconKey.toImageVector(): ImageVector = when (this) {
     GameIconKey.CARROM -> Icons.Filled.ViewModule
     GameIconKey.CHINESE_CHECKERS -> Icons.Filled.Hexagon
     GameIconKey.SUDOKU -> Icons.Filled.Apps
-    GameIconKey.WORD_HUNT -> Icons.Filled.TextFields
+    GameIconKey.SNAKES_AND_LADDERS -> Icons.Filled.Casino
     GameIconKey.CHESS -> Icons.Filled.Extension
     GameIconKey.LUDO -> Icons.Filled.EmojiEvents
     GameIconKey.CARDS -> Icons.Filled.Style
@@ -52,7 +52,7 @@ fun GameIconKey.toAccentColor(): Color = when (this) {
     GameIconKey.CARROM -> PwGameCarrom
     GameIconKey.CHINESE_CHECKERS -> PwGameChineseCheckers
     GameIconKey.SUDOKU -> PwGameSudoku
-    GameIconKey.WORD_HUNT -> PwGameWordHunt
+    GameIconKey.SNAKES_AND_LADDERS -> PwGameSnakesAndLadders
     GameIconKey.CHESS -> PwGameChess
     GameIconKey.LUDO -> PwGameLudo
     GameIconKey.CARDS -> PwGameCards
@@ -66,7 +66,9 @@ fun GameIconKey.badgeRes(): Int? = when (this) {
     GameIconKey.CARROM -> R.drawable.carrom_logo
     GameIconKey.CHINESE_CHECKERS -> R.drawable.chinesecheckers_logo
     GameIconKey.SUDOKU -> R.drawable.sudoku_logo
-    GameIconKey.WORD_HUNT -> R.drawable.wordhunt_logo
+    // Placeholder until the badge artwork lands: add res/drawable-nodpi/snakesladders_logo.png
+    // and return R.drawable.snakesladders_logo here. Until then the tile shows the dice icon.
+    GameIconKey.SNAKES_AND_LADDERS -> null
     GameIconKey.CHESS -> R.drawable.chess_logo
     GameIconKey.LUDO -> R.drawable.ludo_logo
     GameIconKey.CARDS -> R.drawable.rummy_logo

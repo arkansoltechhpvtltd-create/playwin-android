@@ -15,4 +15,11 @@ import com.example.playwin.core.domain.model.GameSnapshot
  */
 interface GameEngineRepository {
     suspend fun resolve(gameId: GameId, snapshot: GameSnapshot): GameOutcome
+
+    /**
+     * Throws one six-sided die for [gameId] and returns the face, 1..6. Dice
+     * games get their roll from here rather than rolling in a ViewModel or
+     * screen, so the throw can move server-side along with [resolve].
+     */
+    suspend fun rollDie(gameId: GameId): Int
 }

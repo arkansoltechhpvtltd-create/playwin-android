@@ -5,7 +5,7 @@ import com.example.playwin.core.domain.chinesecheckers.ChineseCheckersPosition
 import com.example.playwin.core.domain.chess.PieceColor
 import com.example.playwin.core.domain.rummy.Card
 import com.example.playwin.core.domain.rummy.Rank
-import com.example.playwin.core.domain.wordhunt.WordHuntClaim
+import com.example.playwin.core.domain.snakesandladders.SnakesAndLaddersState
 
 /**
  * A serializable snapshot of a game's board state at the moment a player
@@ -89,22 +89,16 @@ sealed interface GameSnapshot {
     ) : GameSnapshot
 
     /**
-     * A head-to-head Word Hunt position, from the point of view of the player
-     * asking. The engine re-derives the score itself: every claimed word must
-     * be one of [puzzleWords] and claimed at most once across both players,
-     * and bonuses are capped - see
-     * [com.example.playwin.core.domain.wordhunt.WordHuntScoring].
-     *
-     * @param puzzleWords every word hidden in this round's grid.
-     * @param myClaims the words this player found, with their speed bonuses.
-     * @param opponentClaims the words the other player found.
-     * @param timeUp the game clock has run out, so the game ends on the scores as they stand.
+     * One Snakes and Ladders roll: the game as it stood [before] it, and the
+     * [roll] the engine's die ([com.example.playwin.core.domain.repository.GameEngineRepository.rollDie])
+     * threw for the player to move there. The engine replays the move itself with
+     * [com.example.playwin.core.domain.snakesandladders.SnakesAndLaddersRules] -
+     * the mover wins on reaching or passing square 100; a roll that isn't a die
+     * face, or a game that was already over, loses.
      */
-    data class WordHunt(
-        val puzzleWords: List<String>,
-        val myClaims: List<WordHuntClaim>,
-        val opponentClaims: List<WordHuntClaim>,
-        val timeUp: Boolean = false
+    data class SnakesAndLadders(
+        val before: SnakesAndLaddersState,
+        val roll: Int
     ) : GameSnapshot
 
     /**

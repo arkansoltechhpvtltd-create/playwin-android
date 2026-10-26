@@ -9,8 +9,8 @@ import com.example.playwin.feature.game.chinesecheckers.ChineseCheckersRoute
 import com.example.playwin.feature.game.eightball.EightBallRoute
 import com.example.playwin.feature.game.ludo.LudoRoute
 import com.example.playwin.feature.game.rummy.RummyRoute
+import com.example.playwin.feature.game.snakesandladders.SnakesAndLaddersRoute
 import com.example.playwin.feature.game.twenty48.Twenty48Route
-import com.example.playwin.feature.game.wordhunt.WordHuntRoute
 
 /** Dispatches to the right game screen for a [GameId]. Every game is fully playable. */
 @Composable
@@ -25,7 +25,7 @@ fun GameRoute(
         GameId.EIGHT_BALL -> EightBallRoute(onBack = onBack, onWin = onWin)
         GameId.CARROM -> CarromRoute(onBack = onBack, onWin = onWin)
         GameId.SUDOKU -> SudokuRoute(onBack = onBack, onWin = onWin)
-        GameId.WORD_HUNT -> WordHuntRoute(onBack = onBack, onWin = onWin)
+        GameId.SNAKES_AND_LADDERS -> SnakesAndLaddersRoute(onBack = onBack, onWin = onWin)
         GameId.CHESS -> ChessRoute(onBack = onBack, onWin = onWin)
         GameId.LUDO -> LudoRoute(onBack = onBack, onWin = onWin)
         GameId.RUMMY -> RummyRoute(onBack = onBack, onWin = onWin)

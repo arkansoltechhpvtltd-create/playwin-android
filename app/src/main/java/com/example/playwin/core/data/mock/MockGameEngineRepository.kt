@@ -9,20 +9,28 @@ import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.rummy.RummyValidator
+import com.example.playwin.core.domain.snakesandladders.SnakesAndLaddersRules
 import com.example.playwin.core.domain.sudoku.SudokuRules
-import com.example.playwin.core.domain.wordhunt.WordHuntScoring
 import kotlinx.coroutines.delay
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.random.Random
 
 /**
  * Mock stand-in for a server-authoritative game engine. Board mechanics
  * (placing a piece, sliding tiles) live in the feature ViewModels, but the
  * *verdict* - did that move actually win the round - is only ever produced
- * here, exactly like it would be validated server-side in production.
+ * here, exactly like it would be validated server-side in production. Dice
+ * are thrown here too ([rollDie]), so no screen ever picks its own roll.
  */
 @Singleton
-class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
+class MockGameEngineRepository internal constructor(
+    private val random: Random
+) : GameEngineRepository {
+
+    @Inject constructor() : this(Random.Default)
+
+    override suspend fun rollDie(gameId: GameId): Int = random.nextInt(1, 7)
 
     override suspend fun resolve(gameId: GameId, snapshot: GameSnapshot): GameOutcome {
         // Simulated round-trip, as if a server validated the move.
@@ -34,7 +42,7 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
             is GameSnapshot.EightBall -> resolveEightBall(snapshot)
             is GameSnapshot.Carrom -> resolveCarrom(snapshot)
             is GameSnapshot.Sudoku -> resolveSudoku(snapshot)
-            is GameSnapshot.WordHunt -> resolveWordHunt(snapshot)
+            is GameSnapshot.SnakesAndLadders -> resolveSnakesAndLadders(snapshot)
             is GameSnapshot.Chess -> resolveChess(snapshot)
             is GameSnapshot.Ludo -> resolveLudo(snapshot)
             is GameSnapshot.Rummy -> resolveRummy(snapshot)
@@ -94,30 +102,18 @@ class MockGameEngineRepository @Inject constructor() : GameEngineRepository {
         // A full grid that breaks a rule just isn't solved yet - the player can fix it.
         if (SudokuRules.isSolved(snapshot.givens, snapshot.grid)) GameOutcome.WIN else GameOutcome.IN_PROGRESS
 
-    private fun resolveWordHunt(snapshot: GameSnapshot.WordHunt): GameOutcome {
-        val claimedWords = (snapshot.myClaims + snapshot.opponentClaims).map { it.word }
-        // A word outside the puzzle, or claimed twice, is a fabricated result.
-        if (claimedWords.any { it !in snapshot.puzzleWords } || claimedWords.size != claimedWords.toSet().size) {
-            return GameOutcome.LOSE
-        }
-
-        val mine = WordHuntScoring.total(snapshot.myClaims)
-        val theirs = WordHuntScoring.total(snapshot.opponentClaims)
-        // Out of time: the scores as they stand decide it.
-        if (snapshot.timeUp) {
-            return when {
-                mine > theirs -> GameOutcome.WIN
-                mine < theirs -> GameOutcome.LOSE
-                else -> GameOutcome.DRAW
-            }
-        }
-        val stillOpen = WordHuntScoring.maxRemaining(snapshot.puzzleWords - claimedWords.toSet())
-        return when {
-            mine > theirs + stillOpen -> GameOutcome.WIN
-            theirs > mine + stillOpen -> GameOutcome.LOSE
-            stillOpen > 0 -> GameOutcome.IN_PROGRESS
-            else -> GameOutcome.DRAW
-        }
+    private fun resolveSnakesAndLadders(snapshot: GameSnapshot.SnakesAndLadders): GameOutcome {
+        // The move is replayed here from the position and the roll, never taken
+        // from the client. A roll no die can throw, a position off the board or a
+        // game that was already won is a fabricated move - a loss.
+        val before = snapshot.before
+        val valid = snapshot.roll in SnakesAndLaddersRules.DIE_FACES &&
+            before.positions.size == SnakesAndLaddersRules.PLAYERS &&
+            before.positions.all { it in SnakesAndLaddersRules.START..SnakesAndLaddersRules.FINISH } &&
+            before.turn in before.positions.indices &&
+            SnakesAndLaddersRules.winner(before) == null
+        if (!valid) return GameOutcome.LOSE
+        return if (SnakesAndLaddersRules.play(before, snapshot.roll).won) GameOutcome.WIN else GameOutcome.IN_PROGRESS
     }
 
     private fun resolveChess(snapshot: GameSnapshot.Chess): GameOutcome {

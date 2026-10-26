@@ -213,6 +213,19 @@ class OnlineMatchController(
         return result
     }
 
+    /**
+     * Takes this player's turn in a game whose die the server throws and
+     * applies ([RoomConnection.rollAndMove]). Nothing about the move comes
+     * from this client; the result arrives as a room update. A rejection is
+     * surfaced as an error, as with [submitMove].
+     */
+    suspend fun rollAndMove(): Result<Unit> {
+        val conn = connection ?: return Result.failure(IllegalStateException("Not in a room"))
+        val result = conn.rollAndMove()
+        result.onFailure { showError("That roll didn't go through - check your connection, or it may not be your turn") }
+        return result
+    }
+
     fun onCleared() {
         val conn = connection
         val wasSearching = _state.value.phase == OnlinePhase.SEARCHING

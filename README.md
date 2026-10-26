@@ -35,7 +35,8 @@ Lobby catalogue.
 
 ### `GameEngineRepository`
 The single authority on "who won" — the client never decides a game's outcome itself.
-- `resolve(gameId: GameId, snapshot: GameSnapshot): GameOutcome` — take the client's reported end-of-round board state (`GameSnapshot`, one sealed subtype per game: `ChineseCheckers`, `TwentyFortyEight`, `EightBall`, `Carrom`, `Sudoku`, `WordHunt`, `Chess`, `Ludo`, `Rummy`) and authoritatively return `WIN` / `LOSE` / `DRAW` / `IN_PROGRESS`. A real implementation should independently re-derive or verify the result server-side (e.g. replay moves, validate against game rules) rather than trust the client's claim, so a modified client can't fabricate a win.
+- `resolve(gameId: GameId, snapshot: GameSnapshot): GameOutcome` — take the client's reported end-of-round board state (`GameSnapshot`, one sealed subtype per game: `ChineseCheckers`, `TwentyFortyEight`, `EightBall`, `Carrom`, `Sudoku`, `SnakesAndLadders`, `Chess`, `Ludo`, `Rummy`) and authoritatively return `WIN` / `LOSE` / `DRAW` / `IN_PROGRESS`. A real implementation should independently re-derive or verify the result server-side (e.g. replay moves, validate against game rules) rather than trust the client's claim, so a modified client can't fabricate a win.
+- `rollDie(gameId: GameId): Int` — throw one six-sided die (1..6) for a dice game played locally (today: Snakes & Ladders vs Computer). No screen or ViewModel rolls its own die. Online Snakes & Ladders doesn't use this: the `roll_and_move` Postgres function (`supabase/migrations/0009_snakes_and_ladders_server_dice.sql`) throws the die and applies the move server-side, and `rooms_guard` rejects any other write to that game's board.
 
 ### `RewardsRepository`
 Issues rewards for a confirmed win — deliberately separate from `GameEngineRepository`: that decides *whether* a round was won, this decides *what the player gets*.
@@ -66,7 +67,7 @@ unlocks, including tightening the `coupons` table's RLS to drop client
    reusing the exact rules in `MockGameEngineRepository` (Chinese Checkers
    move re-check + all-10-pegs-in-the-opposite-point, 2048 tile-reached/no-moves-left, 8-ball
    group-cleared-and-no-scratch, Carrom score comparison once cleared, Sudoku
-   givens-kept + full grid with no repeats, Word Hunt claim validation + score comparison, Chess checkmate/draws
+   givens-kept + full grid with no repeats, Snakes & Ladders move replay from position + roll (reach or pass 100), Chess checkmate/draws
    via a full rules engine, Ludo all-tokens-home, Rummy valid-declaration
    check). Never trust a client-reported "I won" flag.
 3. Only if the outcome is `WIN`, pick/generate a coupon and `insert` it into
@@ -86,7 +87,7 @@ unlocks, including tightening the `coupons` table's RLS to drop client
 ```
 `gameId` is one of the nine `GameId` enum names; `snapshot.type` is one of
 `GameSnapshot`'s nine sealed subtypes (`ChineseCheckers`, `TwentyFortyEight`,
-`EightBall`, `Carrom`, `Sudoku`, `WordHunt`, `Chess`, `Ludo`, `Rummy`), and the
+`EightBall`, `Carrom`, `Sudoku`, `SnakesAndLadders`, `Chess`, `Ludo`, `Rummy`), and the
 remaining fields match that subtype's constructor 1:1 — see
 `core/domain/model/GameSnapshot.kt`.
 

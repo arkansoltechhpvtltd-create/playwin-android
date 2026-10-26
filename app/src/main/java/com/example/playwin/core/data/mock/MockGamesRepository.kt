@@ -52,11 +52,11 @@ class MockGamesRepository @Inject constructor() : GamesRepository {
                 isFullyPlayable = true
             ),
             Game(
-                id = GameId.WORD_HUNT,
-                title = "Word Hunt",
-                tagline = "Find the words",
-                icon = GameIconKey.WORD_HUNT,
-                isFullyPlayable = false
+                id = GameId.SNAKES_AND_LADDERS,
+                title = "Snakes & Ladders",
+                tagline = "Climb to 100",
+                icon = GameIconKey.SNAKES_AND_LADDERS,
+                isFullyPlayable = true
             ),
             Game(
                 id = GameId.CHESS,

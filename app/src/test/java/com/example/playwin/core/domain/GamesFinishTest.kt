@@ -10,6 +10,8 @@ import com.example.playwin.core.domain.eightball.EightBallPhysics
 import com.example.playwin.core.domain.eightball.EightBallRules
 import com.example.playwin.core.domain.ludo.LudoBot
 import com.example.playwin.core.domain.ludo.LudoEngine
+import com.example.playwin.core.domain.snakesandladders.SnakesAndLaddersRules
+import com.example.playwin.core.domain.snakesandladders.SnakesAndLaddersState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -29,6 +31,20 @@ class GamesFinishTest {
                 turns++
                 assertTrue("game $seed still going after $turns turns", turns < 20_000)
             }
+        }
+    }
+
+    @Test
+    fun `snakes and ladders always finishes`() = repeat(50) { seed ->
+        val random = Random(seed)
+        var state = SnakesAndLaddersState()
+        var turns = 0
+        while (true) {
+            val turn = SnakesAndLaddersRules.play(state, random.nextInt(1, 7))
+            state = turn.after
+            turns++
+            if (turn.won) break
+            assertTrue("game $seed still going after $turns rolls", turns < 5_000)
         }
     }
 

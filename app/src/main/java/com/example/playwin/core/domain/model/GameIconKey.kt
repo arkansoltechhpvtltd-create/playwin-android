@@ -11,7 +11,7 @@ enum class GameIconKey {
     CARROM,
     CHINESE_CHECKERS,
     SUDOKU,
-    WORD_HUNT,
+    SNAKES_AND_LADDERS,
     CHESS,
     LUDO,
     CARDS

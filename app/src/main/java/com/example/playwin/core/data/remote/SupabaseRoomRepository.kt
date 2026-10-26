@@ -87,6 +87,9 @@ private data class RoomMoveUpdate(
     @SerialName("winner_id") val winnerId: String?
 )
 
+@Serializable
+private data class RoomIdParams(@SerialName("p_room_id") val roomId: String)
+
 // No default value here: the client's Json leaves defaults out (encodeDefaults = false), and a
 // default here once made this write an empty `{}` that silently changed nothing.
 @Serializable
@@ -255,6 +258,19 @@ private class SupabaseRoomConnectionImpl(
         throw e
     } catch (e: Exception) {
         Log.w(TAG, "Failed to submit move for room $roomId", e)
+        Result.failure(e)
+    }
+
+    override suspend fun rollAndMove(): Result<Unit> = try {
+        supabaseClient.postgrest.rpc(
+            "roll_and_move",
+            Json.encodeToJsonElement(RoomIdParams(roomId = roomId)).jsonObject
+        )
+        Result.success(Unit)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "Failed to roll in room $roomId", e)
         Result.failure(e)
     }
 
