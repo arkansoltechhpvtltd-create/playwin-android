@@ -66,9 +66,7 @@ fun GameIconKey.badgeRes(): Int? = when (this) {
     GameIconKey.CARROM -> R.drawable.carrom_logo
     GameIconKey.CHINESE_CHECKERS -> R.drawable.chinesecheckers_logo
     GameIconKey.SUDOKU -> R.drawable.sudoku_logo
-    // Placeholder until the badge artwork lands: add res/drawable-nodpi/snakesladders_logo.png
-    // and return R.drawable.snakesladders_logo here. Until then the tile shows the dice icon.
-    GameIconKey.SNAKES_AND_LADDERS -> null
+    GameIconKey.SNAKES_AND_LADDERS -> R.drawable.snakesandladders_logo
     GameIconKey.CHESS -> R.drawable.chess_logo
     GameIconKey.LUDO -> R.drawable.ludo_logo
     GameIconKey.CARDS -> R.drawable.rummy_logo
