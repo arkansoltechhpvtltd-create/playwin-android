@@ -107,24 +107,39 @@ sealed interface TableEvent {
 object EightBallPhysics {
     // --- Speed and feel: tune these. ---
 
-    /** The cue ball's launch speed at full power, in table units a second; power scales it linearly. */
-    const val MAX_SHOT_SPEED = 2000f
+    /**
+     * The cue ball's launch speed at full power, in table units a second (the
+     * table is 1000 long); the drag's power (0..1) scales it linearly, so this
+     * is the cue's power multiplier.
+     */
+    const val MAX_SHOT_SPEED = 2600f
 
-    /** The share of its speed a ball loses each second (0..1). Lower carries further. */
-    private const val FRICTION_PER_SECOND = 0.68f
+    /**
+     * The share of its speed a ball loses each second (0..1) to cloth drag. Lower
+     * carries further: at 0.42 a full-power shot coasts about four table lengths.
+     */
+    private const val FRICTION_PER_SECOND = 0.42f
 
     /**
      * A steady slow-down on top of [FRICTION_PER_SECOND], in units a second per
      * second. Friction alone fades a ball out slowly; this ends its last crawl
      * crisply, so every shot still comes to rest.
      */
-    private const val ROLLING_DECELERATION = 45f
+    private const val ROLLING_DECELERATION = 75f
+
+    /** The share of its speed (into the cushion) a ball keeps when it bounces off one. */
+    private const val WALL_RESTITUTION = 0.9f
+
+    /**
+     * Ball-on-ball elasticity (0..1): 1 is perfectly elastic. A head-on hit
+     * hands the struck ball (1 + this) / 2 of the striker's speed, and the
+     * striker keeps (1 - this) / 2 - near enough a stop shot.
+     */
+    private const val BALL_RESTITUTION = 0.97f
 
     // --- Physics. ---
 
     private const val MIN_SPEED = 3f
-    private const val WALL_RESTITUTION = 0.9f
-    private const val BALL_RESTITUTION = 0.98f
 
     /** The longest substep, however slowly things move. */
     private const val SUBSTEP_DT = 1f / 240f
@@ -346,8 +361,10 @@ object EightBallPhysics {
                 events += TableEvent.Contact(a.id, b.id)
                 val v1t = a.velocity - normal * v1n
                 val v2t = b.velocity - normal * v2n
-                val newV1n = v1n + (v2n - v1n) * BALL_RESTITUTION
-                val newV2n = v2n + (v1n - v2n) * BALL_RESTITUTION
+                // Equal masses: each ball swaps (1 + e) / 2 of the difference along the line of centres.
+                val exchange = (1f + BALL_RESTITUTION) / 2f
+                val newV1n = v1n + (v2n - v1n) * exchange
+                val newV2n = v2n + (v1n - v2n) * exchange
 
                 result[i] = a.copy(position = newAPos, velocity = v1t + normal * newV1n)
                 result[j] = b.copy(position = newBPos, velocity = v2t + normal * newV2n)

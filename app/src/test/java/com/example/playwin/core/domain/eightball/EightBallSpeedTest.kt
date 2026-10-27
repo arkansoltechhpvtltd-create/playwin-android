@@ -118,6 +118,35 @@ class EightBallSpeedTest {
     }
 
     @Test
+    fun `a firm shot carries the cue ball several table lengths`() {
+        // Struck at 80% power, off-axis so it banks round the table, the cue ball should coast over two lengths.
+        var balls = listOf(
+            Ball(id = CUE_BALL_ID, position = Vec2(300f, 140f), velocity = Vec2(0.8f, 0.35f).normalizedOrZero() * EightBallPhysics.MAX_SHOT_SPEED * 0.8f)
+        )
+        var travelled = 0f
+        var pocketed = false
+        repeat((6f / longFrame).toInt()) {
+            if (pocketed) return@repeat
+            val result = EightBallPhysics.step(balls, longFrame)
+            pocketed = result.balls[0].pocketed
+            if (!pocketed) travelled += (result.balls[0].position - balls[0].position).length
+            balls = result.balls
+        }
+        assertTrue("travelled only $travelled", travelled > EightBallTable.WIDTH * 2f || pocketed)
+    }
+
+    @Test
+    fun `a head-on hit passes nearly all the speed to the struck ball`() {
+        val speed = EightBallPhysics.MAX_SHOT_SPEED * 0.5f
+        val cue = Ball(id = CUE_BALL_ID, position = Vec2(300f, EightBallTable.CENTER_Y), velocity = Vec2(speed, 0f))
+        val target = Ball(id = 5, position = Vec2(300f + 2 * r + 4f, EightBallTable.CENTER_Y))
+        // One short frame: just the contact, before friction takes much off.
+        val after = EightBallPhysics.step(listOf(cue, target), 1f / 60f).balls
+        assertTrue("struck ball only got ${after[1].velocity.x}", after[1].velocity.x > speed * 0.95f)
+        assertTrue("cue ball kept ${after[0].velocity.x}", kotlin.math.abs(after[0].velocity.x) < speed * 0.05f)
+    }
+
+    @Test
     fun `a full-power shot still comes to rest in good time`() {
         // A lone ball struck at full power down the length of the table, on a slow phone's frame rate.
         val ball = Ball(id = 3, position = Vec2(100f, EightBallTable.CENTER_Y), velocity = Vec2(EightBallPhysics.MAX_SHOT_SPEED, 0f))
