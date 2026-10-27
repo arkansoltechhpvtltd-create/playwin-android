@@ -1,31 +1,32 @@
 package com.example.playwin.feature.game.snakesandladders.online
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.feature.game.BoardSlot
-import com.example.playwin.feature.game.ludo.LudoDice
 import com.example.playwin.feature.game.online.OnlineMatchEffects
 import com.example.playwin.feature.game.online.OnlineMatchScreen
-import com.example.playwin.feature.game.snakesandladders.PlayerSquares
 import com.example.playwin.feature.game.snakesandladders.SlGoldToken
 import com.example.playwin.feature.game.snakesandladders.SlPearlToken
 import com.example.playwin.feature.game.snakesandladders.SnakesAndLaddersBoard
+import com.example.playwin.feature.game.snakesandladders.SnakesAndLaddersDock
+import com.example.playwin.feature.game.snakesandladders.SnakesAndLaddersNote
+import com.example.playwin.feature.game.snakesandladders.SnakesAndLaddersPlayers
 import com.example.playwin.feature.game.snakesandladders.SnakesAndLaddersTiming
 import com.example.playwin.feature.game.snakesandladders.boardDescription
 import com.example.playwin.feature.game.snakesandladders.moveNote
+import com.example.playwin.feature.game.snakesandladders.noteTone
 import kotlinx.coroutines.delay
 
 /** Online 1v1 Snakes & Ladders via random matchmaking - starts searching as soon as it opens. */
@@ -62,11 +63,21 @@ fun SnakesAndLaddersOnlineRoute(
             }
             val canRoll = state.isMyTurn && !state.isResolving && !animating
 
-            moveNote(move, move?.let { names[it.player] }.orEmpty(), rollsAgain = move != null && game.turn == move.player)?.let {
-                Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            PlayerSquares(names = names, positions = game.positions, tokenColors = colors, modifier = Modifier.padding(top = 8.dp))
-            BoardSlot(modifier = Modifier.padding(top = 12.dp)) {
+            SnakesAndLaddersPlayers(
+                names = names,
+                positions = game.positions,
+                tokenColors = colors,
+                turn = game.turn,
+                winner = null,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            SnakesAndLaddersNote(
+                text = moveNote(move, move?.let { names[it.player] }.orEmpty(), rollsAgain = move != null && game.turn == move.player)
+                    ?: "Roll the die to set off from the start",
+                tone = noteTone(move)
+            )
+            // The board takes all the height between the players and the dock.
+            Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
                 SnakesAndLaddersBoard(
                     positions = game.positions,
                     lastMove = move,
@@ -75,19 +86,12 @@ fun SnakesAndLaddersOnlineRoute(
                     activePlayer = game.turn.takeIf { !animating }
                 )
             }
-            key(game.turnsPlayed) {
-                LudoDice(
-                    value = move?.roll,
-                    live = animating,
-                    enabled = canRoll,
-                    onClick = viewModel::onRoll,
-                    modifier = Modifier.padding(top = 16.dp)
-                )
-            }
-            PrimaryButton(
-                text = "Roll",
-                onClick = viewModel::onRoll,
-                enabled = canRoll,
+            SnakesAndLaddersDock(
+                dieValue = move?.roll,
+                rollCount = game.turnsPlayed,
+                canRoll = canRoll,
+                waitingLabel = if (state.isMyTurn) "Rolling…" else "Opponent's roll…",
+                onRoll = viewModel::onRoll,
                 modifier = Modifier.padding(top = 12.dp)
             )
         },

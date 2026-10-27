@@ -1,18 +1,33 @@
 package com.example.playwin.feature.game.snakesandladders
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -25,23 +40,33 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
+import com.example.playwin.core.designsystem.theme.PwEmeraldDark
+import com.example.playwin.core.designsystem.theme.PwErrorDark
+import com.example.playwin.core.designsystem.theme.PwGoldDark
+import com.example.playwin.core.designsystem.theme.PwGoldInk
+import com.example.playwin.core.designsystem.theme.PwGoldLight
+import com.example.playwin.core.designsystem.theme.PwTableSurface
+import com.example.playwin.core.designsystem.theme.PwTableSurfaceRaised
+import com.example.playwin.core.designsystem.theme.PwTableTextMuted
+import com.example.playwin.core.domain.snakesandladders.SnakesAndLaddersMove
 import com.example.playwin.core.domain.snakesandladders.SnakesAndLaddersRules
-import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.GameScaffold
-import com.example.playwin.feature.game.GameStatusBanner
-import com.example.playwin.feature.game.ludo.LudoDice
 import com.example.playwin.feature.game.online.GameModeSelectScreen
 import com.example.playwin.feature.game.online.PlayMode
 import com.example.playwin.feature.game.snakesandladders.online.SnakesAndLaddersOnlineRoute
@@ -95,6 +120,8 @@ fun SnakesAndLaddersScreen(
     modifier: Modifier = Modifier
 ) {
     val names = listOf("You", "Computer")
+    val move = uiState.lastMove
+    val winner = uiState.winner
     GameScaffold(
         modifier = modifier.fillMaxSize(),
         topBar = { PwTopBar(title = "Snakes & Ladders · vs Computer", onBack = onBack) }
@@ -103,32 +130,29 @@ fun SnakesAndLaddersScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            val move = uiState.lastMove
-            val winner = uiState.winner
-            if (winner != null) {
-                SnakesAndLaddersWinnerBanner(
-                    text = if (winner == SL_HUMAN) "You win! Claiming your coupon…" else "The computer wins this round",
-                    won = winner == SL_HUMAN,
-                    tokenColors = COMPUTER_TOKEN_COLORS[winner]
-                )
-            } else {
-                SnakesAndLaddersTurnBanner(
-                    title = if (uiState.isHumanTurn) "Your roll" else "Computer's roll",
-                    note = moveNote(move, move?.let { names[it.player] }.orEmpty(), rollsAgain = move != null && uiState.game.turn == move.player),
-                    tokenColors = COMPUTER_TOKEN_COLORS[uiState.game.turn]
-                )
-            }
-            PlayerSquares(
+            SnakesAndLaddersPlayers(
                 names = names,
                 positions = uiState.game.positions,
                 tokenColors = COMPUTER_TOKEN_COLORS,
-                modifier = Modifier.padding(top = 10.dp)
+                // While a roll plays out, the player making it stays highlighted.
+                turn = (if (uiState.isBusy) move?.player ?: uiState.game.turn else uiState.game.turn).takeIf { winner == null },
+                winner = winner
             )
+            when {
+                winner == SL_HUMAN -> SnakesAndLaddersNote("You win! Claiming your coupon…", NoteTone.WIN)
+                winner != null -> SnakesAndLaddersNote("The computer wins this round", NoteTone.PLAIN)
+                else -> SnakesAndLaddersNote(
+                    text = moveNote(move, move?.let { names[it.player] }.orEmpty(), rollsAgain = move != null && uiState.game.turn == move.player)
+                        ?: "Roll the die to set off from the start",
+                    tone = noteTone(move)
+                )
+            }
 
-            BoardSlot(modifier = Modifier.padding(top = 12.dp)) {
+            // The board takes all the height between the players and the dock.
+            Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
                 SnakesAndLaddersBoard(
                     positions = uiState.game.positions,
                     lastMove = move,
@@ -139,113 +163,307 @@ fun SnakesAndLaddersScreen(
                 )
             }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Keyed by the roll count so two equal rolls in a row still tumble.
-                key(uiState.game.turnsPlayed) {
-                    LudoDice(
-                        value = move?.roll,
-                        live = uiState.isBusy,
-                        enabled = uiState.canRoll,
-                        onClick = onRoll
-                    )
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                PrimaryButton(text = "Roll", onClick = onRoll, enabled = uiState.canRoll)
-                if (uiState.isBusy) {
-                    CircularProgressIndicator(modifier = Modifier.padding(start = 12.dp).size(18.dp), strokeWidth = 2.dp)
-                }
-            }
-
-            if (winner == SL_COMPUTER) {
-                PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 12.dp))
-            }
-        }
-    }
-}
-
-/** The turn line: whose roll it is, with what the last roll did underneath. */
-@Composable
-fun SnakesAndLaddersTurnBanner(title: String, note: String?, tokenColors: List<Color>, modifier: Modifier = Modifier) {
-    GameStatusBanner(accent = tokenColors[1], modifier = modifier) {
-        TokenIcon(tokenColors, Modifier.size(24.dp))
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 12.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface
+            SnakesAndLaddersDock(
+                dieValue = move?.roll,
+                rollCount = uiState.game.turnsPlayed,
+                canRoll = uiState.canRoll,
+                waitingLabel = when {
+                    winner == SL_HUMAN -> "Well played!"
+                    uiState.isBusy && move?.player == SL_HUMAN -> "Moving…"
+                    uiState.isBusy -> "Computer is moving…"
+                    else -> "Computer is rolling…"
+                },
+                onRoll = onRoll,
+                action = if (winner == SL_COMPUTER) "Play again" to onPlayAgain else null,
+                modifier = Modifier.padding(top = 12.dp)
             )
-            if (note != null) {
-                Text(
-                    text = note,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
         }
     }
 }
 
-@Composable
-fun SnakesAndLaddersWinnerBanner(text: String, won: Boolean, tokenColors: List<Color>, modifier: Modifier = Modifier) {
-    val gold = MaterialTheme.colorScheme.primary
-    GameStatusBanner(accent = if (won) gold else tokenColors[1], modifier = modifier) {
-        if (won) {
-            Icon(imageVector = Icons.Filled.EmojiEvents, contentDescription = null, tint = gold, modifier = Modifier.size(26.dp))
-        } else {
-            TokenIcon(tokenColors, Modifier.size(24.dp))
-        }
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 12.dp)
-        )
-    }
+/** How the line under the players is tinted: good news in emerald, a snake in red, a win in gold. */
+enum class NoteTone { PLAIN, GOOD, BAD, WIN }
+
+fun noteTone(move: SnakesAndLaddersMove?): NoteTone = when {
+    move == null -> NoteTone.PLAIN
+    move.climbedLadder -> NoteTone.GOOD
+    move.hitSnake || move.forfeited -> NoteTone.BAD
+    else -> NoteTone.PLAIN
 }
 
-/** Each player's token and the square it's on. */
+/** The one line of commentary between the players and the board: what the last roll did. */
 @Composable
-fun PlayerSquares(
+fun SnakesAndLaddersNote(text: String, tone: NoteTone, modifier: Modifier = Modifier) {
+    val color by animateColorAsState(
+        targetValue = when (tone) {
+            NoteTone.PLAIN -> PwTableTextMuted
+            NoteTone.GOOD -> PwEmeraldDark
+            NoteTone.BAD -> PwErrorDark
+            NoteTone.WIN -> PwGoldDark
+        },
+        label = "slNoteColor"
+    )
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium.copy(
+            fontWeight = if (tone == NoteTone.PLAIN) FontWeight.Medium else FontWeight.SemiBold
+        ),
+        color = color,
+        textAlign = TextAlign.Center,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 22.dp)
+            .padding(top = 8.dp)
+    )
+}
+
+/**
+ * One card per player side by side: their pawn, name and square, and a gold
+ * bar of how far round the board they are. The card whose roll it is ([turn])
+ * is outlined in glowing gold and tagged; at the end the [winner]'s is crowned.
+ */
+@Composable
+fun SnakesAndLaddersPlayers(
     names: List<String>,
     positions: List<Int>,
     tokenColors: List<List<Color>>,
+    turn: Int?,
+    winner: Int?,
     modifier: Modifier = Modifier
 ) {
-    Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+    Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         names.forEachIndexed { player, name ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TokenIcon(tokenColors[player], Modifier.size(16.dp))
+            PlayerCard(
+                name = name,
+                square = positions[player],
+                colors = tokenColors[player],
+                active = player == turn,
+                winner = player == winner,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlayerCard(
+    name: String,
+    square: Int,
+    colors: List<Color>,
+    active: Boolean,
+    winner: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(18.dp)
+    val highlight by animateFloatAsState(if (active || winner) 1f else 0f, tween(300), label = "slCardHighlight")
+    val progress by animateFloatAsState(square / SnakesAndLaddersRules.FINISH.toFloat(), tween(500), label = "slCardProgress")
+    Box(
+        modifier = modifier
+            .shadow(
+                elevation = (4 + 8 * highlight).dp,
+                shape = shape,
+                ambientColor = PwGoldDark.copy(alpha = highlight),
+                spotColor = PwGoldDark.copy(alpha = highlight)
+            )
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(PwTableSurfaceRaised, PwTableSurface)))
+            .background(Brush.horizontalGradient(listOf(PwGoldDark.copy(alpha = 0.14f * highlight), Color.Transparent)))
+            .border(
+                width = (1f + 0.5f * highlight).dp,
+                brush = Brush.linearGradient(
+                    listOf(
+                        PwGoldDark.copy(alpha = 0.25f + 0.75f * highlight),
+                        PwGoldLight.copy(alpha = 0.2f + 0.6f * highlight)
+                    )
+                ),
+                shape = shape
+            )
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 10.dp, bottom = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Canvas(modifier = Modifier.size(width = 30.dp, height = 38.dp)) {
+                val r = size.height / 2.5f
+                drawPawn(Offset(size.width / 2f, size.height / 2f + r * 0.12f), r, colors, lift = 0f, glow = null)
+            }
+            Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = name.uppercase(),
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp),
+                        color = if (active || winner) PwGoldDark else PwTableTextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (winner) {
+                        Icon(
+                            imageVector = Icons.Filled.EmojiEvents,
+                            contentDescription = "Winner",
+                            tint = PwGoldDark,
+                            modifier = Modifier.padding(start = 4.dp).size(16.dp)
+                        )
+                    } else if (active) {
+                        TurnDot(modifier = Modifier.padding(start = 6.dp))
+                    }
+                }
+                Row(verticalAlignment = Alignment.Bottom) {
+                    if (square <= SnakesAndLaddersRules.START) {
+                        Text(
+                            text = "Start",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
+                        )
+                    } else {
+                        Text(
+                            text = "$square",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = " / ${SnakesAndLaddersRules.FINISH}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = PwTableTextMuted,
+                            maxLines = 1,
+                            modifier = Modifier.padding(bottom = 3.dp)
+                        )
+                    }
+                }
+            }
+        }
+        // How far round the board, as a thin gold bar along the bottom edge.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .fillMaxWidth()
+                .height(3.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(Color.White.copy(alpha = 0.08f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress.coerceIn(0f, 1f))
+                    .height(3.dp)
+                    .background(Brush.horizontalGradient(listOf(PwGoldLight, PwGoldDark)))
+            )
+        }
+    }
+}
+
+/** A small gold dot that breathes beside the name of the player whose roll it is. */
+@Composable
+private fun TurnDot(modifier: Modifier = Modifier) {
+    val pulse by rememberInfiniteTransition(label = "slTurnDot").animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(700, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "slTurnDotPulse"
+    )
+    Canvas(modifier = modifier.size(10.dp)) {
+        drawCircle(PwGoldDark.copy(alpha = 0.3f * pulse), size.minDimension / 2f)
+        drawCircle(PwGoldDark.copy(alpha = 0.6f + 0.4f * pulse), size.minDimension / 4f)
+    }
+}
+
+/**
+ * The control dock under the board: the die and, beside it, a gold Roll
+ * button that shimmers while [canRoll], or a quiet [waitingLabel] while it
+ * isn't. An [action] (label to handler) - Play again - takes the button's place.
+ */
+@Composable
+fun SnakesAndLaddersDock(
+    dieValue: Int?,
+    rollCount: Int,
+    canRoll: Boolean,
+    waitingLabel: String,
+    onRoll: () -> Unit,
+    modifier: Modifier = Modifier,
+    action: Pair<String, () -> Unit>? = null
+) {
+    val shape = RoundedCornerShape(26.dp)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(elevation = 8.dp, shape = shape)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(PwTableSurfaceRaised, PwTableSurface)))
+            .border(1.dp, Brush.verticalGradient(listOf(PwGoldDark.copy(alpha = 0.55f), PwGoldLight.copy(alpha = 0.15f))), shape)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Keyed by the roll count so two equal rolls in a row still throw.
+        key(rollCount) {
+            SnakesAndLaddersDie(value = dieValue, enabled = canRoll && action == null, onClick = onRoll)
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        when {
+            action != null -> GoldButton(text = action.first, onClick = action.second, modifier = Modifier.weight(1f))
+            canRoll -> GoldButton(text = "Roll", onClick = onRoll, modifier = Modifier.weight(1f))
+            else -> Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(Color.Black.copy(alpha = 0.22f))
+                    .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(28.dp)),
+                contentAlignment = Alignment.Center
+            ) {
                 Text(
-                    text = "$name · ${squareLabel(positions[player])}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    text = waitingLabel,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = PwTableTextMuted,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 6.dp)
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
     }
 }
 
+/** A tall polished-gold pill with a light that sweeps across it now and then. */
 @Composable
-private fun TokenIcon(colors: List<Color>, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val r = size.minDimension / 2f
-        drawCircle(Brush.radialGradient(colors, center = center - Offset(r * 0.35f, r * 0.4f), radius = r * 1.6f), r)
-        drawCircle(Color.Black.copy(alpha = 0.45f), r, style = Stroke(width = r * 0.14f))
+private fun GoldButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(28.dp)
+    val sweep by rememberInfiniteTransition(label = "slGoldSweep").animateFloat(
+        initialValue = -0.6f,
+        targetValue = 2.2f,
+        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing)),
+        label = "slGoldSweepX"
+    )
+    Box(
+        modifier = modifier
+            .height(56.dp)
+            .shadow(elevation = 10.dp, shape = shape, ambientColor = PwGoldDark, spotColor = PwGoldDark)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(Color(0xFFFFE9A8), PwGoldDark, PwGoldLight)))
+            .drawWithContent {
+                drawContent()
+                // The sweeping sheen, then a bright top edge.
+                val x = sweep * size.width
+                drawRect(
+                    Brush.linearGradient(
+                        listOf(Color.Transparent, Color.White.copy(alpha = 0.45f), Color.Transparent),
+                        start = Offset(x - size.height, 0f),
+                        end = Offset(x, size.height)
+                    )
+                )
+            }
+            .border(1.dp, Brush.verticalGradient(listOf(Color(0xFFFFF4CF), Color(0xFF7A5512))), shape)
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text.uppercase(),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp),
+            color = PwGoldInk,
+            maxLines = 1
+        )
     }
 }
 
