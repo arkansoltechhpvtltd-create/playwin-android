@@ -13,7 +13,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,9 +24,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +35,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.ui.unit.sp
+import com.example.playwin.core.designsystem.theme.PwTableTextMuted
+import com.example.playwin.feature.game.GameGoldButton
+import com.example.playwin.feature.game.GameNote
+import com.example.playwin.feature.game.GameStatCard
+import com.example.playwin.feature.game.GameTone
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -60,7 +66,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PwGoldDark
 import com.example.playwin.core.designsystem.theme.PwGoldLight
@@ -72,7 +77,6 @@ import com.example.playwin.core.domain.chinesecheckers.Hole
 import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.CelebrationBurst
 import com.example.playwin.feature.game.GameScaffold
-import com.example.playwin.feature.game.GameStatusBanner
 import com.example.playwin.feature.game.chinesecheckers.online.ChineseCheckersOnlineRoute
 import com.example.playwin.feature.game.online.GameModeSelectScreen
 import com.example.playwin.feature.game.online.PlayMode
@@ -144,101 +148,109 @@ fun ChineseCheckersScreen(
         ) {
             val humanWon = uiState.winner == CHINESE_CHECKERS_HUMAN
             val inset = Modifier.padding(horizontal = 16.dp - BoardSideMargin)
-            when {
-                humanWon -> StatusLine("Your point is filled - you win! Claiming your coupon…", peg = null, modifier = inset, trophy = true)
-                uiState.winner != null -> StatusLine("The computer filled its point - it wins", peg = CHINESE_CHECKERS_COMPUTER, modifier = inset)
-                uiState.isComputerThinking || !uiState.isHumanTurn -> StatusLine("Computer is moving…", peg = CHINESE_CHECKERS_COMPUTER, modifier = inset, busy = true)
-                uiState.selected != null && uiState.pendingMoves.isEmpty() -> StatusLine("That peg is boxed in - pick another", peg = CHINESE_CHECKERS_HUMAN, modifier = inset)
-                uiState.selected != null -> StatusLine("Tap a gold spot to move there", peg = CHINESE_CHECKERS_HUMAN, modifier = inset)
-                else -> StatusLine("Your move - tap one of your pegs", peg = CHINESE_CHECKERS_HUMAN, modifier = inset, busy = uiState.isResolving)
+
+            @Composable
+            fun SeatCard(player: Int, modifier: Modifier) {
+                val home = uiState.pegsHome(player)
+                GameStatCard(
+                    label = if (player == CHINESE_CHECKERS_HUMAN) "You" else "Computer",
+                    value = "$home/${ChineseCheckersBoard.PEGS_PER_PLAYER} home",
+                    icon = if (player == CHINESE_CHECKERS_HUMAN) Icons.Filled.Person else Icons.Filled.SmartToy,
+                    highlight = (!uiState.isGameOver && uiState.position.sideToMove == player) || uiState.winner == player,
+                    progress = home / ChineseCheckersBoard.PEGS_PER_PLAYER.toFloat(),
+                    modifier = modifier
+                )
             }
 
-            BoardSlot(modifier = Modifier.padding(top = 12.dp)) {
-                StarBoard(
-                    position = uiState.position,
-                    me = CHINESE_CHECKERS_HUMAN,
-                    selected = uiState.selected,
-                    targets = uiState.legalTargets,
-                    lastMove = uiState.lastMove,
-                    moveKey = uiState.moveCount,
-                    enabled = uiState.canPlay,
-                    onHoleTap = onHoleTap
-                )
-                if (humanWon) {
-                    CelebrationBurst(
-                        colors = listOf(PwGoldDark, PwGoldLight, RubyMid, Color.White),
-                        modifier = Modifier.matchParentSize()
-                    )
+            // Each side's card by its own point - the computer's ruby point at the top, your
+            // gold one at the bottom - with the turn line and the level in the corners left
+            // free. All of it scales down together on a short screen.
+            BoardSlot(modifier = Modifier.padding(vertical = 4.dp)) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(modifier = inset, verticalAlignment = Alignment.CenterVertically) {
+                        GameNote(
+                            text = when {
+                                humanWon -> "Your point is filled - you win! Claiming your coupon…"
+                                uiState.winner != null -> "The computer filled its point - it wins"
+                                uiState.isComputerThinking || !uiState.isHumanTurn -> "Computer is moving…"
+                                uiState.isResolving -> "Checking the board…"
+                                uiState.selected != null && uiState.pendingMoves.isEmpty() -> "That peg is boxed in - pick another"
+                                uiState.selected != null -> "Tap a gold spot to move there"
+                                else -> "Your move - tap one of your gold pegs"
+                            },
+                            tone = when {
+                                humanWon -> GameTone.WIN
+                                uiState.winner != null -> GameTone.BAD
+                                else -> GameTone.PLAIN
+                            },
+                            modifier = Modifier.weight(1f).padding(end = 10.dp, bottom = 8.dp)
+                        )
+                        SeatCard(CHINESE_CHECKERS_COMPUTER, Modifier.weight(1f))
+                    }
+                    Box(modifier = Modifier.padding(vertical = 6.dp)) {
+                        StarBoard(
+                            position = uiState.position,
+                            me = CHINESE_CHECKERS_HUMAN,
+                            selected = uiState.selected,
+                            targets = uiState.legalTargets,
+                            lastMove = uiState.lastMove,
+                            moveKey = uiState.moveCount,
+                            enabled = uiState.canPlay,
+                            onHoleTap = onHoleTap
+                        )
+                        if (humanWon) {
+                            CelebrationBurst(
+                                colors = listOf(PwGoldDark, PwGoldLight, RubyMid, Color.White),
+                                modifier = Modifier.matchParentSize()
+                            )
+                        }
+                    }
+                    Row(modifier = inset, verticalAlignment = Alignment.CenterVertically) {
+                        SeatCard(CHINESE_CHECKERS_HUMAN, Modifier.weight(1f))
+                        LevelPicker(
+                            uiState = uiState,
+                            onDifficultyChosen = onDifficultyChosen,
+                            modifier = Modifier.weight(1f).padding(start = 10.dp)
+                        )
+                    }
                 }
             }
 
-            ProgressPanel(uiState = uiState, onDifficultyChosen = onDifficultyChosen, modifier = inset.padding(top = 12.dp))
-
             if (uiState.isGameOver && !humanWon) {
-                PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 12.dp))
+                GameGoldButton(
+                    text = "Play again",
+                    icon = Icons.Filled.Refresh,
+                    onClick = onPlayAgain,
+                    modifier = inset.padding(top = 8.dp).fillMaxWidth()
+                )
             }
         }
-    }
-}
-
-@Composable
-private fun StatusLine(text: String, peg: Int?, modifier: Modifier = Modifier, trophy: Boolean = false, busy: Boolean = false) {
-    val gold = MaterialTheme.colorScheme.primary
-    GameStatusBanner(accent = if (peg == CHINESE_CHECKERS_COMPUTER) RubyMid else gold, modifier = modifier) {
-        when {
-            trophy -> Icon(Icons.Filled.EmojiEvents, contentDescription = null, tint = gold, modifier = Modifier.size(26.dp))
-            peg != null -> PegIcon(mine = peg == CHINESE_CHECKERS_HUMAN, modifier = Modifier.size(24.dp))
-        }
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 12.dp)
-        )
-        if (busy) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
     }
 }
 
 /**
- * Under the board: how many pegs each side has home, and how strongly the
- * computer plays - a choice until the first move, then shown locked, so the
- * panel (and the board above it) never changes size mid-game.
+ * How strongly the computer plays, beside your seat: a choice until the first
+ * move, then shown locked, so nothing changes size mid-game.
  */
 @Composable
-private fun ProgressPanel(
+private fun LevelPicker(
     uiState: ChineseCheckersUiState,
     onDifficultyChosen: (ChineseCheckersDifficulty) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(16.dp)
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(Brush.verticalGradient(listOf(NavyPlateTop, NavyPlateBottom)))
-            .border(1.dp, GoldRim, shape)
-            .padding(horizontal = 14.dp, vertical = 10.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            PegsHome(label = "You", player = CHINESE_CHECKERS_HUMAN, count = uiState.pegsHome(CHINESE_CHECKERS_HUMAN), modifier = Modifier.weight(1f))
-            Spacer(modifier = Modifier.width(12.dp))
-            PegsHome(label = "Computer", player = CHINESE_CHECKERS_COMPUTER, count = uiState.pegsHome(CHINESE_CHECKERS_COMPUTER), modifier = Modifier.weight(1f))
-        }
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = if (uiState.canChooseDifficulty) "LEVEL" else "LEVEL · LOCKED",
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp),
+            color = PwTableTextMuted,
+            maxLines = 1
+        )
         Row(
             modifier = Modifier
-                .padding(top = 10.dp)
+                .padding(top = 6.dp)
                 .selectableGroup(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text(
-                text = "Difficulty",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f)
-            )
             ChineseCheckersDifficulty.entries.forEach { difficulty ->
                 DifficultyChip(
                     label = difficulty.label,
@@ -248,27 +260,6 @@ private fun ProgressPanel(
                 )
             }
         }
-    }
-}
-
-/** "●  You  3/10": one side's pegs in its goal point. */
-@Composable
-private fun PegsHome(label: String, player: Int, count: Int, modifier: Modifier = Modifier) {
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        PegIcon(mine = player == CHINESE_CHECKERS_HUMAN, modifier = Modifier.size(18.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .padding(start = 8.dp)
-                .weight(1f)
-        )
-        Text(
-            text = "$count/${ChineseCheckersBoard.PEGS_PER_PLAYER} home",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = if (player == CHINESE_CHECKERS_HUMAN) PwGoldLight else MaterialTheme.colorScheme.onSurface
-        )
     }
 }
 
@@ -283,10 +274,10 @@ private fun DifficultyChip(label: String, chosen: Boolean, enabled: Boolean, onC
         modifier = Modifier
             .alpha(if (enabled || chosen) 1f else 0.4f)
             .clip(shape)
-            .background(if (chosen) Brush.linearGradient(listOf(PwGoldLight, PwGoldDark)) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
-            .border(1.dp, if (chosen) GoldRim else Brush.linearGradient(listOf(PwGoldDark.copy(alpha = 0.6f), PwGoldDark.copy(alpha = 0.6f))), shape)
+            .background(if (chosen) Brush.verticalGradient(listOf(Color(0xFFFFE9A8), PwGoldDark, PwGoldLight)) else Brush.verticalGradient(listOf(Color(0xFF0E1A33), Color(0xFF0A1428))))
+            .border(1.dp, if (chosen) Brush.verticalGradient(listOf(Color(0xFFFFF4CF), Color(0xFF7A5512))) else Brush.verticalGradient(listOf(PwGoldDark.copy(alpha = 0.6f), PwGoldLight.copy(alpha = 0.25f))), shape)
             .selectable(selected = chosen, enabled = enabled, role = Role.RadioButton, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
     )
 }
 
