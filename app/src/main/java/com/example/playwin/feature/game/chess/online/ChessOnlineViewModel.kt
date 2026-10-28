@@ -137,7 +137,7 @@ class ChessOnlineViewModel @Inject constructor(
             val after = ChessEngine.applyMove(position, move)
             val history = earlier + ChessEngine.repetitionKey(position)
             val encoded = after.toRoomJson(history)
-            when (gameEngineRepository.resolve(GameId.CHESS, GameSnapshot.Chess(after, history))) {
+            when (gameEngineRepository.resolve(GameId.CHESS, GameSnapshot.Chess(after, history, before = position, move = move))) {
                 GameOutcome.WIN -> controller.submitMove(encoded, null, RoomStatus.FINISHED, winnerPlayer = me)
                 GameOutcome.DRAW -> controller.submitMove(encoded, null, RoomStatus.FINISHED)
                 GameOutcome.LOSE, GameOutcome.IN_PROGRESS -> controller.submitMove(encoded, nextTurnPlayer = 3 - me)

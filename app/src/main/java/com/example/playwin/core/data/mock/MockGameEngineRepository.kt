@@ -136,6 +136,18 @@ class MockGameEngineRepository internal constructor(
             val lastMover = snapshot.position.sideToMove.opposite()
             return if (other == lastMover) GameOutcome.WIN else GameOutcome.LOSE
         }
+        // The move itself is re-checked when it's sent: it must be legal from the
+        // position before it, lead to the position reported, and that earlier
+        // position must be the last one in the game's history. Anything else was
+        // doctored - a loss for the mover.
+        if (snapshot.move != null || snapshot.before != null) {
+            val before = snapshot.before ?: return GameOutcome.LOSE
+            val sent = snapshot.move ?: return GameOutcome.LOSE
+            val legal = ChessEngine.legalMove(before, sent.from, sent.to, sent.promotion) ?: return GameOutcome.LOSE
+            if (ChessEngine.applyMove(before, legal) != snapshot.position) return GameOutcome.LOSE
+            val lastKey = snapshot.earlierPositions.lastOrNull()
+            if (lastKey != null && lastKey != ChessEngine.repetitionKey(before)) return GameOutcome.LOSE
+        }
         // Checkmate and draws are re-derived here from the full rules engine,
         // never trusted from the client - the mover wins on checkmate.
         val status = ChessEngine.gameStatus(snapshot.position, snapshot.earlierPositions)

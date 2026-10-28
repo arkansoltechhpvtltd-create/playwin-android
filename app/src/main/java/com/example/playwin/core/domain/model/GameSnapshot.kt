@@ -1,5 +1,6 @@
 package com.example.playwin.core.domain.model
 
+import com.example.playwin.core.domain.chess.ChessMove
 import com.example.playwin.core.domain.chess.ChessPosition
 import com.example.playwin.core.domain.chinesecheckers.ChineseCheckersPosition
 import com.example.playwin.core.domain.chess.PieceColor
@@ -116,12 +117,18 @@ sealed interface GameSnapshot {
      * then from the point of view of the side that moved last, as usual.
      * @param resigned the side that has resigned, if one has: they lose, whatever
      * is on the board - again from the point of view of the side that moved last.
+     * @param before the position the last [move] was played from. When both are
+     * given the engine re-checks that [move] was legal there and leads to
+     * [position] - an illegal or doctored move loses - so a position can't be
+     * made up to claim a mate.
      */
     data class Chess(
         val position: ChessPosition,
         val earlierPositions: List<String> = emptyList(),
         val timedOut: PieceColor? = null,
-        val resigned: PieceColor? = null
+        val resigned: PieceColor? = null,
+        val before: ChessPosition? = null,
+        val move: ChessMove? = null
     ) : GameSnapshot
 
     /**

@@ -275,7 +275,7 @@ class ChessViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            when (gameEngineRepository.resolve(GameId.CHESS, GameSnapshot.Chess(newPosition, history))) {
+            when (gameEngineRepository.resolve(GameId.CHESS, GameSnapshot.Chess(newPosition, history, before = position, move = move))) {
                 GameOutcome.WIN -> {
                     _uiState.update {
                         it.copy(winner = if (mover == PieceColor.WHITE) 1 else 2, clock = it.clock.stopped(), isResolving = false)
