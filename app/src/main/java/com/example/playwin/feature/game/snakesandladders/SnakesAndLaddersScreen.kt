@@ -1,8 +1,6 @@
 package com.example.playwin.feature.game.snakesandladders
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -12,7 +10,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +18,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -40,15 +36,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.filled.Refresh
+import com.example.playwin.feature.game.GameGoldButton
+import com.example.playwin.feature.game.GameNote
+import com.example.playwin.feature.game.GameTone
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,10 +53,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
-import com.example.playwin.core.designsystem.theme.PwEmeraldDark
-import com.example.playwin.core.designsystem.theme.PwErrorDark
 import com.example.playwin.core.designsystem.theme.PwGoldDark
-import com.example.playwin.core.designsystem.theme.PwGoldInk
 import com.example.playwin.core.designsystem.theme.PwGoldLight
 import com.example.playwin.core.designsystem.theme.PwTableSurface
 import com.example.playwin.core.designsystem.theme.PwTableSurfaceRaised
@@ -191,31 +185,18 @@ fun noteTone(move: SnakesAndLaddersMove?): NoteTone = when {
     else -> NoteTone.PLAIN
 }
 
-/** The one line of commentary between the players and the board: what the last roll did. */
+/** The one line of commentary between the players and the board: what the last roll did. The same line every game uses. */
 @Composable
 fun SnakesAndLaddersNote(text: String, tone: NoteTone, modifier: Modifier = Modifier) {
-    val color by animateColorAsState(
-        targetValue = when (tone) {
-            NoteTone.PLAIN -> PwTableTextMuted
-            NoteTone.GOOD -> PwEmeraldDark
-            NoteTone.BAD -> PwErrorDark
-            NoteTone.WIN -> PwGoldDark
-        },
-        label = "slNoteColor"
-    )
-    Text(
+    GameNote(
         text = text,
-        style = MaterialTheme.typography.bodyMedium.copy(
-            fontWeight = if (tone == NoteTone.PLAIN) FontWeight.Medium else FontWeight.SemiBold
-        ),
-        color = color,
-        textAlign = TextAlign.Center,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
+        tone = when (tone) {
+            NoteTone.PLAIN -> GameTone.PLAIN
+            NoteTone.GOOD -> GameTone.GOOD
+            NoteTone.BAD -> GameTone.BAD
+            NoteTone.WIN -> GameTone.WIN
+        },
         modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 22.dp)
-            .padding(top = 8.dp)
     )
 }
 
@@ -403,8 +384,8 @@ fun SnakesAndLaddersDock(
         }
         Spacer(modifier = Modifier.width(14.dp))
         when {
-            action != null -> GoldButton(text = action.first, onClick = action.second, modifier = Modifier.weight(1f))
-            canRoll -> GoldButton(text = "Roll", onClick = onRoll, modifier = Modifier.weight(1f))
+            action != null -> GameGoldButton(text = action.first, icon = Icons.Filled.Refresh, onClick = action.second, modifier = Modifier.weight(1f))
+            canRoll -> GameGoldButton(text = "Roll", onClick = onRoll, modifier = Modifier.weight(1f))
             else -> Box(
                 modifier = Modifier
                     .weight(1f)
@@ -423,47 +404,6 @@ fun SnakesAndLaddersDock(
                 )
             }
         }
-    }
-}
-
-/** A tall polished-gold pill with a light that sweeps across it now and then. */
-@Composable
-private fun GoldButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(28.dp)
-    val sweep by rememberInfiniteTransition(label = "slGoldSweep").animateFloat(
-        initialValue = -0.6f,
-        targetValue = 2.2f,
-        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing)),
-        label = "slGoldSweepX"
-    )
-    Box(
-        modifier = modifier
-            .height(56.dp)
-            .shadow(elevation = 10.dp, shape = shape, ambientColor = PwGoldDark, spotColor = PwGoldDark)
-            .clip(shape)
-            .background(Brush.verticalGradient(listOf(Color(0xFFFFE9A8), PwGoldDark, PwGoldLight)))
-            .drawWithContent {
-                drawContent()
-                // The sweeping sheen, then a bright top edge.
-                val x = sweep * size.width
-                drawRect(
-                    Brush.linearGradient(
-                        listOf(Color.Transparent, Color.White.copy(alpha = 0.45f), Color.Transparent),
-                        start = Offset(x - size.height, 0f),
-                        end = Offset(x, size.height)
-                    )
-                )
-            }
-            .border(1.dp, Brush.verticalGradient(listOf(Color(0xFFFFF4CF), Color(0xFF7A5512))), shape)
-            .clickable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text.uppercase(),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp),
-            color = PwGoldInk,
-            maxLines = 1
-        )
     }
 }
 
