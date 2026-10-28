@@ -25,6 +25,17 @@ object RummyEngine {
         return cards
     }
 
+    /** Every card in the shoe by its id, so a card claimed in a hand can be checked against the real one. */
+    private val shoeById: Map<Int, Card> by lazy { buildShoe().associateBy { it.id } }
+
+    /**
+     * Whether [cards] could really be held: every card is the shoe's own card
+     * for its id (same suit and rank, or a printed joker) and no card appears
+     * twice. A hand that fails this was made up, not dealt.
+     */
+    fun isGenuineHand(cards: List<Card>): Boolean =
+        cards.map { it.id }.toSet().size == cards.size && cards.all { shoeById[it.id] == it }
+
     fun deal(): RummyState {
         val shoe = buildShoe().shuffled()
         val playerHand = shoe.subList(0, HAND_SIZE)

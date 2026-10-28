@@ -8,6 +8,7 @@ import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
 import com.example.playwin.core.domain.repository.GameEngineRepository
+import com.example.playwin.core.domain.rummy.RummyEngine
 import com.example.playwin.core.domain.rummy.RummyValidator
 import com.example.playwin.core.domain.snakesandladders.SnakesAndLaddersRules
 import com.example.playwin.core.domain.sudoku.SudokuRules
@@ -168,8 +169,12 @@ class MockGameEngineRepository internal constructor(
         if (LudoEngine.hasAllTokensHome(snapshot.moverTokenPositions)) GameOutcome.WIN else GameOutcome.IN_PROGRESS
 
     private fun resolveRummy(snapshot: GameSnapshot.Rummy): GameOutcome =
-        // An invalid declaration is a losing move in real rummy, not a free retry.
-        if (RummyValidator.isValidDeclaration(snapshot.declaredHand, snapshot.wildRank)) {
+        // An invalid declaration is a losing move in real rummy, not a free retry -
+        // and so is one built from cards that aren't real (an id that isn't that
+        // card in the shoe, or the same card twice).
+        if (RummyEngine.isGenuineHand(snapshot.declaredHand) &&
+            RummyValidator.isValidDeclaration(snapshot.declaredHand, snapshot.wildRank)
+        ) {
             GameOutcome.WIN
         } else {
             GameOutcome.LOSE
