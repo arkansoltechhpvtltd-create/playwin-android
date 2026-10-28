@@ -1,9 +1,37 @@
 package com.example.playwin.feature.game.twenty48
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Functions
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
+import com.example.playwin.core.designsystem.theme.PwTableTextMuted
+import com.example.playwin.feature.game.CelebrationBurst
+import com.example.playwin.feature.game.GameDock
+import com.example.playwin.feature.game.GameDockButton
+import com.example.playwin.feature.game.GameGoldButton
+import com.example.playwin.feature.game.GameNote
+import com.example.playwin.feature.game.GameStatCard
+import com.example.playwin.feature.game.GameTone
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -48,13 +76,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.feature.game.GameScaffold
-import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import com.example.playwin.core.designsystem.theme.PwGoldDark
 import com.example.playwin.core.designsystem.theme.PwGoldLight
 import com.example.playwin.feature.game.BoardSlot
-import com.example.playwin.feature.game.GameStatusBanner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -89,6 +115,8 @@ fun Twenty48Screen(
     onPlayAgain: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val tiles = uiState.board.flatten()
+    val best = tiles.max()
     GameScaffold(
         modifier = modifier.fillMaxSize(),
         topBar = { PwTopBar(title = "2048", onBack = onBack) }
@@ -97,42 +125,64 @@ fun Twenty48Screen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            val statusText = when {
-                uiState.hasWon -> "You reached 2048! Claiming your coupon…"
-                uiState.isGameOver -> "No more moves left"
-                else -> "Swipe to merge tiles"
-            }
-            GameStatusBanner(accent = MaterialTheme.colorScheme.primary) {
-                Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GameStatCard(label = "Time", value = formatElapsed(uiState.elapsedSeconds), icon = Icons.Filled.Timer, modifier = Modifier.weight(1f))
+                GameStatCard(
+                    label = "Best",
+                    value = best.toString(),
+                    icon = Icons.Filled.EmojiEvents,
+                    highlight = uiState.hasWon,
+                    progress = ladderStep(best) / LADDER.lastIndex.toFloat(),
+                    modifier = Modifier.weight(1f)
                 )
+                GameStatCard(label = "Total", value = tiles.sum().toString(), icon = Icons.Filled.Functions, modifier = Modifier.weight(1f))
             }
+            GameNote(
+                text = when {
+                    uiState.hasWon -> "You reached 2048! Claiming your coupon…"
+                    uiState.isGameOver -> "No more moves - the board is locked"
+                    else -> "Swipe to slide - matching tiles merge"
+                },
+                tone = when {
+                    uiState.hasWon -> GameTone.WIN
+                    uiState.isGameOver -> GameTone.BAD
+                    else -> GameTone.PLAIN
+                }
+            )
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                StatChip(label = "Time", value = formatElapsed(uiState.elapsedSeconds), modifier = Modifier.weight(1f))
-                StatChip(label = "Best tile", value = uiState.board.flatten().max().toString(), modifier = Modifier.weight(1f))
-            }
-
-            BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
+            BoardSlot(modifier = Modifier.padding(vertical = 10.dp)) {
                 Board(
                     board = uiState.board,
                     enabled = !uiState.hasWon && !uiState.isGameOver,
                     onSwipe = onSwipe
                 )
+                GameOverPlaque(
+                    visible = uiState.isGameOver,
+                    best = best,
+                    elapsed = formatElapsed(uiState.elapsedSeconds),
+                    onPlayAgain = onPlayAgain,
+                    modifier = Modifier.matchParentSize()
+                )
+                if (uiState.hasWon) {
+                    CelebrationBurst(
+                        colors = listOf(PwGoldDark, PwGoldLight, Color(0xFFFFE395), Color.White),
+                        modifier = Modifier.matchParentSize()
+                    )
+                }
             }
 
-            if (uiState.isGameOver) {
-                PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
+            GameDock {
+                RoadTo2048(best = best)
+                GameDockButton(
+                    label = "New game",
+                    icon = Icons.Filled.Refresh,
+                    enabled = !uiState.hasWon,
+                    onClick = onPlayAgain,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }
@@ -144,37 +194,134 @@ private fun formatElapsed(totalSeconds: Int): String {
     return "%d:%02d".format(minutes, seconds)
 }
 
-private val NavyTop = Color(0xFF16264A)
-private val NavyBottom = Color(0xFF0A1428)
-private val NavyWell = Color(0xFF1C2E52)
-private val NavyInk = Color(0xFF14213D)
-private val GoldRim = Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark))
+/** Every tile on the way to the goal, 2 through 2048. */
+private val LADDER = List(11) { 2 shl it }
 
-/** A navy plaque with a gold rim: a small gold label over a bold white value. */
+/** How far up [LADDER] a tile is: 0 for a 2, the last index for 2048 or beyond. */
+private fun ladderStep(tile: Int): Int = LADDER.indexOfLast { it <= tile }.coerceAtLeast(0)
+
+/**
+ * The climb to 2048 as a rail of eleven rungs, one per tile value: the rungs
+ * already reached are lit in that tile's colours, the newest one breathes,
+ * and the next tile to make is named.
+ */
 @Composable
-private fun StatChip(label: String, value: String, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(14.dp)
-    Column(
-        modifier = modifier
-            .shadow(elevation = 4.dp, shape = shape)
-            .clip(shape)
-            .background(Brush.verticalGradient(listOf(NavyTop, NavyBottom)))
-            .border(1.dp, GoldRim, shape)
-            .padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = label.uppercase(),
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp),
-            color = PwGoldDark
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-            color = Color.White
-        )
+private fun RoadTo2048(best: Int, modifier: Modifier = Modifier) {
+    val reached = ladderStep(best)
+    val next = LADDER.getOrNull(reached + 1)
+    val density = LocalDensity.current
+    val pulse by rememberInfiniteTransition(label = "roadPulse").animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "roadPulseAlpha"
+    )
+    Column(modifier = modifier.fillMaxWidth().semantics(mergeDescendants = true) {}) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "ROAD TO 2048",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp),
+                color = PwGoldDark,
+                maxLines = 1,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = if (next != null) "Next: $next" else "Goal reached!",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = if (next != null) PwTableTextMuted else PwGoldDark,
+                maxLines = 1
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            LADDER.forEachIndexed { step, value ->
+                val style = tileStyle(value)
+                val lit = step <= reached
+                val shape = RoundedCornerShape(6.dp)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(24.dp)
+                        .graphicsLayer { alpha = if (step == reached) pulse else 1f }
+                        .clip(shape)
+                        .background(
+                            if (lit) Brush.verticalGradient(listOf(style.top, style.bottom))
+                            else Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.3f), Color.White.copy(alpha = 0.05f)))
+                        )
+                        .border(1.dp, if (lit) PwGoldDark.copy(alpha = style.rimAlpha) else Color.White.copy(alpha = 0.06f), shape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Sized to the rung rather than the font scale: the value is also read out by "Next" above.
+                    Text(
+                        text = value.toString(),
+                        fontSize = with(density) { (if (value >= 1000) 8.dp else 10.dp).toSp() },
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (lit) style.text else Color.White.copy(alpha = 0.3f),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+        }
     }
 }
+
+/** Laid over the board once it locks up: a dimmed board with the run's result and a way to go again. */
+@Composable
+private fun GameOverPlaque(
+    visible: Boolean,
+    best: Int,
+    elapsed: String,
+    onPlayAgain: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(350)) + scaleIn(tween(350), initialScale = 0.92f),
+        exit = fadeOut(tween(200)),
+        modifier = modifier
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color(0xFF060D1C).copy(alpha = 0.6f)),
+            contentAlignment = Alignment.Center
+        ) {
+            val plaque = RoundedCornerShape(24.dp)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .padding(20.dp)
+                    .shadow(elevation = 16.dp, shape = plaque)
+                    .clip(plaque)
+                    .background(Brush.verticalGradient(listOf(Color(0xFF1D3262), Color(0xFF0E1C38))))
+                    .border(1.5.dp, GoldBevel, plaque)
+                    .padding(horizontal = 24.dp, vertical = 22.dp)
+            ) {
+                Text(
+                    text = "No moves left",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    color = PwGoldDark,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "Best tile $best  ·  $elapsed",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = PwTableTextMuted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                GameGoldButton(text = "Play again", icon = Icons.Filled.Refresh, onClick = onPlayAgain, modifier = Modifier.padding(top = 18.dp))
+            }
+        }
+    }
+}
+
+private val NavyInk = Color(0xFF14213D)
+private val GoldBevel = Brush.linearGradient(listOf(Color(0xFFFFEBB0), PwGoldDark, PwGoldLight, Color(0xFF6E4B10), PwGoldDark))
 
 /** A tile's look: a top-to-bottom gradient, its number colour, and how strongly the gold rim shows. */
 private class TileStyle(val top: Color, val bottom: Color, val text: Color, val rimAlpha: Float)
@@ -360,16 +507,27 @@ private fun Board(
     val scope = rememberCoroutineScope()
     SideEffect { animator.show(board, scope) }
 
-    val frameShape = RoundedCornerShape(22.dp)
+    val frameShape = RoundedCornerShape(24.dp)
+    val wellShape = RoundedCornerShape(19.dp)
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .shadow(elevation = 12.dp, shape = frameShape)
+            .shadow(elevation = 18.dp, shape = frameShape, ambientColor = Color.Black, spotColor = Color.Black)
             .clip(frameShape)
-            .background(Brush.verticalGradient(listOf(NavyTop, NavyBottom)))
-            .border(2.dp, GoldRim, frameShape)
-            .padding(10.dp)
+            // A polished gold bevel round a recessed navy well.
+            .background(GoldBevel)
+            .padding(5.dp)
+            .clip(wellShape)
+            .background(Brush.verticalGradient(listOf(Color(0xFF0B1630), Color(0xFF15284D), Color(0xFF0E1C38))))
+            .drawBehind {
+                // The bevel's shadow falling into the well along its top and left edges.
+                val shade = 14.dp.toPx()
+                drawRect(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.45f), Color.Transparent), endY = shade))
+                drawRect(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.3f), Color.Transparent), endX = shade))
+            }
+            .border(1.dp, Color.Black.copy(alpha = 0.5f), wellShape)
+            .padding(8.dp)
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
                 var totalDrag = Offset.Zero
@@ -392,11 +550,12 @@ private fun Board(
         val gap = 5.dp
         val tileSize = step - gap * 2
         val tileShape = RoundedCornerShape(12.dp)
+        val lip = 4.dp
         val density = LocalDensity.current
         val stepPx = with(density) { step.toPx() }
         val gapPx = with(density) { gap.toPx() }
 
-        // The empty wells.
+        // The empty wells, sunk into the board: shaded at the top, catching light at the foot.
         for (row in 0 until GRID_SIZE) {
             for (col in 0 until GRID_SIZE) {
                 Box(
@@ -407,8 +566,12 @@ private fun Board(
                             translationY = row * stepPx + gapPx
                         }
                         .clip(tileShape)
-                        .background(NavyWell)
-                        .border(1.dp, PwGoldDark.copy(alpha = 0.12f), tileShape)
+                        .background(Brush.verticalGradient(listOf(Color(0xFF0A1429), Color(0xFF1A2D55))))
+                        .border(
+                            1.dp,
+                            Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.45f), PwGoldDark.copy(alpha = 0.18f))),
+                            tileShape
+                        )
                 )
             }
         }
@@ -430,26 +593,46 @@ private fun Board(
                             scaleX = tile.scale.value
                             scaleY = tile.scale.value
                         }
-                        .shadow(elevation = if (value >= 2048) 10.dp else 4.dp, shape = tileShape, ambientColor = style.bottom, spotColor = style.bottom)
+                        .shadow(
+                            elevation = if (value >= 2048) 14.dp else if (value >= 128) 8.dp else 5.dp,
+                            shape = tileShape,
+                            ambientColor = if (value >= 128) style.top else Color.Black,
+                            spotColor = if (value >= 128) style.top else Color.Black
+                        )
+                        .clip(tileShape)
+                        // The tile's body: a darker lip along the foot gives it thickness.
+                        .background(lipColor(style.bottom))
+                        .padding(bottom = lip)
                         .clip(tileShape)
                         .background(Brush.verticalGradient(listOf(style.top, style.bottom)))
-                        // A soft sheen across the upper half, as if lacquered.
-                        .background(Brush.verticalGradient(0f to Color.White.copy(alpha = 0.22f), 0.5f to Color.Transparent))
-                        .border(1.5.dp, PwGoldDark.copy(alpha = style.rimAlpha), tileShape),
+                        // A lacquered sheen across the upper half and a bright top edge.
+                        .background(Brush.verticalGradient(0f to Color.White.copy(alpha = 0.32f), 0.45f to Color.White.copy(alpha = 0.06f), 0.55f to Color.Transparent))
+                        .border(
+                            1.dp,
+                            Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f), PwGoldDark.copy(alpha = style.rimAlpha))),
+                            tileShape
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = value.toString(),
-                        fontSize = fontSize,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = style.text,
-                        maxLines = 1
+                        style = TextStyle(
+                            fontSize = fontSize,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = style.text,
+                            shadow = if (style.text == NavyInk) null else Shadow(Color.Black.copy(alpha = 0.35f), Offset(0f, 2f), 4f)
+                        ),
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
         }
     }
 }
+
+/** The tile's foot: its base colour taken darker. */
+private fun lipColor(base: Color): Color = lerp(base, Color.Black, 0.35f)
 
 private fun resolveSwipeDirection(offset: Offset): SwipeDirection? {
     val threshold = 40f
