@@ -64,7 +64,7 @@ fun EightBallOnlineRoute(
                     onPlaceCueBall = viewModel::onPlaceCueBall
                 )
             }
-            GroupLegend(myGroup = match.playerGroups[me], modifier = Modifier.padding(top = 12.dp), beforeBreak = match.isBreak)
+            GroupLegend(myGroup = match.playerGroups[me], modifier = Modifier.padding(top = 12.dp), beforeBreak = match.isBreak, balls = balls)
         },
         finishedBoard = { room ->
             BoardSlot {

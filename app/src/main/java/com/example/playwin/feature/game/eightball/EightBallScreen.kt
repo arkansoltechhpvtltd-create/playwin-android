@@ -37,10 +37,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,6 +54,19 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.ui.unit.sp
+import com.example.playwin.core.designsystem.theme.PwTableSurface
+import com.example.playwin.core.designsystem.theme.PwTableSurfaceRaised
+import com.example.playwin.core.designsystem.theme.PwTableTextMuted
+import com.example.playwin.feature.game.GameGoldButton
+import com.example.playwin.feature.game.GameNote
+import com.example.playwin.feature.game.GameStatCard
+import com.example.playwin.feature.game.GameTone
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
@@ -105,7 +116,6 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.feature.game.GameScaffold
 import com.example.playwin.R
-import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import com.example.playwin.core.designsystem.theme.PwGoldDark
@@ -119,7 +129,6 @@ import com.example.playwin.core.domain.eightball.Vec2
 import com.example.playwin.core.domain.eightball.ballGroupOf
 import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.CelebrationBurst
-import com.example.playwin.feature.game.GameStatusBanner
 import com.example.playwin.feature.game.PhysicsFrameClock
 import com.example.playwin.feature.game.TurnTimerRing
 import com.example.playwin.feature.game.eightball.online.EightBallOnlineRoute
@@ -203,33 +212,68 @@ fun EightBallScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 8.dp, vertical = 12.dp),
+                .padding(horizontal = 8.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val foul = if (uiState.endedOnFoul) " on a foul" else ""
             val humanWon = uiState.winner == EIGHT_BALL_HUMAN
-            when (uiState.winner) {
-                EIGHT_BALL_HUMAN -> StatusBanner(text = "You win$foul! Claiming your coupon…", trophy = true, modifier = BannerInset)
-                EIGHT_BALL_COMPUTER -> StatusBanner(text = "The computer wins$foul", modifier = BannerInset)
-                else -> TurnBanner(
-                    text = when {
-                        uiState.isComputerThinking -> "Computer is lining up a shot…"
-                        uiState.currentPlayer == EIGHT_BALL_HUMAN -> ballInHandPrompt(uiState.match.ballInHand)
-                        else -> "Computer's shot"
-                    } + buildString {
-                        if (uiState.lastTurnTimedOut) append(" (previous turn timed out)")
-                        uiState.lastFoul?.let {
-                            append(if (uiState.lastFoulBy == EIGHT_BALL_HUMAN) " (your foul: " else " (computer's foul: ")
-                            append("${it.label})")
+            val busy = uiState.isBallsMoving || uiState.isResolving || uiState.isComputerThinking
+
+            Row(modifier = BannerInset.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(EIGHT_BALL_HUMAN to "You", EIGHT_BALL_COMPUTER to "Computer").forEach { (player, name) ->
+                    val group = uiState.playerGroups[player]
+                    val left = group?.let { ballsLeft(it, uiState.balls) }
+                    GameStatCard(
+                        label = name,
+                        value = when {
+                            group == null -> "Open table"
+                            left == 0 -> "On the 8"
+                            else -> "${group.label} · $left"
+                        },
+                        icon = if (player == EIGHT_BALL_HUMAN) Icons.Filled.Person else Icons.Filled.SmartToy,
+                        highlight = (uiState.winner == null && uiState.currentPlayer == player) || uiState.winner == player,
+                        // How much of the group is cleared.
+                        progress = left?.let { (7 - it) / 7f } ?: 0f,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            Row(modifier = BannerInset.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                GameNote(
+                    text = when (uiState.winner) {
+                        EIGHT_BALL_HUMAN -> "You win$foul! Claiming your coupon…"
+                        EIGHT_BALL_COMPUTER -> "The computer wins$foul"
+                        else -> when {
+                            uiState.isComputerThinking -> "Computer is lining up a shot…"
+                            uiState.isBallsMoving -> "Balls rolling…"
+                            uiState.currentPlayer == EIGHT_BALL_HUMAN -> ballInHandPrompt(uiState.match.ballInHand)
+                            else -> "Computer's shot"
+                        } + buildString {
+                            if (uiState.lastTurnTimedOut) append(" (previous turn timed out)")
+                            uiState.lastFoul?.let {
+                                append(if (uiState.lastFoulBy == EIGHT_BALL_HUMAN) " (your foul: " else " (computer's foul: ")
+                                append("${it.label})")
+                            }
                         }
                     },
-                    secondsLeft = uiState.secondsLeft.takeIf { uiState.currentPlayer == EIGHT_BALL_HUMAN },
-                    isBusy = uiState.isBallsMoving || uiState.isResolving || uiState.isComputerThinking,
-                    modifier = BannerInset
+                    tone = when {
+                        humanWon -> GameTone.WIN
+                        uiState.winner != null -> GameTone.BAD
+                        uiState.lastFoul != null || uiState.lastTurnTimedOut -> GameTone.BAD
+                        else -> GameTone.PLAIN
+                    },
+                    modifier = Modifier.weight(1f)
                 )
+                if (uiState.winner == null && uiState.currentPlayer == EIGHT_BALL_HUMAN && !busy) {
+                    TurnTimerRing(
+                        secondsLeft = uiState.secondsLeft,
+                        totalSeconds = EIGHT_BALL_TURN_SECONDS,
+                        modifier = Modifier.padding(start = 8.dp, top = 8.dp)
+                    )
+                }
             }
 
-            BoardSlot(modifier = Modifier.padding(top = 10.dp)) {
+            BoardSlot(modifier = Modifier.padding(top = 8.dp)) {
                 PoolTable(
                     balls = uiState.balls,
                     canAim = uiState.canAim,
@@ -245,28 +289,55 @@ fun EightBallScreen(
                 }
             }
 
-            GroupLegend(
-                myGroup = uiState.playerGroups[EIGHT_BALL_HUMAN],
-                modifier = Modifier.padding(top = 10.dp),
-                beforeBreak = uiState.match.isBreak
-            )
-
             if (uiState.winner == EIGHT_BALL_COMPUTER) {
-                PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
+                GameGoldButton(
+                    text = "Play again",
+                    icon = Icons.Filled.Refresh,
+                    onClick = onPlayAgain,
+                    modifier = BannerInset.padding(top = 10.dp).fillMaxWidth()
+                )
+            } else {
+                GroupLegend(
+                    myGroup = uiState.playerGroups[EIGHT_BALL_HUMAN],
+                    balls = uiState.balls,
+                    modifier = BannerInset.padding(top = 10.dp),
+                    beforeBreak = uiState.match.isBreak
+                )
             }
         }
     }
 }
 
+private val BallGroup.label: String get() = if (this == BallGroup.SOLIDS) "Solids" else "Stripes"
+
+private fun BallGroup.ids(): IntRange = if (this == BallGroup.SOLIDS) 1..7 else 9..15
+
+/** How many of [group] are still on the table. */
+private fun ballsLeft(group: BallGroup, balls: List<Ball>): Int = balls.count { it.id in group.ids() && !it.pocketed }
+
+/**
+ * The turn line as a raised navy card with a gold rim: the cue ball, what to
+ * do, a spinner while balls roll or a shot is judged, and the turn clock.
+ */
 @Composable
 fun TurnBanner(text: String, secondsLeft: Int?, isBusy: Boolean, modifier: Modifier = Modifier) {
-    GameStatusBanner(accent = MaterialTheme.colorScheme.secondary, modifier = modifier) {
+    val shape = RoundedCornerShape(18.dp)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(elevation = 4.dp, shape = shape)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(PwTableSurfaceRaised, PwTableSurface)))
+            .border(1.dp, Brush.linearGradient(listOf(PwGoldDark.copy(alpha = 0.6f), PwGoldLight.copy(alpha = 0.3f))), shape)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Canvas(modifier = Modifier.size(26.dp)) {
             drawBall(id = CUE_BALL_ID, center = center, radius = size.minDimension * 0.42f, label = null)
         }
         Text(
             text = text,
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier
                 .weight(1f)
@@ -277,7 +348,8 @@ fun TurnBanner(text: String, secondsLeft: Int?, isBusy: Boolean, modifier: Modif
                 modifier = Modifier
                     .padding(end = if (secondsLeft != null) 10.dp else 0.dp)
                     .size(16.dp),
-                strokeWidth = 2.dp
+                strokeWidth = 2.dp,
+                color = PwGoldDark
             )
         }
         if (secondsLeft != null) {
@@ -286,63 +358,84 @@ fun TurnBanner(text: String, secondsLeft: Int?, isBusy: Boolean, modifier: Modif
     }
 }
 
+/**
+ * Your rack: once groups are set, your seven balls in a row - the ones still on
+ * the table lit, the potted ones faded - then the 8 you finish on. Before
+ * that, a note that the table is open. Pass [balls] to show which are potted.
+ */
 @Composable
-private fun StatusBanner(text: String, modifier: Modifier = Modifier, trophy: Boolean = false) {
-    val gold = MaterialTheme.colorScheme.primary
-    GameStatusBanner(accent = gold, modifier = modifier) {
-        if (trophy) {
-            Icon(
-                imageVector = Icons.Filled.EmojiEvents,
-                contentDescription = null,
-                tint = gold,
-                modifier = Modifier
-                    .padding(end = 12.dp)
-                    .size(26.dp)
+fun GroupLegend(myGroup: BallGroup?, modifier: Modifier = Modifier, beforeBreak: Boolean = false, balls: List<Ball>? = null) {
+    val shape = RoundedCornerShape(22.dp)
+    val onTable = balls?.filterNot { it.pocketed }?.map { it.id }?.toSet()
+    val labels = rememberRackLabels()
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .shadow(elevation = 6.dp, shape = shape)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(PwTableSurfaceRaised, PwTableSurface)))
+            .border(1.dp, Brush.verticalGradient(listOf(PwGoldDark.copy(alpha = 0.55f), PwGoldLight.copy(alpha = 0.15f))), shape)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (myGroup == null) {
+            Canvas(modifier = Modifier.size(RackBall)) {
+                drawBall(id = CUE_BALL_ID, center = center, radius = size.minDimension * 0.46f, label = null)
+            }
+            Text(
+                // Pots on the break don't assign groups; the first legal pot after it does.
+                text = if (beforeBreak) "Table open - groups are set after the break" else "Table open - next pot picks your group",
+                style = MaterialTheme.typography.bodyMedium,
+                color = PwTableTextMuted,
+                maxLines = 2,
+                modifier = Modifier.weight(1f).padding(horizontal = 10.dp)
             )
+            Canvas(modifier = Modifier.size(RackBall)) {
+                drawBall(id = 8, center = center, radius = size.minDimension * 0.46f, label = labels[8])
+            }
+            return@Row
         }
         Text(
-            text = text,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f)
+            text = "YOURS",
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp),
+            color = PwGoldDark,
+            maxLines = 1,
+            modifier = Modifier.padding(end = 10.dp)
         )
+        Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            myGroup.ids().forEach { id ->
+                val live = onTable == null || id in onTable
+                Canvas(modifier = Modifier.size(RackBall).graphicsLayer { alpha = if (live) 1f else 0.25f }) {
+                    drawBall(id = id, center = center, radius = size.minDimension * 0.46f, label = labels[id])
+                }
+            }
+        }
+        Box(modifier = Modifier.padding(horizontal = 8.dp).size(width = 1.dp, height = 22.dp).background(PwGoldDark.copy(alpha = 0.4f)))
+        Canvas(modifier = Modifier.size(RackBall)) {
+            drawBall(id = 8, center = center, radius = size.minDimension * 0.46f, label = labels[8])
+        }
     }
 }
 
-/** Which group is yours, shown as a chip with a sample ball of that group and the 8 you finish on. */
+/** A ball in the rack under the table. */
+private val RackBall = 24.dp
+
+/** Numbers for the rack's balls, sized to their spots as on the table. */
 @Composable
-fun GroupLegend(myGroup: BallGroup?, modifier: Modifier = Modifier, beforeBreak: Boolean = false) {
-    val shape = RoundedCornerShape(14.dp)
-    Row(
-        modifier = modifier
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (myGroup != null) {
-            val sample = if (myGroup == BallGroup.SOLIDS) 3 else 10
-            Canvas(modifier = Modifier.size(22.dp)) {
-                drawBall(id = sample, center = center, radius = size.minDimension * 0.42f, label = null)
-            }
-        }
-        Text(
-            text = when {
-                myGroup != null -> "You: ${myGroup.name.lowercase()} · then sink the 8"
-                // Pots on the break don't assign groups; the first legal pot after it does.
-                beforeBreak -> "Table open - groups are set after the break"
-                else -> "Table open - next pot picks your group"
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = if (myGroup != null) 8.dp else 0.dp)
+private fun rememberRackLabels(): Map<Int, TextLayoutResult> {
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    return remember(density) {
+        val radius = with(density) { RackBall.toPx() } * 0.46f
+        fun style(size: Float) = TextStyle(
+            color = BallNumberInk,
+            fontWeight = FontWeight.Black,
+            letterSpacing = (-0.04).em,
+            fontSize = with(density) { (radius * size).toSp() },
+            platformStyle = PlatformTextStyle(includeFontPadding = false)
         )
-        if (myGroup != null) {
-            Canvas(modifier = Modifier.size(22.dp)) {
-                drawBall(id = 8, center = center, radius = size.minDimension * 0.42f, label = null)
-            }
-        }
+        (1..15).associateWith { textMeasurer.measure(it.toString(), style(if (it < 10) 0.98f else 0.8f)) }
     }
 }
 
