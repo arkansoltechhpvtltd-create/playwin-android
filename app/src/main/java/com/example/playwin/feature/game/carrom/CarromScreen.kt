@@ -24,10 +24,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,6 +40,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
+import com.example.playwin.core.designsystem.theme.PwTableSurface
+import com.example.playwin.core.designsystem.theme.PwTableSurfaceRaised
+import com.example.playwin.core.designsystem.theme.PwTableTextMuted
+import com.example.playwin.feature.game.GameGoldButton
+import com.example.playwin.feature.game.GameNote
+import com.example.playwin.feature.game.GameTone
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import androidx.compose.ui.draw.clip
@@ -66,7 +77,6 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.feature.game.GameScaffold
 import com.example.playwin.R
-import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import com.example.playwin.core.designsystem.theme.PwGoldDark
@@ -84,7 +94,6 @@ import com.example.playwin.core.domain.carrom.Vec2
 import com.example.playwin.core.domain.carrom.coinColorOf
 import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.CelebrationBurst
-import com.example.playwin.feature.game.GameStatusBanner
 import com.example.playwin.feature.game.PhysicsFrameClock
 import com.example.playwin.feature.game.TurnTimerRing
 import com.example.playwin.feature.game.carrom.online.CarromOnlineRoute
@@ -152,71 +161,121 @@ fun CarromScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val score = "${uiState.scores[CARROM_HUMAN]}-${uiState.scores[CARROM_COMPUTER]}"
             val humanWon = uiState.winner == CARROM_HUMAN
-            when {
-                uiState.isDraw -> StatusBanner(text = "It's a draw! $score")
-                humanWon -> StatusBanner(text = "You win $score! Claiming your coupon…", trophy = true)
-                uiState.winner == CARROM_COMPUTER -> StatusBanner(text = "The computer wins $score")
-                else -> TurnBanner(
-                    text = when {
+            val busy = uiState.isPiecesMoving || uiState.isResolving || uiState.isComputerThinking
+
+            val myColor = uiState.playerColors[CARROM_HUMAN]
+            GameNote(
+                text = when {
+                    uiState.isDraw -> "It's a draw! $score"
+                    humanWon -> "You win $score! Claiming your coupon…"
+                    uiState.winner == CARROM_COMPUTER -> "The computer wins $score"
+                    else -> when {
                         uiState.isComputerThinking -> "Computer is lining up a shot…"
+                        uiState.isPiecesMoving -> "Pieces sliding…"
                         uiState.currentPlayer == CARROM_HUMAN -> "Your shot - slide the striker, then drag back"
                         else -> "Computer's shot"
                     } + buildString {
                         if (uiState.lastTurnTimedOut) append(" (previous turn timed out)")
                         dueNote(uiState)?.let { append(" ($it)") }
-                    },
-                    secondsLeft = uiState.secondsLeft.takeIf { uiState.currentPlayer == CARROM_HUMAN },
-                    isBusy = uiState.isPiecesMoving || uiState.isResolving || uiState.isComputerThinking
-                )
-            }
-            if (!uiState.isGameOver) {
-                queenNote(uiState)?.let { QueenBanner(text = it, modifier = Modifier.padding(top = 8.dp)) }
-            }
+                    }
+                },
+                tone = when {
+                    humanWon -> GameTone.WIN
+                    uiState.winner != null -> GameTone.BAD
+                    uiState.fouled || uiState.lastTurnTimedOut -> GameTone.BAD
+                    else -> GameTone.PLAIN
+                }
+            )
 
-            BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
-                CarromBoardView(
-                    coins = uiState.coins,
-                    canAim = uiState.canAim,
-                    onShoot = onShoot,
-                    onPlaceStriker = onPlaceStriker
-                )
-                if (humanWon) {
-                    CelebrationBurst(
-                        colors = listOf(PwGoldDark, PwGoldLight, QueenFace, WhiteFace, MaterialTheme.colorScheme.secondary),
-                        modifier = Modifier.matchParentSize()
-                    )
+            // Each side's card at its own baseline - the computer's at the top, yours at the
+            // bottom - with the turn clock and the queen's state in the corners left free.
+            // All of it scales down together on a short screen.
+            BoardSlot(modifier = Modifier.padding(vertical = 8.dp)) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                            if (!uiState.isGameOver && uiState.currentPlayer == CARROM_HUMAN && !busy) {
+                                TurnTimerRing(secondsLeft = uiState.secondsLeft, totalSeconds = CARROM_TURN_SECONDS)
+                                Text(
+                                    text = "TURN\nTIMER",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp),
+                                    color = PwTableTextMuted,
+                                    modifier = Modifier.padding(start = 10.dp)
+                                )
+                            }
+                        }
+                        ScoreChip(
+                            label = "Computer",
+                            score = uiState.scores.getValue(CARROM_COMPUTER),
+                            color = myColor?.other(),
+                            active = !uiState.isGameOver && uiState.currentPlayer == CARROM_COMPUTER,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Box(modifier = Modifier.padding(vertical = 10.dp)) {
+                        CarromBoardView(
+                            coins = uiState.coins,
+                            canAim = uiState.canAim,
+                            onShoot = onShoot,
+                            onPlaceStriker = onPlaceStriker
+                        )
+                        if (humanWon) {
+                            CelebrationBurst(
+                                colors = listOf(PwGoldDark, PwGoldLight, QueenFace, WhiteFace, MaterialTheme.colorScheme.secondary),
+                                modifier = Modifier.matchParentSize()
+                            )
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ScoreChip(
+                            label = "You",
+                            score = uiState.scores.getValue(CARROM_HUMAN),
+                            color = myColor,
+                            active = (!uiState.isGameOver && uiState.currentPlayer == CARROM_HUMAN) || humanWon,
+                            modifier = Modifier.weight(1f)
+                        )
+                        QueenStatus(uiState = uiState, modifier = Modifier.weight(1f).padding(start = 10.dp))
+                    }
                 }
             }
 
-            ScoreLegend(
-                myColor = uiState.playerColors[CARROM_HUMAN],
-                myScore = uiState.scores.getValue(CARROM_HUMAN),
-                theirScore = uiState.scores.getValue(CARROM_COMPUTER),
-                theirLabel = "Computer",
-                modifier = Modifier.padding(top = 12.dp)
-            )
-
             if (uiState.isGameOver && uiState.winner != CARROM_HUMAN) {
-                PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 20.dp))
+                GameGoldButton(text = "Play again", icon = Icons.Filled.Refresh, onClick = onPlayAgain, modifier = Modifier.fillMaxWidth())
+            } else {
+                CoinTray(coins = uiState.coins, myColor = uiState.playerColors[CARROM_HUMAN])
             }
         }
     }
 }
 
+/**
+ * The turn line as a raised navy card with a gold rim: the striker, what to
+ * do, a spinner while pieces slide or a shot is judged, and the turn clock.
+ */
 @Composable
 fun TurnBanner(text: String, secondsLeft: Int?, isBusy: Boolean, modifier: Modifier = Modifier) {
-    GameStatusBanner(accent = MaterialTheme.colorScheme.primary, modifier = modifier) {
+    val shape = RoundedCornerShape(18.dp)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(elevation = 4.dp, shape = shape)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(PwTableSurfaceRaised, PwTableSurface)))
+            .border(1.dp, Brush.linearGradient(listOf(PwGoldDark.copy(alpha = 0.6f), PwGoldLight.copy(alpha = 0.3f))), shape)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Canvas(modifier = Modifier.size(26.dp)) {
             drawCarromPiece(center = center, radius = size.minDimension * 0.44f, piece = StrikerPiece)
         }
         Text(
             text = text,
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier
                 .weight(1f)
@@ -227,7 +286,8 @@ fun TurnBanner(text: String, secondsLeft: Int?, isBusy: Boolean, modifier: Modif
                 modifier = Modifier
                     .padding(end = if (secondsLeft != null) 10.dp else 0.dp)
                     .size(16.dp),
-                strokeWidth = 2.dp
+                strokeWidth = 2.dp,
+                color = PwGoldDark
             )
         }
         if (secondsLeft != null) {
@@ -248,68 +308,68 @@ private fun dueNote(uiState: CarromUiState): String? {
     }
 }
 
-/** The queen line under the turn banner: an owed cover, or what just happened to the queen. */
-private fun queenNote(uiState: CarromUiState): String? = when {
-    uiState.queenCoverOwedBy == CARROM_HUMAN -> "Cover the Queen — pot one of your coins"
-    uiState.queenCoverOwedBy == CARROM_COMPUTER -> "Computer must cover the Queen this shot"
-    uiState.lastQueenEvent == QueenEvent.CLAIMED -> "Queen covered! +$QUEEN_POINTS"
-    uiState.lastQueenEvent == QueenEvent.RETURNED -> "Queen not covered — back to the centre"
-    else -> null
-}
-
+/**
+ * The queen beside your seat: the piece, and where things stand with it - on
+ * the board, owed a cover (in gold, since it's urgent), or covered and won.
+ */
 @Composable
-private fun QueenBanner(text: String, modifier: Modifier = Modifier) {
-    GameStatusBanner(accent = QueenFace, modifier = modifier) {
-        Canvas(modifier = Modifier.size(22.dp)) {
-            drawCarromPiece(center = center, radius = size.minDimension * 0.44f, piece = QueenPiece)
-        }
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 12.dp)
-        )
+private fun QueenStatus(uiState: CarromUiState, modifier: Modifier = Modifier) {
+    val onBoard = uiState.coins.any { it.id == QUEEN_ID && !it.pocketed }
+    val (text, urgent) = when {
+        uiState.queenCoverOwedBy == CARROM_HUMAN -> "Cover it now - pot one of yours" to true
+        uiState.queenCoverOwedBy == CARROM_COMPUTER -> "Computer must cover it" to true
+        uiState.lastQueenEvent == QueenEvent.CLAIMED -> "Covered! +$QUEEN_POINTS" to true
+        uiState.lastQueenEvent == QueenEvent.RETURNED -> "Not covered - back to the centre" to false
+        onBoard -> "On the board" to false
+        else -> "Covered" to false
     }
-}
-
-@Composable
-private fun StatusBanner(text: String, modifier: Modifier = Modifier, trophy: Boolean = false) {
-    val gold = MaterialTheme.colorScheme.primary
-    GameStatusBanner(accent = gold, modifier = modifier) {
-        if (trophy) {
-            Icon(
-                imageVector = Icons.Filled.EmojiEvents,
-                contentDescription = null,
-                tint = gold,
-                modifier = Modifier
-                    .padding(end = 12.dp)
-                    .size(26.dp)
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+        Canvas(modifier = Modifier.size(30.dp).graphicsLayer { alpha = if (onBoard || urgent) 1f else 0.4f }) {
+            drawCarromPiece(center = center, radius = size.minDimension * 0.42f, piece = QueenPiece)
+        }
+        Column(modifier = Modifier.padding(start = 8.dp)) {
+            Text(
+                text = "QUEEN",
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp),
+                color = PwTableTextMuted,
+                maxLines = 1
+            )
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = if (urgent) FontWeight.SemiBold else FontWeight.Normal),
+                color = if (urgent) PwGoldDark else MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
         }
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f)
-        )
     }
 }
 
-/** The scoreboard under the board: each side's coin colour (once claimed) and coins potted. */
+/**
+ * The scoreboard: a card per side with its coin colour (once claimed) and
+ * points. [myTurn] lights the side to shoot - true for you, false for them,
+ * null for neither.
+ */
 @Composable
-fun ScoreLegend(myColor: CoinColor?, myScore: Int, theirScore: Int, theirLabel: String, modifier: Modifier = Modifier) {
+fun ScoreLegend(
+    myColor: CoinColor?,
+    myScore: Int,
+    theirScore: Int,
+    theirLabel: String,
+    modifier: Modifier = Modifier,
+    myTurn: Boolean? = null,
+    showOpenHint: Boolean = true
+) {
     Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ScoreChip(label = "You", score = myScore, color = myColor, modifier = Modifier.weight(1f))
-            ScoreChip(label = theirLabel, score = theirScore, color = myColor?.other(), modifier = Modifier.weight(1f))
+            ScoreChip(label = "You", score = myScore, color = myColor, active = myTurn == true, modifier = Modifier.weight(1f))
+            ScoreChip(label = theirLabel, score = theirScore, color = myColor?.other(), active = myTurn == false, modifier = Modifier.weight(1f))
         }
-        if (myColor == null) {
+        if (myColor == null && showOpenHint) {
             Text(
                 text = "Board open - first pot picks your color",
                 style = MaterialTheme.typography.bodySmall,
@@ -320,39 +380,111 @@ fun ScoreLegend(myColor: CoinColor?, myScore: Int, theirScore: Int, theirLabel: 
     }
 }
 
+/** A side's card, in the same raised navy and gold as every game's stat cards, with its coin in place of an icon. */
 @Composable
-private fun ScoreChip(label: String, score: Int, color: CoinColor?, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(14.dp)
+private fun ScoreChip(label: String, score: Int, color: CoinColor?, active: Boolean, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(18.dp)
+    val glow by animateFloatAsState(if (active) 1f else 0f, tween(300), label = "carromChipGlow")
     Row(
         modifier = modifier
+            .shadow(elevation = (4 + 8 * glow).dp, shape = shape, ambientColor = PwGoldDark.copy(alpha = glow), spotColor = PwGoldDark.copy(alpha = glow))
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .background(Brush.verticalGradient(listOf(PwTableSurfaceRaised, PwTableSurface)))
+            .background(Brush.horizontalGradient(listOf(PwGoldDark.copy(alpha = 0.14f * glow), Color.Transparent)))
+            .border(
+                width = (1f + 0.5f * glow).dp,
+                brush = Brush.linearGradient(listOf(PwGoldDark.copy(alpha = 0.45f + 0.55f * glow), PwGoldLight.copy(alpha = 0.2f + 0.6f * glow))),
+                shape = shape
+            )
+            .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label.uppercase(),
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp),
+                color = PwGoldDark,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = when (color) {
+                    CoinColor.WHITE -> "White"
+                    CoinColor.BLACK -> "Black"
+                    else -> "Open"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = PwTableTextMuted,
+                maxLines = 1
+            )
+        }
         if (color != null) {
-            Canvas(modifier = Modifier.size(22.dp)) {
-                drawCarromPiece(center = center, radius = size.minDimension * 0.44f, piece = pieceFor(color))
+            Canvas(modifier = Modifier.padding(end = 8.dp).size(26.dp)) {
+                drawCarromPiece(center = center, radius = size.minDimension * 0.42f, piece = pieceFor(color))
             }
         }
         Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = if (color != null) 8.dp else 0.dp)
-        )
-        Text(
             text = "$score",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold, fontFeatureSettings = "tnum"),
             color = MaterialTheme.colorScheme.onSurface
         )
     }
 }
 
+/**
+ * Every coin, in two rows under the board - whites and blacks, yours first
+ * once colours are claimed - with the queen at the end. Potted coins fade out.
+ */
+@Composable
+private fun CoinTray(coins: List<Coin>, myColor: CoinColor?, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(22.dp)
+    val onBoard = coins.filterNot { it.pocketed }.map { it.id }.toSet()
+    val rows = listOf(myColor ?: CoinColor.WHITE, (myColor ?: CoinColor.WHITE).other())
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(elevation = 6.dp, shape = shape)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(PwTableSurfaceRaised, PwTableSurface)))
+            .border(1.dp, Brush.verticalGradient(listOf(PwGoldDark.copy(alpha = 0.55f), PwGoldLight.copy(alpha = 0.15f))), shape)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        rows.forEachIndexed { index, color ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = when {
+                        myColor == null -> if (color == CoinColor.WHITE) "WHITE" else "BLACK"
+                        index == 0 -> "YOURS"
+                        else -> "CPU"
+                    },
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp),
+                    color = PwGoldDark,
+                    maxLines = 1,
+                    modifier = Modifier.widthIn(min = 62.dp).padding(end = 8.dp)
+                )
+                Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    (1..18).filter { coinColorOf(it) == color }.forEach { id ->
+                        Canvas(modifier = Modifier.size(20.dp).graphicsLayer { alpha = if (id in onBoard) 1f else 0.22f }) {
+                            drawCarromPiece(center = center, radius = size.minDimension * 0.44f, piece = pieceFor(color))
+                        }
+                    }
+                }
+                // The queen sits at the end of the top row.
+                Box(modifier = Modifier.padding(start = 10.dp).size(22.dp)) {
+                    if (index == 0) {
+                        Canvas(modifier = Modifier.matchParentSize().graphicsLayer { alpha = if (QUEEN_ID in onBoard) 1f else 0.22f }) {
+                            drawCarromPiece(center = center, radius = size.minDimension * 0.44f, piece = QueenPiece)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 private val FrameDark = Color(0xFF34190B)
+private val CarromGoldBevel = Brush.linearGradient(listOf(Color(0xFFFFEBB0), PwGoldDark, PwGoldLight, Color(0xFF6E4B10), PwGoldDark))
 private val LineInk = Color(0xFF3E2412)
 private val LineRed = Color(0xFFB0342C)
 private val QueenFace = Color(0xFFD2304A)
@@ -453,16 +585,20 @@ fun CarromBoardView(
         null
     }
     val gold = MaterialTheme.colorScheme.primary
-    val frameShape = RoundedCornerShape(6.dp)
+    val frameShape = RoundedCornerShape(10.dp)
     // Light falls from the top of the *screen*, whichever way the board is turned.
     val lightDir = if (flipped) -1f else 1f
 
+    // A polished gold bevel round the artwork's own wooden frame.
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .shadow(elevation = 12.dp, shape = frameShape)
+            .shadow(elevation = 18.dp, shape = frameShape, ambientColor = Color.Black, spotColor = Color.Black)
             .clip(frameShape)
+            .background(CarromGoldBevel)
+            .padding(4.dp)
+            .clip(RoundedCornerShape(7.dp))
             .background(FrameDark)
     ) {
         // The artwork stays upright when the board is turned for player 2 - it's
@@ -475,6 +611,30 @@ fun CarromBoardView(
             contentScale = ContentScale.FillBounds,
             filterQuality = FilterQuality.High,
             modifier = Modifier.matchParentSize()
+        )
+        // A lamp over the middle of the board and the corners falling into shade, so the
+        // flat artwork reads as a lit surface. Under the pieces, which are drawn after.
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .drawBehind {
+                    drawRect(
+                        Brush.radialGradient(
+                            0f to Color(0xFFFFE6B8).copy(alpha = 0.16f),
+                            0.45f to Color.Transparent,
+                            center = center,
+                            radius = size.minDimension * 0.7f
+                        )
+                    )
+                    drawRect(
+                        Brush.radialGradient(
+                            0.55f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.38f),
+                            center = center,
+                            radius = size.minDimension * 0.72f
+                        )
+                    )
+                }
         )
         // The play area sits exactly on the artwork's playing surface, inside its rail.
         // The pockets and baselines are the artwork's too: CarromBoard measures them
@@ -650,9 +810,33 @@ private fun DrawScope.drawCarromPiece(
     lightDir: Float = 1f,
     alpha: Float = 1f
 ) {
-    drawCircle(Color.Black.copy(alpha = 0.3f * alpha), radius * 1.04f, center + Offset(0f, radius * 0.2f * lightDir))
+    // A soft contact shadow, so the piece sits on the board.
+    val shadowAt = center + Offset(0f, radius * 0.22f * lightDir)
+    drawCircle(
+        brush = Brush.radialGradient(
+            0f to Color.Black.copy(alpha = 0.45f * alpha),
+            0.7f to Color.Black.copy(alpha = 0.25f * alpha),
+            1f to Color.Transparent,
+            center = shadowAt,
+            radius = radius * 1.18f
+        ),
+        radius = radius * 1.18f,
+        center = shadowAt
+    )
     drawCircle(piece.rim.copy(alpha = alpha), radius, center)
-    drawCircle(piece.face.copy(alpha = alpha), radius * 0.88f, center - Offset(0f, radius * 0.04f * lightDir))
+    // The face, lit from above: lighter toward the light, deeper away from it.
+    val faceAt = center - Offset(0f, radius * 0.04f * lightDir)
+    drawCircle(
+        brush = Brush.radialGradient(
+            0f to lerp(piece.face, Color.White, 0.35f).copy(alpha = alpha),
+            0.6f to piece.face.copy(alpha = alpha),
+            1f to lerp(piece.face, piece.rim, 0.45f).copy(alpha = alpha),
+            center = faceAt - Offset(radius * 0.25f, radius * 0.3f * lightDir),
+            radius = radius * 1.1f
+        ),
+        radius = radius * 0.88f,
+        center = faceAt
+    )
     drawCircle(piece.groove.copy(alpha = alpha), radius * 0.56f, center, style = Stroke(width = radius * 0.1f))
     drawCircle(piece.groove.copy(alpha = alpha), radius * 0.2f, center)
     drawArc(
