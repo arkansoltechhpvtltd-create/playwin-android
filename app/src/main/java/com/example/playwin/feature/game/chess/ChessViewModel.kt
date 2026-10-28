@@ -41,8 +41,9 @@ private const val COMPUTER_CLOCK_FRACTION = 30
 private const val CLOCK_TICK_MILLIS = 100L
 
 /**
- * Chess against the computer: the human plays White ([CHESS_HUMAN]),
- * [ChessBot] plays Black. Legal move generation and check/checkmate/
+ * Chess against the computer: the human plays the side they chose
+ * ([ChessUiState.humanColor], White by default), [ChessBot] the other - and
+ * as White it makes the first move. Legal move generation and check/checkmate/
  * stalemate detection are all delegated to the pure [ChessEngine] - this
  * ViewModel only tracks selection state and whose turn it is. The *verdict*
  * on whether a checkmate actually ends the round in a win is still confirmed
@@ -114,8 +115,9 @@ class ChessViewModel @Inject constructor(
 
     fun onPlayAgain() {
         computerJob?.cancel()
-        // A new game keeps the time control and difficulty the player last chose.
-        _uiState.value = ChessUiState(clock = ChessClock(_uiState.value.clock.control), difficulty = _uiState.value.difficulty)
+        // A new game keeps the side, time control and difficulty the player last chose.
+        val last = _uiState.value
+        _uiState.value = ChessUiState(clock = ChessClock(last.clock.control), difficulty = last.difficulty, humanColor = last.humanColor)
     }
 
     /**
@@ -146,7 +148,7 @@ class ChessViewModel @Inject constructor(
         }
         val outcome = gameEngineRepository.resolve(
             GameId.CHESS,
-            GameSnapshot.Chess(state.position, state.earlierPositions, resigned = CHESS_HUMAN)
+            GameSnapshot.Chess(state.position, state.earlierPositions, resigned = state.humanColor)
         )
         // The engine answers for the side that moved last.
         val lastMover = state.position.sideToMove.opposite()
@@ -157,9 +159,9 @@ class ChessViewModel @Inject constructor(
         }
         _uiState.update {
             it.copy(
-                winner = winner?.let { color -> if (color == PieceColor.WHITE) 1 else 2 },
+                winner = winner?.let(::playerNumber),
                 isDraw = winner == null,
-                resigned = CHESS_HUMAN,
+                resigned = state.humanColor,
                 isResolving = false
             )
         }
@@ -175,6 +177,18 @@ class ChessViewModel @Inject constructor(
     fun onTimeControlChosen(control: TimeControl) {
         if (!_uiState.value.canChooseTimeControl) return
         _uiState.update { it.copy(clock = ChessClock(control)) }
+    }
+
+    /** Picks the side the player plays; only before the game starts. */
+    fun onSideChosen(color: PieceColor) {
+        if (!_uiState.value.canChooseTimeControl) return
+        _uiState.update { it.copy(humanColor = color) }
+    }
+
+    /** Starts a game the player plays as Black: the computer makes White's first move. */
+    fun onStart() {
+        if (!_uiState.value.awaitingStart) return
+        playComputerMove()
     }
 
     init {
@@ -227,13 +241,13 @@ class ChessViewModel @Inject constructor(
             }
             _uiState.update {
                 it.copy(
-                    winner = winner?.let { color -> if (color == PieceColor.WHITE) 1 else 2 },
+                    winner = winner?.let(::playerNumber),
                     isDraw = winner == null,
                     timedOut = flagged,
                     isResolving = false
                 )
             }
-            if (winner == CHESS_HUMAN) {
+            if (winner == state.humanColor) {
                 val coupon = rewardsRepository.claimReward(GameId.CHESS)
                 couponsRepository.addCoupon(coupon)
                 _uiState.update { it.copy(wonCouponId = coupon.id) }
@@ -278,9 +292,9 @@ class ChessViewModel @Inject constructor(
             when (gameEngineRepository.resolve(GameId.CHESS, GameSnapshot.Chess(newPosition, history, before = position, move = move))) {
                 GameOutcome.WIN -> {
                     _uiState.update {
-                        it.copy(winner = if (mover == PieceColor.WHITE) 1 else 2, clock = it.clock.stopped(), isResolving = false)
+                        it.copy(winner = playerNumber(mover), clock = it.clock.stopped(), isResolving = false)
                     }
-                    if (mover == CHESS_HUMAN) {
+                    if (mover == state.humanColor) {
                         val coupon = rewardsRepository.claimReward(GameId.CHESS)
                         couponsRepository.addCoupon(coupon)
                         _uiState.update { it.copy(wonCouponId = coupon.id) }
@@ -298,7 +312,7 @@ class ChessViewModel @Inject constructor(
 
                 GameOutcome.LOSE, GameOutcome.IN_PROGRESS -> {
                     _uiState.update { it.copy(isResolving = false) }
-                    if (newPosition.sideToMove != CHESS_HUMAN) playComputerMove()
+                    if (newPosition.sideToMove != state.humanColor) playComputerMove()
                 }
             }
         }

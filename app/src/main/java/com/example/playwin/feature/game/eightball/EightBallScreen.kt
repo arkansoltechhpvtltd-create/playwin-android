@@ -128,6 +128,10 @@ import com.example.playwin.core.domain.eightball.EightBallTable
 import com.example.playwin.core.domain.eightball.Vec2
 import com.example.playwin.core.domain.eightball.ballGroupOf
 import com.example.playwin.feature.game.BoardSlot
+import com.example.playwin.feature.game.FirstTurn
+import com.example.playwin.feature.game.GameSetupOverlay
+import com.example.playwin.feature.game.SetupNote
+import com.example.playwin.feature.game.SetupPicker
 import com.example.playwin.feature.game.CelebrationBurst
 import com.example.playwin.feature.game.PhysicsFrameClock
 import com.example.playwin.feature.game.TurnTimerRing
@@ -180,7 +184,9 @@ private fun EightBallComputerRoute(
         onBack = onBack,
         onShoot = viewModel::onShoot,
         onPlayAgain = viewModel::onPlayAgain,
-        onPlaceCueBall = viewModel::onPlaceCueBall
+        onPlaceCueBall = viewModel::onPlaceCueBall,
+        onFirstTurnChosen = viewModel::onFirstTurnChosen,
+        onStart = viewModel::onStart
     )
 }
 
@@ -202,7 +208,9 @@ fun EightBallScreen(
     onShoot: (direction: Vec2, power: Float) -> Unit,
     onPlayAgain: () -> Unit,
     modifier: Modifier = Modifier,
-    onPlaceCueBall: ((Vec2) -> Unit)? = null
+    onPlaceCueBall: ((Vec2) -> Unit)? = null,
+    onFirstTurnChosen: (FirstTurn) -> Unit = {},
+    onStart: () -> Unit = {}
 ) {
     GameScaffold(
         modifier = modifier.fillMaxSize(),
@@ -244,6 +252,7 @@ fun EightBallScreen(
                         EIGHT_BALL_HUMAN -> "You win$foul! Claiming your coupon…"
                         EIGHT_BALL_COMPUTER -> "The computer wins$foul"
                         else -> when {
+                            !uiState.started -> "Choose who breaks"
                             uiState.isComputerThinking -> "Computer is lining up a shot…"
                             uiState.isBallsMoving -> "Balls rolling…"
                             uiState.currentPlayer == EIGHT_BALL_HUMAN -> ballInHandPrompt(uiState.match.ballInHand)
@@ -264,7 +273,7 @@ fun EightBallScreen(
                     },
                     modifier = Modifier.weight(1f)
                 )
-                if (uiState.winner == null && uiState.currentPlayer == EIGHT_BALL_HUMAN && !busy) {
+                if (uiState.started && uiState.winner == null && uiState.currentPlayer == EIGHT_BALL_HUMAN && !busy) {
                     TurnTimerRing(
                         secondsLeft = uiState.secondsLeft,
                         totalSeconds = EIGHT_BALL_TURN_SECONDS,
@@ -286,6 +295,19 @@ fun EightBallScreen(
                         colors = listOf(PwGoldDark, PwGoldLight, Color.White, ballColors.getValue(3), ballColors.getValue(2)),
                         modifier = Modifier.matchParentSize()
                     )
+                }
+                if (!uiState.started) {
+                    GameSetupOverlay(onStart = onStart) {
+                        SetupPicker(
+                            title = "Who breaks",
+                            options = FirstTurn.entries,
+                            label = { it.label },
+                            selected = uiState.firstTurn,
+                            onChoose = onFirstTurnChosen,
+                            columns = 2
+                        )
+                        SetupNote("Solids or stripes are still settled by the first legal pot after the break")
+                    }
                 }
             }
 

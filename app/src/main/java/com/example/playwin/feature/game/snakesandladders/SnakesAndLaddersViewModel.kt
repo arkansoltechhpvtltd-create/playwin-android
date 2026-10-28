@@ -9,6 +9,7 @@ import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import com.example.playwin.core.domain.snakesandladders.SnakesAndLaddersRules
+import com.example.playwin.feature.game.FirstTurn
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -23,9 +24,9 @@ import javax.inject.Inject
 private const val COMPUTER_PAUSE_MILLIS = 450L
 
 /**
- * Snakes and Ladders against the computer: the human is [SL_HUMAN] and rolls
- * first, and the computer just rolls on its turn - there are no choices to
- * make. The die is thrown by [GameEngineRepository.rollDie], the move is
+ * Snakes and Ladders against the computer: the human is [SL_HUMAN], with the
+ * token colour they chose, and whoever they picked rolls first; the computer
+ * just rolls on its turn - there are no choices to make. The die is thrown by [GameEngineRepository.rollDie], the move is
  * [SnakesAndLaddersRules.play], and whether it won is confirmed by
  * [GameEngineRepository.resolve], never decided here. Only a human win
  * claims a reward.
@@ -47,9 +48,31 @@ class SnakesAndLaddersViewModel @Inject constructor(
         takeTurn()
     }
 
+    /** Picks the player's token colour; only before the game starts. */
+    fun onColorChosen(color: SlTokenColor) {
+        if (_uiState.value.started) return
+        _uiState.update { it.copy(humanColor = color) }
+    }
+
+    /** Picks who rolls first; only before the game starts. */
+    fun onFirstTurnChosen(firstTurn: FirstTurn) {
+        if (_uiState.value.started) return
+        _uiState.update { it.copy(firstTurn = firstTurn, game = snakesAndLaddersGameFor(firstTurn)) }
+    }
+
+    /** Starts the game: if the computer rolls first, it rolls straight away. */
+    fun onStart() {
+        val state = _uiState.value
+        if (state.started) return
+        _uiState.update { it.copy(started = true) }
+        if (state.game.turn == SL_COMPUTER) takeTurn()
+    }
+
     fun onPlayAgain() {
         turnJob?.cancel()
-        _uiState.value = SnakesAndLaddersUiState()
+        // Back to the setup, keeping the colour and first roller the player last chose.
+        val last = _uiState.value
+        _uiState.value = SnakesAndLaddersUiState(humanColor = last.humanColor, firstTurn = last.firstTurn)
     }
 
     private fun takeTurn() {

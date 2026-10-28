@@ -3,6 +3,8 @@ package com.example.playwin.feature.game.carrom
 import com.example.playwin.core.domain.carrom.CarromBoard
 import com.example.playwin.core.domain.carrom.CarromFoul
 import com.example.playwin.core.domain.carrom.CarromMatch
+import com.example.playwin.core.domain.carrom.CarromRules
+import com.example.playwin.feature.game.FirstTurn
 import com.example.playwin.core.domain.carrom.Coin
 import com.example.playwin.core.domain.carrom.CoinColor
 import com.example.playwin.core.domain.carrom.DueEvent
@@ -30,12 +32,33 @@ fun slideStriker(coins: List<Coin>, x: Float): List<Coin>? {
     return coins.map { if (it.id == STRIKER_ID) it.copy(position = target) else it }
 }
 
-/** In "Play vs Computer" the human is player 1 (bottom baseline) and shoots first; the computer is player 2. */
+/** In "Play vs Computer" the human is player 1 (bottom baseline); the computer is player 2 (top). */
 const val CARROM_HUMAN = 1
 const val CARROM_COMPUTER = 2
 
+/**
+ * A fresh vs-Computer match: the player owns [humanColor] from the start (no
+ * first-pot draw) and the computer the other, and whoever [firstTurn] names
+ * breaks, the striker on their baseline.
+ */
+fun carromMatchFor(humanColor: CoinColor, firstTurn: FirstTurn): CarromMatch {
+    val breaker = if (firstTurn == FirstTurn.YOU) CARROM_HUMAN else CARROM_COMPUTER
+    val setup = CarromBoard.initialSetup()
+    return CarromMatch(
+        coins = if (breaker == CARROM_HUMAN) setup else CarromRules.respotStriker(setup, breaker),
+        currentPlayer = breaker,
+        playerColors = mapOf(CARROM_HUMAN to humanColor, CARROM_COMPUTER to humanColor.other())
+    )
+}
+
 data class CarromUiState(
-    val match: CarromMatch = CarromMatch(),
+    /** The coins the player chose; the computer plays the other colour. */
+    val humanColor: CoinColor = CoinColor.WHITE,
+    /** Who the player chose to break. */
+    val firstTurn: FirstTurn = FirstTurn.YOU,
+    val match: CarromMatch = carromMatchFor(humanColor, firstTurn),
+    /** False while the player is still choosing: nothing moves and no clock runs. */
+    val started: Boolean = false,
     /** What's drawn: the match's coins, or the pieces mid-flight while a shot plays out. */
     val coins: List<Coin> = match.coins,
     val secondsLeft: Int = CARROM_TURN_SECONDS,
@@ -64,5 +87,5 @@ data class CarromUiState(
     val scores: Map<Int, Int> get() = match.scores
     val isGameOver: Boolean get() = winner != null || isDraw
     val canAim: Boolean
-        get() = !isGameOver && !isPiecesMoving && !isResolving && !isComputerThinking && currentPlayer == CARROM_HUMAN
+        get() = started && !isGameOver && !isPiecesMoving && !isResolving && !isComputerThinking && currentPlayer == CARROM_HUMAN
 }

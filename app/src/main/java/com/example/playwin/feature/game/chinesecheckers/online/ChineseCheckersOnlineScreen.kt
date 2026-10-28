@@ -45,7 +45,7 @@ fun ChineseCheckersOnlineRoute(
 
             // Both players see their own pegs gold, starting at the bottom.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                PegIcon(mine = true, modifier = Modifier.size(16.dp))
+                PegIcon(gold = true, modifier = Modifier.size(16.dp))
                 Text(
                     text = "You're gold · ${ChineseCheckersRules.pegsInGoal(position, me)}/10 home · " +
                         "opponent ${ChineseCheckersRules.pegsInGoal(position, opponent)}/10",

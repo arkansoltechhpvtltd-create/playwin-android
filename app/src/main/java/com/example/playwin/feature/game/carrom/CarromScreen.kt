@@ -93,6 +93,10 @@ import com.example.playwin.core.domain.carrom.STRIKER_ID
 import com.example.playwin.core.domain.carrom.Vec2
 import com.example.playwin.core.domain.carrom.coinColorOf
 import com.example.playwin.feature.game.BoardSlot
+import com.example.playwin.feature.game.FirstTurn
+import com.example.playwin.feature.game.GameSetupOverlay
+import com.example.playwin.feature.game.SetupNote
+import com.example.playwin.feature.game.SetupPicker
 import com.example.playwin.feature.game.CelebrationBurst
 import com.example.playwin.feature.game.PhysicsFrameClock
 import com.example.playwin.feature.game.TurnTimerRing
@@ -139,7 +143,10 @@ private fun CarromComputerRoute(
         onBack = onBack,
         onShoot = viewModel::onShoot,
         onPlaceStriker = viewModel::onPlaceStriker,
-        onPlayAgain = viewModel::onPlayAgain
+        onPlayAgain = viewModel::onPlayAgain,
+        onColorChosen = viewModel::onColorChosen,
+        onFirstTurnChosen = viewModel::onFirstTurnChosen,
+        onStart = viewModel::onStart
     )
 }
 
@@ -151,7 +158,10 @@ fun CarromScreen(
     onShoot: (direction: Vec2, power: Float) -> Unit,
     onPlayAgain: () -> Unit,
     modifier: Modifier = Modifier,
-    onPlaceStriker: ((x: Float) -> Unit)? = null
+    onPlaceStriker: ((x: Float) -> Unit)? = null,
+    onColorChosen: (CoinColor) -> Unit = {},
+    onFirstTurnChosen: (FirstTurn) -> Unit = {},
+    onStart: () -> Unit = {}
 ) {
     GameScaffold(
         modifier = modifier.fillMaxSize(),
@@ -171,6 +181,7 @@ fun CarromScreen(
             val myColor = uiState.playerColors[CARROM_HUMAN]
             GameNote(
                 text = when {
+                    !uiState.started -> "Choose your coins and who breaks"
                     uiState.isDraw -> "It's a draw! $score"
                     humanWon -> "You win $score! Claiming your coupon…"
                     uiState.winner == CARROM_COMPUTER -> "The computer wins $score"
@@ -199,7 +210,7 @@ fun CarromScreen(
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                            if (!uiState.isGameOver && uiState.currentPlayer == CARROM_HUMAN && !busy) {
+                            if (uiState.started && !uiState.isGameOver && uiState.currentPlayer == CARROM_HUMAN && !busy) {
                                 TurnTimerRing(secondsLeft = uiState.secondsLeft, totalSeconds = CARROM_TURN_SECONDS)
                                 Text(
                                     text = "TURN\nTIMER",
@@ -229,6 +240,31 @@ fun CarromScreen(
                                 colors = listOf(PwGoldDark, PwGoldLight, QueenFace, WhiteFace, MaterialTheme.colorScheme.secondary),
                                 modifier = Modifier.matchParentSize()
                             )
+                        }
+                        if (!uiState.started) {
+                            GameSetupOverlay(onStart = onStart) {
+                                SetupPicker(
+                                    title = "Play as",
+                                    options = listOf(CoinColor.WHITE, CoinColor.BLACK),
+                                    label = ::coinColorName,
+                                    selected = uiState.humanColor,
+                                    onChoose = onColorChosen,
+                                    columns = 2,
+                                    swatch = { pieceFor(it).face }
+                                )
+                                SetupPicker(
+                                    title = "Who breaks",
+                                    options = FirstTurn.entries,
+                                    label = { it.label },
+                                    selected = uiState.firstTurn,
+                                    onChoose = onFirstTurnChosen,
+                                    columns = 2
+                                )
+                                SetupNote(
+                                    "You play ${coinColorName(uiState.humanColor)}, the computer ${coinColorName(uiState.humanColor.other())} · " +
+                                        if (uiState.firstTurn == FirstTurn.YOU) "you break" else "the computer breaks"
+                                )
+                            }
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -380,6 +416,12 @@ fun ScoreLegend(
     }
 }
 
+private fun coinColorName(color: CoinColor): String = when (color) {
+    CoinColor.WHITE -> "White"
+    CoinColor.BLACK -> "Black"
+    CoinColor.QUEEN -> "Queen"
+}
+
 /** A side's card, in the same raised navy and gold as every game's stat cards, with its coin in place of an icon. */
 @Composable
 private fun ScoreChip(label: String, score: Int, color: CoinColor?, active: Boolean, modifier: Modifier = Modifier) {
@@ -408,11 +450,7 @@ private fun ScoreChip(label: String, score: Int, color: CoinColor?, active: Bool
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = when (color) {
-                    CoinColor.WHITE -> "White"
-                    CoinColor.BLACK -> "Black"
-                    else -> "Open"
-                },
+                text = color?.let(::coinColorName) ?: "Open",
                 style = MaterialTheme.typography.bodySmall,
                 color = PwTableTextMuted,
                 maxLines = 1

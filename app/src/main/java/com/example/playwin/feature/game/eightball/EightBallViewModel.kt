@@ -15,6 +15,7 @@ import com.example.playwin.core.domain.model.GameSnapshot
 import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
+import com.example.playwin.feature.game.FirstTurn
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,8 +31,9 @@ import javax.inject.Inject
 private const val COMPUTER_MIN_THINK_MILLIS = 700L
 
 /**
- * 8-ball against the computer: the human is [EIGHT_BALL_HUMAN] and breaks,
- * [EightBallBot] plays [EIGHT_BALL_COMPUTER]. Ball physics runs frame by
+ * 8-ball against the computer: the human is [EIGHT_BALL_HUMAN], [EightBallBot]
+ * plays [EIGHT_BALL_COMPUTER], and the player picks who breaks before the
+ * game starts. Ball physics runs frame by
  * frame from the screen's clock; groups and turn order come from
  * [EightBallRules]; the *verdict* on whether sinking the 8 won or lost
  * always comes from [GameEngineRepository.resolve], never decided locally.
@@ -55,8 +57,17 @@ class EightBallViewModel @Inject constructor(
     private val pocketedThisShot = mutableListOf<Int>()
     private val eventsThisShot = mutableListOf<TableEvent>()
 
-    init {
-        startTimer()
+    /** Picks who breaks; only before the game starts. */
+    fun onFirstTurnChosen(firstTurn: FirstTurn) {
+        if (_uiState.value.started) return
+        _uiState.value = EightBallUiState(firstTurn = firstTurn)
+    }
+
+    /** Starts the game: the breaker takes the first shot. */
+    fun onStart() {
+        if (_uiState.value.started) return
+        _uiState.update { it.copy(started = true) }
+        startTurn()
     }
 
     fun onShoot(direction: Vec2, power: Float) {
@@ -99,8 +110,8 @@ class EightBallViewModel @Inject constructor(
         computerJob?.cancel()
         pocketedThisShot.clear()
         eventsThisShot.clear()
-        _uiState.value = EightBallUiState()
-        startTimer()
+        // Back to the setup, keeping the breaker the player last chose.
+        _uiState.value = EightBallUiState(firstTurn = _uiState.value.firstTurn)
     }
 
     private fun shoot(direction: Vec2, power: Float) {

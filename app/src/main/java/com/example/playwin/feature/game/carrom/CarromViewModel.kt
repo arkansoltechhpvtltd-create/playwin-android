@@ -6,6 +6,8 @@ import com.example.playwin.core.domain.carrom.CarromBot
 import com.example.playwin.core.domain.carrom.CarromPhysics
 import com.example.playwin.core.domain.carrom.CarromRules
 import com.example.playwin.core.domain.carrom.CarromShotOutcome
+import com.example.playwin.core.domain.carrom.CoinColor
+import com.example.playwin.feature.game.FirstTurn
 import com.example.playwin.core.domain.carrom.QueenEvent
 import com.example.playwin.core.domain.carrom.STRIKER_ID
 import com.example.playwin.core.domain.carrom.Vec2
@@ -31,7 +33,8 @@ private const val COMPUTER_MIN_THINK_MILLIS = 700L
 
 /**
  * Carrom against the computer: the human is [CARROM_HUMAN] (bottom), and
- * [CarromBot] plays [CARROM_COMPUTER] (top). Striker physics runs frame by
+ * [CarromBot] plays [CARROM_COMPUTER] (top). Before the game the player picks
+ * their coin colour (the computer gets the other) and who breaks. Striker physics runs frame by
  * frame from the screen's clock; scoring and turn order come from
  * [CarromRules]; the *verdict* on who wins - the first to clear their coins
  * once the queen is covered - always comes from [GameEngineRepository.resolve],
@@ -54,8 +57,25 @@ class CarromViewModel @Inject constructor(
     // can be pocketed on any frame while the pieces are rolling.
     private val pocketedThisShot = mutableListOf<Int>()
 
-    init {
-        startTimer()
+    /** Picks the player's coin colour; only before the game starts. */
+    fun onColorChosen(color: CoinColor) {
+        val state = _uiState.value
+        if (state.started) return
+        _uiState.value = CarromUiState(humanColor = color, firstTurn = state.firstTurn)
+    }
+
+    /** Picks who breaks; only before the game starts. */
+    fun onFirstTurnChosen(firstTurn: FirstTurn) {
+        val state = _uiState.value
+        if (state.started) return
+        _uiState.value = CarromUiState(humanColor = state.humanColor, firstTurn = firstTurn)
+    }
+
+    /** Starts the game: the breaker takes the first shot. */
+    fun onStart() {
+        if (_uiState.value.started) return
+        _uiState.update { it.copy(started = true) }
+        startTurn()
     }
 
     fun onShoot(direction: Vec2, power: Float) {
@@ -95,8 +115,9 @@ class CarromViewModel @Inject constructor(
         timerJob?.cancel()
         computerJob?.cancel()
         pocketedThisShot.clear()
-        _uiState.value = CarromUiState()
-        startTimer()
+        // Back to the setup, keeping the colour and breaker the player last chose.
+        val last = _uiState.value
+        _uiState.value = CarromUiState(humanColor = last.humanColor, firstTurn = last.firstTurn)
     }
 
     private fun shoot(direction: Vec2, power: Float) {

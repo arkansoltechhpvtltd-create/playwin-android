@@ -61,6 +61,10 @@ import com.example.playwin.core.designsystem.theme.PwTableTextMuted
 import com.example.playwin.core.domain.snakesandladders.SnakesAndLaddersMove
 import com.example.playwin.core.domain.snakesandladders.SnakesAndLaddersRules
 import com.example.playwin.feature.game.GameScaffold
+import com.example.playwin.feature.game.FirstTurn
+import com.example.playwin.feature.game.GameSetupOverlay
+import com.example.playwin.feature.game.SetupNote
+import com.example.playwin.feature.game.SetupPicker
 import com.example.playwin.feature.game.online.GameModeSelectScreen
 import com.example.playwin.feature.game.online.PlayMode
 import com.example.playwin.feature.game.snakesandladders.online.SnakesAndLaddersOnlineRoute
@@ -99,11 +103,12 @@ private fun SnakesAndLaddersComputerRoute(
         uiState = uiState,
         onBack = onBack,
         onRoll = viewModel::onRoll,
-        onPlayAgain = viewModel::onPlayAgain
+        onPlayAgain = viewModel::onPlayAgain,
+        onColorChosen = viewModel::onColorChosen,
+        onFirstTurnChosen = viewModel::onFirstTurnChosen,
+        onStart = viewModel::onStart
     )
 }
-
-private val COMPUTER_TOKEN_COLORS = listOf(SlGoldToken, SlPearlToken)
 
 @Composable
 fun SnakesAndLaddersScreen(
@@ -111,9 +116,13 @@ fun SnakesAndLaddersScreen(
     onBack: () -> Unit,
     onRoll: () -> Unit,
     onPlayAgain: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onColorChosen: (SlTokenColor) -> Unit = {},
+    onFirstTurnChosen: (FirstTurn) -> Unit = {},
+    onStart: () -> Unit = {}
 ) {
     val names = listOf("You", "Computer")
+    val tokenColors = uiState.tokenColors
     val move = uiState.lastMove
     val winner = uiState.winner
     GameScaffold(
@@ -130,12 +139,13 @@ fun SnakesAndLaddersScreen(
             SnakesAndLaddersPlayers(
                 names = names,
                 positions = uiState.game.positions,
-                tokenColors = COMPUTER_TOKEN_COLORS,
+                tokenColors = tokenColors,
                 // While a roll plays out, the player making it stays highlighted.
                 turn = (if (uiState.isBusy) move?.player ?: uiState.game.turn else uiState.game.turn).takeIf { winner == null },
                 winner = winner
             )
             when {
+                !uiState.started -> SnakesAndLaddersNote("Choose your token and who rolls first", NoteTone.PLAIN)
                 winner == SL_HUMAN -> SnakesAndLaddersNote("You win! Claiming your coupon…", NoteTone.WIN)
                 winner != null -> SnakesAndLaddersNote("The computer wins this round", NoteTone.PLAIN)
                 else -> SnakesAndLaddersNote(
@@ -150,11 +160,36 @@ fun SnakesAndLaddersScreen(
                 SnakesAndLaddersBoard(
                     positions = uiState.game.positions,
                     lastMove = move,
-                    tokenColors = COMPUTER_TOKEN_COLORS,
+                    tokenColors = tokenColors,
                     description = boardDescription(names, uiState.game.positions),
-                    activePlayer = uiState.game.turn.takeIf { winner == null && !uiState.isBusy },
+                    activePlayer = uiState.game.turn.takeIf { uiState.started && winner == null && !uiState.isBusy },
                     celebrate = winner == SL_HUMAN
                 )
+                if (!uiState.started) {
+                    GameSetupOverlay(onStart = onStart) {
+                        SetupPicker(
+                            title = "Play as",
+                            options = SlTokenColor.entries,
+                            label = { it.label },
+                            selected = uiState.humanColor,
+                            onChoose = onColorChosen,
+                            columns = 2,
+                            swatch = { it.colors[1] }
+                        )
+                        SetupPicker(
+                            title = "Who rolls first",
+                            options = FirstTurn.entries,
+                            label = { it.label },
+                            selected = uiState.firstTurn,
+                            onChoose = onFirstTurnChosen,
+                            columns = 2
+                        )
+                        SetupNote(
+                            "The computer plays ${uiState.computerColor.label} · " +
+                                if (uiState.firstTurn == FirstTurn.YOU) "you roll first" else "the computer rolls first"
+                        )
+                    }
+                }
             }
 
             SnakesAndLaddersDock(
@@ -162,6 +197,7 @@ fun SnakesAndLaddersScreen(
                 rollCount = uiState.game.turnsPlayed,
                 canRoll = uiState.canRoll,
                 waitingLabel = when {
+                    !uiState.started -> "Pick your token"
                     winner == SL_HUMAN -> "Well played!"
                     uiState.isBusy && move?.player == SL_HUMAN -> "Moving…"
                     uiState.isBusy -> "Computer is moving…"

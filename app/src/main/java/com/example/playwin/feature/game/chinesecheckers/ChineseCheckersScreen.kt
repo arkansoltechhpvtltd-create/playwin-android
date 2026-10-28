@@ -42,6 +42,9 @@ import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.ui.unit.sp
 import com.example.playwin.core.designsystem.theme.PwTableTextMuted
 import com.example.playwin.feature.game.GameGoldButton
+import com.example.playwin.feature.game.GameSetupOverlay
+import com.example.playwin.feature.game.SetupNote
+import com.example.playwin.feature.game.SetupPicker
 import com.example.playwin.feature.game.GameNote
 import com.example.playwin.feature.game.GameStatCard
 import com.example.playwin.feature.game.GameTone
@@ -120,7 +123,9 @@ private fun ChineseCheckersComputerRoute(
         onBack = onBack,
         onHoleTap = viewModel::onHoleTap,
         onPlayAgain = viewModel::onPlayAgain,
-        onDifficultyChosen = viewModel::onDifficultyChosen
+        onDifficultyChosen = viewModel::onDifficultyChosen,
+        onColorChosen = viewModel::onColorChosen,
+        onStart = viewModel::onStart
     )
 }
 
@@ -131,7 +136,9 @@ fun ChineseCheckersScreen(
     onHoleTap: (Int) -> Unit,
     onPlayAgain: () -> Unit,
     modifier: Modifier = Modifier,
-    onDifficultyChosen: (ChineseCheckersDifficulty) -> Unit = {}
+    onDifficultyChosen: (ChineseCheckersDifficulty) -> Unit = {},
+    onColorChosen: (PegColor) -> Unit = {},
+    onStart: () -> Unit = {}
 ) {
     GameScaffold(
         modifier = modifier.fillMaxSize(),
@@ -146,37 +153,39 @@ fun ChineseCheckersScreen(
                 .padding(horizontal = BoardSideMargin, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            val humanWon = uiState.winner == CHINESE_CHECKERS_HUMAN
+            val humanWon = uiState.winner == uiState.humanPlayer
+            val myColor = uiState.humanColor
             val inset = Modifier.padding(horizontal = 16.dp - BoardSideMargin)
 
             @Composable
             fun SeatCard(player: Int, modifier: Modifier) {
                 val home = uiState.pegsHome(player)
                 GameStatCard(
-                    label = if (player == CHINESE_CHECKERS_HUMAN) "You" else "Computer",
+                    label = if (player == uiState.humanPlayer) "You" else "Computer",
                     value = "$home/${ChineseCheckersBoard.PEGS_PER_PLAYER} home",
-                    icon = if (player == CHINESE_CHECKERS_HUMAN) Icons.Filled.Person else Icons.Filled.SmartToy,
+                    icon = if (player == uiState.humanPlayer) Icons.Filled.Person else Icons.Filled.SmartToy,
                     highlight = (!uiState.isGameOver && uiState.position.sideToMove == player) || uiState.winner == player,
                     progress = home / ChineseCheckersBoard.PEGS_PER_PLAYER.toFloat(),
                     modifier = modifier
                 )
             }
 
-            // Each side's card by its own point - the computer's ruby point at the top, your
-            // gold one at the bottom - with the turn line and the level in the corners left
+            // Each side's card by its own point - the computer's at the top, yours at the
+            // bottom, whichever you chose - with the turn line and the level in the corners left
             // free. All of it scales down together on a short screen.
             BoardSlot(modifier = Modifier.padding(vertical = 4.dp)) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(modifier = inset, verticalAlignment = Alignment.CenterVertically) {
                         GameNote(
                             text = when {
+                                !uiState.started -> "Choose your pegs, then start"
                                 humanWon -> "Your point is filled - you win! Claiming your coupon…"
                                 uiState.winner != null -> "The computer filled its point - it wins"
                                 uiState.isComputerThinking || !uiState.isHumanTurn -> "Computer is moving…"
                                 uiState.isResolving -> "Checking the board…"
                                 uiState.selected != null && uiState.pendingMoves.isEmpty() -> "That peg is boxed in - pick another"
                                 uiState.selected != null -> "Tap a gold spot to move there"
-                                else -> "Your move - tap one of your gold pegs"
+                                else -> "Your move - tap one of your ${myColor.label.lowercase()} pegs"
                             },
                             tone = when {
                                 humanWon -> GameTone.WIN
@@ -185,12 +194,13 @@ fun ChineseCheckersScreen(
                             },
                             modifier = Modifier.weight(1f).padding(end = 10.dp, bottom = 8.dp)
                         )
-                        SeatCard(CHINESE_CHECKERS_COMPUTER, Modifier.weight(1f))
+                        SeatCard(uiState.computerPlayer, Modifier.weight(1f))
                     }
                     Box(modifier = Modifier.padding(vertical = 6.dp)) {
                         StarBoard(
                             position = uiState.position,
-                            me = CHINESE_CHECKERS_HUMAN,
+                            me = uiState.humanPlayer,
+                            myColor = myColor,
                             selected = uiState.selected,
                             targets = uiState.legalTargets,
                             lastMove = uiState.lastMove,
@@ -204,9 +214,26 @@ fun ChineseCheckersScreen(
                                 modifier = Modifier.matchParentSize()
                             )
                         }
+                        if (!uiState.started) {
+                            GameSetupOverlay(onStart = onStart) {
+                                SetupPicker(
+                                    title = "Play as",
+                                    options = PegColor.entries,
+                                    label = { it.label },
+                                    selected = myColor,
+                                    onChoose = onColorChosen,
+                                    columns = 2,
+                                    swatch = ::pegSwatch
+                                )
+                                SetupNote(
+                                    // Your point is always drawn at the bottom, whichever it is on the board.
+                                    "You move first · the computer plays ${myColor.other().label} from the opposite point"
+                                )
+                            }
+                        }
                     }
                     Row(modifier = inset, verticalAlignment = Alignment.CenterVertically) {
-                        SeatCard(CHINESE_CHECKERS_HUMAN, Modifier.weight(1f))
+                        SeatCard(uiState.humanPlayer, Modifier.weight(1f))
                         LevelPicker(
                             uiState = uiState,
                             onDifficultyChosen = onDifficultyChosen,
@@ -281,13 +308,16 @@ private fun DifficultyChip(label: String, chosen: Boolean, enabled: Boolean, onC
     )
 }
 
-/** One peg on its own: gold if it's [mine], ruby for the other side. */
+/** One peg on its own, [gold] or ruby. */
 @Composable
-internal fun PegIcon(mine: Boolean, modifier: Modifier = Modifier) {
+internal fun PegIcon(gold: Boolean, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
-        drawPeg(center = center, radius = size.minDimension * 0.45f, mine = mine)
+        drawPeg(center = center, radius = size.minDimension * 0.45f, gold = gold)
     }
 }
+
+/** A peg colour's body, for its swatch in the setup panel. */
+private fun pegSwatch(color: PegColor): Color = if (color == PegColor.GOLD) PwGoldDark else RubyMid
 
 // --- The board ---
 
@@ -309,8 +339,8 @@ private fun holeOffset(hole: Hole): Offset = Offset(hole.q + hole.r / 2f, hole.r
 
 /**
  * The star, seen by player [me]: their home point at the bottom and their
- * pegs gold, the other side's at the top in ruby (for player 2 the board is
- * turned round). A navy plate with a gold rim, a well for every hole and the
+ * pegs in [myColor], the other side's at the top in the other colour (for
+ * player 2 the board is turned round). A navy plate with a gold rim, a well for every hole and the
  * pegs in them; the [selected] peg glows, its [targets] pulse gold, and
  * [lastMove]'s route is traced faintly while the peg hops along it - each
  * time [moveKey] changes.
@@ -325,9 +355,11 @@ internal fun StarBoard(
     moveKey: Int,
     enabled: Boolean,
     onHoleTap: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    myColor: PegColor = PegColor.GOLD
 ) {
     val holes = ChineseCheckersBoard.holes
+    val goldIsMine = myColor == PegColor.GOLD
     val currentOnTap by rememberUpdatedState(onHoleTap)
     // Player 2 sees the board turned half round, so their home is at the bottom too.
     val view = if (me == 2) -1f else 1f
@@ -370,8 +402,8 @@ internal fun StarBoard(
         fun at(i: Int): Offset = centre + offset(i) * unit
 
         drawStarPlate(centre, unit)
-        drawHomePoint(mine = true, centre, unit)
-        drawHomePoint(mine = false, centre, unit)
+        drawHomePoint(mine = true, gold = goldIsMine, centre, unit)
+        drawHomePoint(mine = false, gold = !goldIsMine, centre, unit)
 
         val animating = shownMove != null && hop.value < shownMove.path.size
         shownMove?.let { drawRoute(it, ::at, unit) }
@@ -383,7 +415,7 @@ internal fun StarBoard(
             val player = position.cells[i]
             if (player == 0 || (animating && i == shownMove!!.to)) return@forEach
             if (i == selected) drawSelection(at(i), unit)
-            drawPeg(at(i), unit * PEG_RADIUS, mine = player == me)
+            drawPeg(at(i), unit * PEG_RADIUS, gold = (player == me) == goldIsMine)
         }
 
         // The moving peg, hopping from hole to hole along its route.
@@ -396,7 +428,7 @@ internal fun StarBoard(
             val lift = sin(PI.toFloat() * t)
             val mine = position.cells[move.to] == me
             drawCircle(Color.Black.copy(alpha = 0.25f), radius = unit * PEG_RADIUS, center = flying + Offset(0f, unit * (0.08f + 0.18f * lift)))
-            drawPeg(flying - Offset(0f, unit * 0.22f * lift), unit * PEG_RADIUS * (1f + 0.18f * lift), mine)
+            drawPeg(flying - Offset(0f, unit * 0.22f * lift), unit * PEG_RADIUS * (1f + 0.18f * lift), gold = mine == goldIsMine)
         }
     }
 }
@@ -441,10 +473,10 @@ private fun DrawScope.drawStarPlate(centre: Offset, unit: Float) {
 }
 
 /**
- * A home point, tinted: the viewer's own at the bottom in gold if [mine], the
- * other side's at the top in ruby. Each is where the other player is heading.
+ * A home point, tinted [gold] or ruby: the viewer's own at the bottom if
+ * [mine], the other side's at the top. Each is where the other player is heading.
  */
-private fun DrawScope.drawHomePoint(mine: Boolean, centre: Offset, unit: Float) {
+private fun DrawScope.drawHomePoint(mine: Boolean, gold: Boolean, centre: Offset, unit: Float) {
     // The three corner holes of the point, then pushed out round them.
     val corners = if (mine) listOf(Hole(-4, 8), Hole(-4, 5), Hole(-1, 5)) else listOf(Hole(4, -8), Hole(4, -5), Hole(1, -5))
     val points = corners.map { centre + holeOffset(it) * unit }
@@ -456,7 +488,7 @@ private fun DrawScope.drawHomePoint(mine: Boolean, centre: Offset, unit: Float) 
         }
         close()
     }
-    val colour = if (mine) PwGoldDark else RubyMid
+    val colour = if (gold) PwGoldDark else RubyMid
     drawPath(path, colour.copy(alpha = 0.13f))
     drawPath(path, colour.copy(alpha = 0.45f), style = Stroke(width = unit * 0.05f, join = StrokeJoin.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(unit * 0.18f, unit * 0.12f))))
 }
@@ -496,9 +528,9 @@ private fun DrawScope.drawRoute(move: ChineseCheckersMove, at: (Int) -> Offset, 
     drawCircle(PwGoldLight.copy(alpha = 0.5f), radius = unit * 0.2f, center = stops[0], style = Stroke(width = unit * 0.05f))
 }
 
-/** A polished peg: gold if it's [mine], ruby for the other side, lit from the top left. */
-private fun DrawScope.drawPeg(center: Offset, radius: Float, mine: Boolean) {
-    val (light, mid, dark) = if (mine) Triple(GoldPegLight, PwGoldDark, GoldPegDark) else Triple(RubyLight, RubyMid, RubyDark)
+/** A polished peg, [gold] or ruby, lit from the top left. */
+private fun DrawScope.drawPeg(center: Offset, radius: Float, gold: Boolean) {
+    val (light, mid, dark) = if (gold) Triple(GoldPegLight, PwGoldDark, GoldPegDark) else Triple(RubyLight, RubyMid, RubyDark)
     drawCircle(Color.Black.copy(alpha = 0.35f), radius = radius, center = center + Offset(0f, radius * 0.18f))
     drawCircle(
         Brush.radialGradient(listOf(light, mid, dark), center = center + Offset(-radius * 0.35f, -radius * 0.4f), radius = radius * 1.6f),

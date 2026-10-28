@@ -37,33 +37,47 @@ data class ChessUiState(
     /** The side that resigned, when that ended the game. */
     val resigned: PieceColor? = null,
     /** How strongly the computer plays. */
-    val difficulty: ChessDifficulty = DEFAULT_CHESS_DIFFICULTY
+    val difficulty: ChessDifficulty = DEFAULT_CHESS_DIFFICULTY,
+    /** The side the player chose to play; the computer plays the other. White moves first, as always. */
+    val humanColor: PieceColor = PieceColor.WHITE
 ) {
-    /** The time control and difficulty can be changed until the first move is played. */
-    val canChooseTimeControl: Boolean get() = moveHistory.isEmpty() && !isGameOver
+    /**
+     * The side, time control and difficulty can be changed until the game
+     * starts: the first move is played, or the computer starts thinking on it.
+     */
+    val canChooseTimeControl: Boolean get() = moveHistory.isEmpty() && !isGameOver && !isComputerThinking && !isResolving
+
+    /** Playing Black, the game waits on the player to start it - then the computer opens as White. */
+    val awaitingStart: Boolean get() = canChooseTimeControl && humanColor != PieceColor.WHITE
 
     /** The player can resign once the first move is played, until the game is over. */
     val canResign: Boolean get() = moveHistory.isNotEmpty() && !isGameOver
 
-    /** Black's pieces White has taken, in the order they fell. */
-    val capturedByWhite: List<ChessPiece> get() = moveHistory.filter { it.mover == PieceColor.WHITE }.mapNotNull { it.captured }
+    val computerColor: PieceColor get() = humanColor.opposite()
 
-    /** White's pieces Black has taken, in the order they fell. */
-    val capturedByBlack: List<ChessPiece> get() = moveHistory.filter { it.mover == PieceColor.BLACK }.mapNotNull { it.captured }
+    /** The computer's pieces the player has taken, in the order they fell. */
+    val capturedByHuman: List<ChessPiece> get() = capturedBy(humanColor)
 
-    /** 1 = White (the human, in vs-Computer play), 2 = Black. */
-    val currentPlayer: Int get() = if (position.sideToMove == PieceColor.WHITE) 1 else 2
+    /** The player's pieces the computer has taken, in the order they fell. */
+    val capturedByComputer: List<ChessPiece> get() = capturedBy(computerColor)
+
+    private fun capturedBy(mover: PieceColor) = moveHistory.filter { it.mover == mover }.mapNotNull { it.captured }
+
+    /** 1 = White, 2 = Black - whichever of them the player chose. */
+    val currentPlayer: Int get() = playerNumber(position.sideToMove)
     val isInCheck: Boolean get() = ChessEngine.isInCheck(position, position.sideToMove)
     val legalTargets: List<Square> get() = pendingMoves.map { it.to }
-    val isHumanTurn: Boolean get() = position.sideToMove == CHESS_HUMAN
+    val isHumanTurn: Boolean get() = position.sideToMove == humanColor
     val isGameOver: Boolean get() = winner != null || isDraw
+    val humanWon: Boolean get() = winner == playerNumber(humanColor)
+    val computerWon: Boolean get() = winner == playerNumber(computerColor)
 }
+
+/** How [ChessUiState.winner] numbers the sides: 1 = White, 2 = Black. */
+fun playerNumber(color: PieceColor): Int = if (color == PieceColor.WHITE) 1 else 2
 
 /** One move as played: its [san] (standard algebraic notation), who played it, and what it took. */
 data class PlayedMove(val san: String, val mover: PieceColor, val captured: ChessPiece?)
-
-/** In "Play vs Computer" the human plays White and moves first. */
-val CHESS_HUMAN = PieceColor.WHITE
 
 /**
  * A pawn move onto the last rank that's waiting on the player's choice of

@@ -33,9 +33,10 @@ private const val COMPUTER_MIN_THINK_MILLIS = 450L
 private const val WIN_PAUSE_MILLIS = 900L
 
 /**
- * Chinese checkers against the computer: you're [CHINESE_CHECKERS_HUMAN] in
- * the bottom point, [ChineseCheckersBot] is [CHINESE_CHECKERS_COMPUTER] at
- * the top. Which moves a peg has comes from the pure [ChineseCheckersRules];
+ * Chinese checkers against the computer: you play the peg colour you chose
+ * ([ChineseCheckersUiState.humanColor] - Gold from the bottom point by
+ * default) and move first; [ChineseCheckersBot] plays the other colour from
+ * the opposite point. Which moves a peg has comes from the pure [ChineseCheckersRules];
  * every move played is sent to [GameEngineRepository.resolve], which re-checks
  * it and rules on the win - this ViewModel only tracks the selection and
  * whose turn it is. Only your win claims a reward.
@@ -65,7 +66,7 @@ class ChineseCheckersViewModel @Inject constructor(
             playMove(it)
             return
         }
-        if (hole == state.selected || state.position.cells.getOrNull(hole) != CHINESE_CHECKERS_HUMAN) {
+        if (hole == state.selected || state.position.cells.getOrNull(hole) != state.humanPlayer) {
             _uiState.update { it.copy(selected = null, pendingMoves = emptyList()) }
             return
         }
@@ -78,10 +79,26 @@ class ChineseCheckersViewModel @Inject constructor(
         _uiState.update { it.copy(difficulty = difficulty) }
     }
 
+    /** Picks your peg colour, and with it your starting point; only before the game starts. */
+    fun onColorChosen(color: PegColor) {
+        val state = _uiState.value
+        if (state.started) return
+        _uiState.value = ChineseCheckersUiState(humanColor = color, difficulty = state.difficulty)
+    }
+
+    /** Starts the game: you move first. */
+    fun onStart() {
+        val state = _uiState.value
+        if (state.started) return
+        _uiState.update { it.copy(started = true) }
+        startTurn(state.position, waitMillis = 0)
+    }
+
     fun onPlayAgain() {
         computerJob?.cancel()
-        // A new game keeps the difficulty the player last chose.
-        _uiState.value = ChineseCheckersUiState(difficulty = _uiState.value.difficulty)
+        // Back to the setup, keeping the colour and difficulty the player last chose.
+        val last = _uiState.value
+        _uiState.value = ChineseCheckersUiState(humanColor = last.humanColor, difficulty = last.difficulty)
     }
 
     private fun playMove(move: ChineseCheckersMove) {
@@ -123,7 +140,7 @@ class ChineseCheckersViewModel @Inject constructor(
     /** The game is over and [winner] has won; your win claims the reward once [lastMove] has landed. */
     private suspend fun finish(winner: Int, lastMove: ChineseCheckersMove) {
         _uiState.update { it.copy(winner = winner, isResolving = false) }
-        if (winner == CHINESE_CHECKERS_HUMAN) {
+        if (winner == _uiState.value.humanPlayer) {
             delay(hopMillis(lastMove) + WIN_PAUSE_MILLIS)
             val coupon = rewardsRepository.claimReward(GameId.CHINESE_CHECKERS)
             couponsRepository.addCoupon(coupon)
@@ -141,7 +158,7 @@ class ChineseCheckersViewModel @Inject constructor(
         } else {
             position
         }
-        if (toMove.sideToMove == CHINESE_CHECKERS_COMPUTER) playComputerMove(waitMillis)
+        if (toMove.sideToMove == _uiState.value.computerPlayer) playComputerMove(waitMillis)
     }
 
     private fun playComputerMove(waitMillis: Long) {

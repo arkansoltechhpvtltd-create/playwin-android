@@ -20,6 +20,8 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -72,9 +74,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SmartToy
 import com.example.playwin.core.designsystem.theme.PwTableSurface
+import com.example.playwin.feature.game.SetupChip
+import com.example.playwin.feature.game.SetupGrid
+import com.example.playwin.feature.game.SetupLabel
 import com.example.playwin.core.designsystem.theme.PwTableSurfaceRaised
 import com.example.playwin.feature.game.GameDockButton
 import com.example.playwin.feature.game.GameGoldButton
@@ -172,6 +178,8 @@ private fun ChessComputerRoute(
         onPromotionCancelled = viewModel::onPromotionCancelled,
         onTimeControlChosen = viewModel::onTimeControlChosen,
         onDifficultyChosen = viewModel::onDifficultyChosen,
+        onSideChosen = viewModel::onSideChosen,
+        onStart = viewModel::onStart,
         onResign = viewModel::onResign
     )
 }
@@ -198,13 +206,16 @@ private fun MovesPanel(
     moves: List<PlayedMove>,
     capturedByYou: List<ChessPiece>,
     capturedByComputer: List<ChessPiece>,
+    /** The side the player plays. */
+    humanColor: PieceColor,
     modifier: Modifier = Modifier,
     /** The chosen time control while it can still be changed (before the first move); null hides the picker. */
     timeControl: TimeControl? = null,
     onTimeControlChosen: (TimeControl) -> Unit = {},
     /** The computer's difficulty, shown with the time control picker; null leaves it out. */
     difficulty: ChessDifficulty? = null,
-    onDifficultyChosen: (ChessDifficulty) -> Unit = {}
+    onDifficultyChosen: (ChessDifficulty) -> Unit = {},
+    onSideChosen: (PieceColor) -> Unit = {}
 ) {
     val shape = RoundedCornerShape(22.dp)
     Column(
@@ -233,23 +244,29 @@ private fun MovesPanel(
         }
         if (pairs.isEmpty()) {
             if (timeControl != null) {
-                // Both pickers fit BelowBoardMinHeight; they scroll only if larger text pushes them past it.
+                // The pickers scroll if the panel's too short to show them all at once.
                 Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                    if (difficulty != null) {
-                        DifficultyPicker(selected = difficulty, onChoose = onDifficultyChosen)
-                        Spacer(modifier = Modifier.height(12.dp))
+                    // The side and the difficulty share a row, so the time control stays in view.
+                    Row {
+                        SidePicker(selected = humanColor, onChoose = onSideChosen)
+                        if (difficulty != null) {
+                            Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
+                                DifficultyPicker(selected = difficulty, onChoose = onDifficultyChosen)
+                            }
+                        }
                     }
+                    Spacer(modifier = Modifier.height(12.dp))
                     TimeControlPicker(selected = timeControl, onChoose = onTimeControlChosen)
                 }
             } else {
                 Text(
-                    text = "No moves yet - you play White",
+                    text = "No moves yet - you play ${colorName(humanColor)}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         } else {
-            PickerLabel("Moves")
+            SetupLabel("Moves")
             LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 4.dp)) {
                 itemsIndexed(pairs) { index, pair ->
                     val latest = index == pairs.lastIndex
@@ -267,97 +284,61 @@ private fun MovesPanel(
 /** Before the first move: the time controls to pick from ([CHESS_TIME_CONTROLS]), the chosen one in gold. */
 @Composable
 private fun TimeControlPicker(selected: TimeControl, onChoose: (TimeControl) -> Unit) {
-    PickerLabel("Time per side · starts on your first move")
-    PickerGrid(options = CHESS_TIME_CONTROLS, label = { it.label }, selected = selected, onChoose = onChoose)
-}
-
-/** Before the first move: how strongly the computer plays, the chosen level in gold. */
-@Composable
-private fun DifficultyPicker(selected: ChessDifficulty, onChoose: (ChessDifficulty) -> Unit) {
-    PickerLabel("Computer difficulty")
-    PickerGrid(options = ChessDifficulty.entries, label = { it.label }, selected = selected, onChoose = onChoose)
-}
-
-@Composable
-private fun PickerLabel(text: String) {
-    Text(
-        text = text.uppercase(),
-        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp),
-        color = PwGoldDark,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis
+    SetupLabel("Time per side · starts on the first move")
+    // All six on one row: short labels (5m, 1h, ∞), the full one read out, and no tick.
+    SetupGrid(
+        options = CHESS_TIME_CONTROLS,
+        label = ::shortLabel,
+        selected = selected,
+        onChoose = onChoose,
+        ticks = false,
+        columns = CHESS_TIME_CONTROLS.size,
+        description = { it.label }
     )
 }
 
-/** How many options sit side by side in a pre-game picker. */
-private const val PICKER_COLUMNS = 3
+/** A time control in a few characters for its narrow pill: 5m, 1h, or ∞ for no timer. */
+private fun shortLabel(control: TimeControl): String {
+    val seconds = control.seconds ?: return "∞"
+    return if (seconds % 3600 == 0) "${seconds / 3600}h" else "${seconds / 60}m"
+}
 
 /**
- * A pre-game picker's options as an even grid of equal-width pills,
- * [PICKER_COLUMNS] to a row, so no row runs ragged or spills out of the panel.
+ * Before the game starts: the side the player plays, as a white and a black
+ * king - compact, to sit beside the difficulty. The chosen one is in gold;
+ * playing Black, the computer opens.
  */
 @Composable
-private fun <T> PickerGrid(options: List<T>, label: (T) -> String, selected: T, onChoose: (T) -> Unit) {
-    Column(
-        modifier = Modifier
-            .padding(top = 8.dp)
-            .selectableGroup(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        options.chunked(PICKER_COLUMNS).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { option ->
-                    PickerChip(
-                        label = label(option),
-                        chosen = option == selected,
-                        onClick = { onChoose(option) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                // Keeps a short last row's pills the same width as the rest.
-                repeat(PICKER_COLUMNS - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+private fun SidePicker(selected: PieceColor, onChoose: (PieceColor) -> Unit) {
+    Column {
+        SetupLabel("Play as")
+        Row(
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(PieceColor.WHITE, PieceColor.BLACK).forEach { color ->
+                SetupChip(
+                    label = colorName(color),
+                    chosen = color == selected,
+                    onClick = { onChoose(color) },
+                    modifier = Modifier.width(46.dp),
+                    leading = { PieceGlyph(piece = ChessPiece(PieceType.KING, color), fontSize = with(LocalDensity.current) { 24.dp.toSp() }) },
+                    showLabel = false
+                )
             }
         }
     }
 }
 
-/** One option in a pre-game picker: a gold-rimmed pill, filled gold with a tick when [chosen]. */
+private fun colorName(color: PieceColor): String = if (color == PieceColor.WHITE) "White" else "Black"
+
+/** Before the first move: how strongly the computer plays, the chosen level in gold - no tick, to fit beside [SidePicker]. */
 @Composable
-private fun PickerChip(label: String, chosen: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(50)
-    Row(
-        modifier = modifier
-            .heightIn(min = 40.dp)
-            .shadow(elevation = if (chosen) 6.dp else 0.dp, shape = shape, ambientColor = PwGoldDark, spotColor = PwGoldDark)
-            .clip(shape)
-            .background(
-                if (chosen) Brush.verticalGradient(listOf(Color(0xFFFFE9A8), PwGoldDark, PwGoldLight))
-                else Brush.verticalGradient(listOf(Color(0xFF0E1A33), Color(0xFF0A1428)))
-            )
-            .border(1.dp, if (chosen) Brush.verticalGradient(listOf(Color(0xFFFFF4CF), Color(0xFF7A5512))) else Brush.verticalGradient(listOf(PwGoldDark.copy(alpha = 0.6f), PwGoldLight.copy(alpha = 0.25f))), shape)
-            .selectable(selected = chosen, role = Role.RadioButton, onClick = onClick)
-            .padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (chosen) {
-            Icon(
-                imageVector = Icons.Filled.Check,
-                contentDescription = null,
-                tint = PickerNavyBottom,
-                modifier = Modifier
-                    .padding(end = 4.dp)
-                    .size(16.dp)
-            )
-        }
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (chosen) FontWeight.Bold else FontWeight.Medium),
-            color = if (chosen) PickerNavyBottom else MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+private fun DifficultyPicker(selected: ChessDifficulty, onChoose: (ChessDifficulty) -> Unit) {
+    SetupLabel("Computer difficulty")
+    SetupGrid(options = ChessDifficulty.entries, label = { it.label }, selected = selected, onChoose = onChoose, ticks = false)
 }
 
 /** "Resign this game?" - confirming gives the game to the computer; cancelling plays on. */
@@ -460,6 +441,8 @@ fun ChessScreen(
     onPromotionCancelled: () -> Unit = {},
     onTimeControlChosen: (TimeControl) -> Unit = {},
     onDifficultyChosen: (ChessDifficulty) -> Unit = {},
+    onSideChosen: (PieceColor) -> Unit = {},
+    onStart: () -> Unit = {},
     onResign: () -> Unit = {}
 ) {
     uiState.promotion?.let { PromotionPicker(it, onChoose = onPromotionChosen, onCancel = onPromotionCancelled) }
@@ -487,7 +470,7 @@ fun ChessScreen(
                 .padding(horizontal = BoardSideMargin, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            val humanWon = uiState.winner == 1
+            val humanWon = uiState.humanWon
             val bannerInset = Modifier.padding(horizontal = 16.dp - BoardSideMargin)
             PlayerRow(uiState, modifier = bannerInset)
             GameNote(
@@ -500,9 +483,10 @@ fun ChessScreen(
                     humanWon -> "Checkmate - you win! Claiming your coupon…"
                     uiState.winner != null -> "Checkmate - the computer wins"
                     uiState.isResolving -> "Checking the position…"
+                    uiState.awaitingStart -> "Tap Start - the computer opens as White"
                     uiState.isHumanTurn && uiState.isInCheck -> "Check! Your move - get your king to safety"
                     uiState.isInCheck -> "Check! Computer is thinking…"
-                    uiState.isHumanTurn -> "Your move - you play White"
+                    uiState.isHumanTurn -> "Your move - you play ${colorName(uiState.humanColor)}"
                     else -> "Computer is thinking…"
                 },
                 tone = when {
@@ -533,7 +517,9 @@ fun ChessScreen(
                             selectedSquare = uiState.selectedSquare,
                             legalTargets = uiState.legalTargets,
                             enabled = !uiState.isGameOver && !uiState.isResolving && uiState.isHumanTurn && !uiState.isComputerThinking,
-                            onSquareTap = onSquareTap
+                            onSquareTap = onSquareTap,
+                            // Your own pieces always sit at the bottom.
+                            flipped = uiState.humanColor == PieceColor.BLACK
                         )
                         if (humanWon) {
                             CelebrationBurst(
@@ -545,18 +531,27 @@ fun ChessScreen(
 
                     MovesPanel(
                         moves = uiState.moveHistory,
-                        capturedByYou = uiState.capturedByWhite,
-                        capturedByComputer = uiState.capturedByBlack,
+                        capturedByYou = uiState.capturedByHuman,
+                        capturedByComputer = uiState.capturedByComputer,
+                        humanColor = uiState.humanColor,
                         timeControl = uiState.clock.control.takeIf { uiState.canChooseTimeControl },
                         onTimeControlChosen = onTimeControlChosen,
                         difficulty = uiState.difficulty.takeIf { uiState.canChooseTimeControl },
                         onDifficultyChosen = onDifficultyChosen,
+                        onSideChosen = onSideChosen,
                         modifier = bannerInset
                             .padding(top = 12.dp)
                             .weight(1f)
                     )
 
-                    if (uiState.isDraw || uiState.winner == 2) {
+                    if (uiState.awaitingStart) {
+                        GameGoldButton(
+                            text = "Start game",
+                            icon = Icons.Filled.PlayArrow,
+                            onClick = onStart,
+                            modifier = bannerInset.padding(top = 12.dp).fillMaxWidth()
+                        )
+                    } else if (uiState.isDraw || uiState.computerWon) {
                         GameGoldButton(
                             text = "Play again",
                             icon = Icons.Filled.Refresh,
@@ -578,7 +573,7 @@ fun ChessScreen(
 }
 
 /**
- * The two sides as cards: the computer (Black) and you (White), each with its
+ * The two sides as cards: the computer and you, each with its
  * clock. The side to move glows; a clock in its last [CLOCK_LOW_SECONDS]
  * seconds turns red. Without a timer the cards say which colour each side plays.
  */
@@ -587,18 +582,18 @@ private fun PlayerRow(uiState: ChessUiState, modifier: Modifier = Modifier) {
     val clock = uiState.clock
     val showHours = (clock.control.seconds ?: 0) >= 3600
     Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        listOf(CHESS_HUMAN.opposite() to "Computer", CHESS_HUMAN to "You").forEach { (color, name) ->
+        listOf(uiState.computerColor to "Computer", uiState.humanColor to "You").forEach { (color, name) ->
             val millis = clock.millisLeft(color)
             val toMove = !uiState.isGameOver && uiState.position.sideToMove == color
             GameStatCard(
                 label = name,
                 value = if (clock.control.isUnlimited) {
-                    if (color == PieceColor.WHITE) "White" else "Black"
+                    colorName(color)
                 } else {
                     formatClock(millis, showHours)
                 },
-                icon = if (color == CHESS_HUMAN) Icons.Filled.Person else Icons.Filled.SmartToy,
-                highlight = toMove || (color == CHESS_HUMAN && uiState.winner == 1),
+                icon = if (color == uiState.humanColor) Icons.Filled.Person else Icons.Filled.SmartToy,
+                highlight = toMove || (color == uiState.humanColor && uiState.humanWon),
                 valueColor = when {
                     !clock.control.isUnlimited && millis <= CLOCK_LOW_SECONDS * 1000L -> CheckRed
                     toMove && clock.running == color -> PwGoldDark

@@ -3,6 +3,7 @@ package com.example.playwin.feature.game.ludo
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.playwin.core.domain.ludo.LudoBot
+import com.example.playwin.core.domain.ludo.LudoColor
 import com.example.playwin.core.domain.ludo.LudoEngine
 import com.example.playwin.core.domain.ludo.LudoState
 import com.example.playwin.core.domain.ludo.Token
@@ -26,8 +27,9 @@ import javax.inject.Inject
 private const val COMPUTER_STEP_MILLIS = 700L
 
 /**
- * 1v1 Ludo against the computer: the human is [LUDO_HUMAN] (Red, moves
- * first), [LudoBot] plays [LUDO_COMPUTER] (Yellow). Dice rolls, token
+ * 1v1 Ludo against the computer: the human plays the colour they chose
+ * ([LudoUiState.humanColor], Red by default) and rolls first; [LudoBot] plays
+ * the colour across the board. Dice rolls, token
  * movement, captures, and the extra-roll rules are all delegated to the pure
  * [LudoEngine]; the *verdict* on whether a move won the game is still
  * confirmed by [GameEngineRepository.resolve], never decided directly here.
@@ -46,8 +48,18 @@ class LudoViewModel @Inject constructor(
     private var timerJob: Job? = null
     private var computerJob: Job? = null
 
-    init {
-        startTimer()
+    /** Picks the player's colour; only before the game starts. The computer takes the one across the board. */
+    fun onColorChosen(color: LudoColor) {
+        if (_uiState.value.started) return
+        _uiState.value = LudoUiState(humanColor = color)
+    }
+
+    /** Starts the game on the chosen colours: the player rolls first. */
+    fun onStart() {
+        val state = _uiState.value
+        if (state.started) return
+        _uiState.update { it.copy(started = true) }
+        startTurn(state.game)
     }
 
     fun onRollDice() {
@@ -59,7 +71,7 @@ class LudoViewModel @Inject constructor(
 
     fun onTokenTap(token: Token) {
         val state = _uiState.value
-        if (state.winner != null || state.isResolving || state.game.currentColor != LUDO_HUMAN) return
+        if (state.winner != null || state.isResolving || state.game.currentColor != state.humanColor) return
         if (state.movableTokens.none { it.color == token.color && it.index == token.index }) return
         timerJob?.cancel()
         move(state.game, token)
@@ -68,8 +80,8 @@ class LudoViewModel @Inject constructor(
     fun onPlayAgain() {
         timerJob?.cancel()
         computerJob?.cancel()
-        _uiState.value = LudoUiState()
-        startTimer()
+        // Back to the setup, keeping the colour the player last chose.
+        _uiState.value = LudoUiState(humanColor = _uiState.value.humanColor)
     }
 
     /** Throws the die - always the game engine's, never one picked here - and plays out what it allows. */
@@ -89,7 +101,7 @@ class LudoViewModel @Inject constructor(
                     it.copy(game = passed, isResolving = false, lastTurnTimedOut = false, lastTurnForfeited = forfeited)
                 }
                 startTurn(passed)
-            } else if (rolled.currentColor == LUDO_HUMAN) {
+            } else if (rolled.currentColor == _uiState.value.humanColor) {
                 _uiState.update { it.copy(game = rolled, movableTokens = movable, isResolving = false) }
             } else {
                 _uiState.update { it.copy(game = rolled, movableTokens = emptyList(), isResolving = false) }
@@ -113,7 +125,7 @@ class LudoViewModel @Inject constructor(
             when (outcome) {
                 GameOutcome.WIN -> {
                     _uiState.update { it.copy(winner = mover, isResolving = false) }
-                    if (mover == LUDO_HUMAN) {
+                    if (mover == _uiState.value.humanColor) {
                         val coupon = rewardsRepository.claimReward(GameId.LUDO)
                         couponsRepository.addCoupon(coupon)
                         _uiState.update { it.copy(wonCouponId = coupon.id) }
@@ -130,7 +142,7 @@ class LudoViewModel @Inject constructor(
 
     /** Hands the next turn to whoever [game] says is up: the human gets a timer, the computer just plays. */
     private fun startTurn(game: LudoState) {
-        if (game.currentColor == LUDO_HUMAN) {
+        if (game.currentColor == _uiState.value.humanColor) {
             startTimer()
         } else {
             timerJob?.cancel()

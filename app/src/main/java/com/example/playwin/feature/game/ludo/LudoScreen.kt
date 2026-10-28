@@ -57,6 +57,9 @@ import com.example.playwin.feature.game.GameDock
 import com.example.playwin.feature.game.GameGoldButton
 import com.example.playwin.feature.game.GameNote
 import com.example.playwin.feature.game.GameStatCard
+import com.example.playwin.feature.game.GameSetupOverlay
+import com.example.playwin.feature.game.SetupNote
+import com.example.playwin.feature.game.SetupPicker
 import com.example.playwin.feature.game.GameTone
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -145,7 +148,9 @@ private fun LudoComputerRoute(
         onBack = onBack,
         onRollDice = viewModel::onRollDice,
         onTokenTap = viewModel::onTokenTap,
-        onPlayAgain = viewModel::onPlayAgain
+        onPlayAgain = viewModel::onPlayAgain,
+        onColorChosen = viewModel::onColorChosen,
+        onStart = viewModel::onStart
     )
 }
 
@@ -157,8 +162,11 @@ fun LudoScreen(
     onRollDice: () -> Unit,
     onTokenTap: (Token) -> Unit,
     onPlayAgain: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onColorChosen: (LudoColor) -> Unit = {},
+    onStart: () -> Unit = {}
 ) {
+    val you = uiState.humanColor
     GameScaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
@@ -181,7 +189,8 @@ fun LudoScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val winner = uiState.winner
-            // Each side's card, seated by its own yard: Red top-left, Yellow bottom-right.
+            // Each side's card, seated by its own yard: Red top-left, Green top-right,
+            // Yellow bottom-right, Blue bottom-left.
             @Composable
             fun SeatCard(color: LudoColor, name: String, modifier: Modifier) {
                 val tokens = uiState.game.tokens.filter { it.color == color }
@@ -189,7 +198,7 @@ fun LudoScreen(
                 GameStatCard(
                     label = name,
                     value = "Home $home/${LudoEngine.TOKENS_PER_COLOR}",
-                    icon = if (color == LUDO_HUMAN) Icons.Filled.Person else Icons.Filled.SmartToy,
+                    icon = if (color == you) Icons.Filled.Person else Icons.Filled.SmartToy,
                     highlight = (winner == null && uiState.currentColor == color) || winner == color,
                     // How far round the board all four tokens are, together.
                     progress = tokens.sumOf { (it.position + 1).coerceAtLeast(0) } /
@@ -200,7 +209,8 @@ fun LudoScreen(
             val note: @Composable (Modifier) -> Unit = { noteModifier ->
                 GameNote(
                     text = when {
-                        winner == LUDO_HUMAN -> "You win! Claiming your coupon…"
+                        !uiState.started -> "Choose your colour, then start"
+                        winner == you -> "You win! Claiming your coupon…"
                         winner != null -> "The computer wins this round"
                         uiState.lastTurnForfeited -> "Three 6s in a row - turn passed"
                         uiState.lastTurnTimedOut -> "Previous turn timed out"
@@ -210,7 +220,7 @@ fun LudoScreen(
                         else -> "No move with that roll"
                     },
                     tone = when {
-                        winner == LUDO_HUMAN -> GameTone.WIN
+                        winner == you -> GameTone.WIN
                         winner != null -> GameTone.BAD
                         uiState.lastTurnForfeited || uiState.lastTurnTimedOut -> GameTone.BAD
                         else -> GameTone.PLAIN
@@ -223,18 +233,45 @@ fun LudoScreen(
             // seat, in the corner the board leaves free: the turn line, and the turn clock.
             BoardSlot(modifier = Modifier.padding(vertical = 8.dp)) {
                 Column(modifier = Modifier.fillMaxWidth()) {
+                    fun seatName(color: LudoColor) = (if (color == you) "You · " else "CPU · ") + color.label()
+                    // One side's yard is along the top (Red or Green), the other's along the bottom.
+                    val topColor = if (you == LudoColor.RED || you == LudoColor.GREEN) you else uiState.computerColor
+                    val bottomColor = topColor.across()
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        SeatCard(LUDO_HUMAN, "You · ${LUDO_HUMAN.label()}", Modifier.weight(1f))
-                        note(Modifier.weight(1f).padding(start = 10.dp, bottom = 8.dp))
+                        if (topColor == LudoColor.RED) {
+                            SeatCard(topColor, seatName(topColor), Modifier.weight(1f))
+                            note(Modifier.weight(1f).padding(start = 10.dp, bottom = 8.dp))
+                        } else {
+                            note(Modifier.weight(1f).padding(end = 10.dp, bottom = 8.dp))
+                            SeatCard(topColor, seatName(topColor), Modifier.weight(1f))
+                        }
                     }
-                    LudoBoard(
-                        game = uiState.game,
-                        movableTokens = uiState.movableTokens,
-                        onTokenTap = onTokenTap,
-                        celebrate = winner == LUDO_HUMAN,
-                        modifier = Modifier.padding(vertical = 10.dp)
-                    )
+                    Box(modifier = Modifier.padding(vertical = 10.dp)) {
+                        LudoBoard(
+                            game = uiState.game,
+                            movableTokens = uiState.movableTokens,
+                            onTokenTap = onTokenTap,
+                            celebrate = winner == you,
+                            celebrateColor = you
+                        )
+                        if (!uiState.started) {
+                            GameSetupOverlay(onStart = onStart) {
+                                SetupPicker(
+                                    title = "Play as",
+                                    options = LUDO_COLOR_CHOICES,
+                                    label = { it.label() },
+                                    selected = you,
+                                    onChoose = onColorChosen,
+                                    columns = 2,
+                                    swatch = ::colorFor
+                                )
+                                SetupNote("You roll first · the computer plays ${uiState.computerColor.label()}")
+                            }
+                        }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Yellow's yard is bottom-right, Blue's bottom-left; the turn clock takes the other corner.
+                        if (bottomColor == LudoColor.BLUE) SeatCard(bottomColor, seatName(bottomColor), Modifier.weight(1f))
                         Row(
                             modifier = Modifier.weight(1f),
                             horizontalArrangement = Arrangement.Center,
@@ -250,7 +287,7 @@ fun LudoScreen(
                                 )
                             }
                         }
-                        SeatCard(LUDO_COMPUTER, "CPU · ${LUDO_COMPUTER.label()}", Modifier.weight(1f))
+                        if (bottomColor == LudoColor.YELLOW) SeatCard(bottomColor, seatName(bottomColor), Modifier.weight(1f))
                     }
                 }
             }
@@ -265,11 +302,12 @@ fun LudoScreen(
                     )
                     Spacer(modifier = Modifier.width(14.dp))
                     when {
-                        winner == LUDO_COMPUTER -> GameGoldButton(text = "Play again", icon = Icons.Filled.Refresh, onClick = onPlayAgain, modifier = Modifier.weight(1f))
+                        winner == uiState.computerColor -> GameGoldButton(text = "Play again", icon = Icons.Filled.Refresh, onClick = onPlayAgain, modifier = Modifier.weight(1f))
                         uiState.canRoll -> GameGoldButton(text = "Roll", onClick = onRollDice, modifier = Modifier.weight(1f))
                         else -> DockWaiting(
                             text = when {
-                                winner == LUDO_HUMAN -> "Well played!"
+                                !uiState.started -> "Pick your colour"
+                                winner == you -> "Well played!"
                                 uiState.isResolving -> "Moving…"
                                 !uiState.isHumanTurn -> "Computer is playing…"
                                 uiState.game.diceValue != null -> "Rolled a ${uiState.game.diceValue}"
@@ -306,6 +344,9 @@ private fun DockWaiting(text: String, modifier: Modifier = Modifier) {
         )
     }
 }
+
+/** The colours offered under "Play as", in the order they're listed. */
+private val LUDO_COLOR_CHOICES = listOf(LudoColor.RED, LudoColor.GREEN, LudoColor.BLUE, LudoColor.YELLOW)
 
 internal fun LudoColor.label(): String = when (this) {
     LudoColor.RED -> "Red"
@@ -556,7 +597,9 @@ fun LudoBoard(
     movableTokens: List<Token>,
     onTokenTap: (Token) -> Unit,
     modifier: Modifier = Modifier,
-    celebrate: Boolean = false
+    celebrate: Boolean = false,
+    /** Whose colour the win celebration is in. */
+    celebrateColor: LudoColor = LUDO_DEFAULT_HUMAN
 ) {
     val boardImage = rememberArtwork(R.drawable.ludo_board)
     val tokenImages = rememberTokenImages()
@@ -647,7 +690,7 @@ fun LudoBoard(
 
         if (celebrate) {
             CelebrationBurst(
-                colors = listOf(PwGoldDark, PwGoldLight, colorFor(LUDO_HUMAN), MaterialTheme.colorScheme.secondary, Color.White),
+                colors = listOf(PwGoldDark, PwGoldLight, colorFor(celebrateColor), MaterialTheme.colorScheme.secondary, Color.White),
                 modifier = Modifier.fillMaxSize()
             )
         }

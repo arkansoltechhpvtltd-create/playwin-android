@@ -85,6 +85,10 @@ private const val MAX_CELL_STRETCH = 1.3f
 val SlGoldToken = listOf(Color(0xFFFFF0BE), PwGoldDark, Color(0xFF8A6215))
 val SlPearlToken = listOf(Color.White, Color(0xFFDDE3EE), Color(0xFF7D8799))
 
+/** More pawn colours a player can choose in "Play vs Computer". */
+val SlRubyToken = listOf(Color(0xFFFFB3BC), Color(0xFFD02A3C), Color(0xFF5E0B17))
+val SlSapphireToken = listOf(Color(0xFFBBD5FF), Color(0xFF2F6FD6), Color(0xFF0F2E66))
+
 // The board's own palette: two navies a step apart for the squares, and the
 // honey-gold wood the ladders are cut from.
 private val CellDark = Color(0xFF0E1B38)
