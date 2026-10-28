@@ -33,10 +33,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -49,6 +46,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
+import com.example.playwin.core.designsystem.theme.PwTableTextMuted
+import com.example.playwin.feature.game.GameDock
+import com.example.playwin.feature.game.GameGoldButton
+import com.example.playwin.feature.game.GameNote
+import com.example.playwin.feature.game.GameStatCard
+import com.example.playwin.feature.game.GameTone
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -74,7 +83,6 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.feature.game.GameScaffold
 import com.example.playwin.R
-import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.image.ArtworkCache
 import com.example.playwin.core.designsystem.image.artworkPainter
@@ -88,7 +96,6 @@ import com.example.playwin.core.domain.ludo.LudoState
 import com.example.playwin.core.domain.ludo.Token
 import com.example.playwin.feature.game.BoardSlot
 import com.example.playwin.feature.game.CelebrationBurst
-import com.example.playwin.feature.game.GameStatusBanner
 import com.example.playwin.feature.game.TurnTimerRing
 import com.example.playwin.feature.game.ludo.online.LudoOnlineRoute
 import com.example.playwin.feature.game.online.GameModeSelectScreen
@@ -170,52 +177,133 @@ fun LudoScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (uiState.winner != null) {
-                WinnerBanner(humanWon = uiState.winner == LUDO_HUMAN)
-            } else {
-                TurnBanner(uiState)
-            }
-
-            BoardSlot(modifier = Modifier.padding(top = 16.dp)) {
-                LudoBoard(
-                    game = uiState.game,
-                    movableTokens = uiState.movableTokens,
-                    onTokenTap = onTokenTap,
-                    celebrate = uiState.winner == LUDO_HUMAN
+            val winner = uiState.winner
+            // Each side's card, seated by its own yard: Red top-left, Yellow bottom-right.
+            @Composable
+            fun SeatCard(color: LudoColor, name: String, modifier: Modifier) {
+                val tokens = uiState.game.tokens.filter { it.color == color }
+                val home = tokens.count { it.position == LudoEngine.FINISH_LOCAL_POSITION }
+                GameStatCard(
+                    label = name,
+                    value = "Home $home/${LudoEngine.TOKENS_PER_COLOR}",
+                    icon = if (color == LUDO_HUMAN) Icons.Filled.Person else Icons.Filled.SmartToy,
+                    highlight = (winner == null && uiState.currentColor == color) || winner == color,
+                    // How far round the board all four tokens are, together.
+                    progress = tokens.sumOf { (it.position + 1).coerceAtLeast(0) } /
+                        ((LudoEngine.FINISH_LOCAL_POSITION + 1f) * LudoEngine.TOKENS_PER_COLOR),
+                    modifier = modifier
                 )
             }
+            val note: @Composable (Modifier) -> Unit = { noteModifier ->
+                GameNote(
+                    text = when {
+                        winner == LUDO_HUMAN -> "You win! Claiming your coupon…"
+                        winner != null -> "The computer wins this round"
+                        uiState.lastTurnForfeited -> "Three 6s in a row - turn passed"
+                        uiState.lastTurnTimedOut -> "Previous turn timed out"
+                        !uiState.isHumanTurn -> "Computer's turn…"
+                        uiState.canRoll -> "Your turn - roll the dice"
+                        uiState.movableTokens.isNotEmpty() -> "Tap a glowing token to move it"
+                        else -> "No move with that roll"
+                    },
+                    tone = when {
+                        winner == LUDO_HUMAN -> GameTone.WIN
+                        winner != null -> GameTone.BAD
+                        uiState.lastTurnForfeited || uiState.lastTurnTimedOut -> GameTone.BAD
+                        else -> GameTone.PLAIN
+                    },
+                    modifier = noteModifier
+                )
+            }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LudoDice(
-                    value = uiState.game.diceValue,
-                    live = uiState.game.diceValue != null,
-                    enabled = uiState.canRoll,
-                    onClick = onRollDice
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                PrimaryButton(
-                    text = uiState.game.diceValue?.let { "Rolled: $it" } ?: "Roll dice",
-                    onClick = onRollDice,
-                    enabled = uiState.canRoll
-                )
-                if (uiState.isResolving) {
-                    CircularProgressIndicator(modifier = Modifier.padding(start = 12.dp).size(18.dp), strokeWidth = 2.dp)
+            // The seats and the board scale down together on a short screen. Beside each
+            // seat, in the corner the board leaves free: the turn line, and the turn clock.
+            BoardSlot(modifier = Modifier.padding(vertical = 8.dp)) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SeatCard(LUDO_HUMAN, "You · ${LUDO_HUMAN.label()}", Modifier.weight(1f))
+                        note(Modifier.weight(1f).padding(start = 10.dp, bottom = 8.dp))
+                    }
+                    LudoBoard(
+                        game = uiState.game,
+                        movableTokens = uiState.movableTokens,
+                        onTokenTap = onTokenTap,
+                        celebrate = winner == LUDO_HUMAN,
+                        modifier = Modifier.padding(vertical = 10.dp)
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (winner == null) {
+                                TurnTimerRing(secondsLeft = uiState.secondsLeft, totalSeconds = LUDO_TURN_SECONDS)
+                                Text(
+                                    text = "TURN\nTIMER",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp),
+                                    color = PwTableTextMuted,
+                                    modifier = Modifier.padding(start = 10.dp)
+                                )
+                            }
+                        }
+                        SeatCard(LUDO_COMPUTER, "CPU · ${LUDO_COMPUTER.label()}", Modifier.weight(1f))
+                    }
                 }
             }
 
-            if (uiState.winner == LUDO_COMPUTER) {
-                PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 12.dp))
+            GameDock {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    LudoDice(
+                        value = uiState.game.diceValue,
+                        live = uiState.game.diceValue != null,
+                        enabled = uiState.canRoll,
+                        onClick = onRollDice
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
+                    when {
+                        winner == LUDO_COMPUTER -> GameGoldButton(text = "Play again", icon = Icons.Filled.Refresh, onClick = onPlayAgain, modifier = Modifier.weight(1f))
+                        uiState.canRoll -> GameGoldButton(text = "Roll", onClick = onRollDice, modifier = Modifier.weight(1f))
+                        else -> DockWaiting(
+                            text = when {
+                                winner == LUDO_HUMAN -> "Well played!"
+                                uiState.isResolving -> "Moving…"
+                                !uiState.isHumanTurn -> "Computer is playing…"
+                                uiState.game.diceValue != null -> "Rolled a ${uiState.game.diceValue}"
+                                else -> "Wait…"
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
             }
         }
+    }
+}
+
+/** Where the main button sits while it isn't yours to press: a quiet recessed pill saying what's happening. */
+@Composable
+private fun DockWaiting(text: String, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(28.dp)
+    Box(
+        modifier = modifier
+            .heightIn(min = 56.dp)
+            .clip(shape)
+            .background(Color.Black.copy(alpha = 0.22f))
+            .border(1.dp, Color.White.copy(alpha = 0.06f), shape)
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = PwTableTextMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -231,64 +319,6 @@ internal fun colorFor(color: LudoColor): Color = when (color) {
     LudoColor.GREEN -> Color(0xFF43A047)
     LudoColor.YELLOW -> Color(0xFFFDD835)
     LudoColor.BLUE -> Color(0xFF1E88E5)
-}
-
-@Composable
-private fun TurnBanner(uiState: LudoUiState, modifier: Modifier = Modifier) {
-    val accent = colorFor(uiState.currentColor)
-    val tokenImage = rememberTokenImages()?.getValue(uiState.currentColor)
-    GameStatusBanner(accent = accent, modifier = modifier) {
-        Canvas(modifier = Modifier.size(26.dp)) {
-            if (tokenImage != null) drawToken(center = center, radius = size.minDimension * 0.42f, image = tokenImage)
-        }
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 12.dp)
-        ) {
-            Text(
-                text = if (uiState.isHumanTurn) "Your turn (Red)" else "Computer's turn (Yellow)",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            val note = when {
-                uiState.lastTurnForfeited -> "Three 6s in a row - turn passed"
-                uiState.lastTurnTimedOut -> "Previous turn timed out"
-                else -> null
-            }
-            if (note != null) {
-                Text(
-                    text = note,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        TurnTimerRing(secondsLeft = uiState.secondsLeft, totalSeconds = LUDO_TURN_SECONDS)
-    }
-}
-
-@Composable
-private fun WinnerBanner(humanWon: Boolean, modifier: Modifier = Modifier) {
-    val gold = MaterialTheme.colorScheme.primary
-    val computerToken = rememberTokenImages()?.getValue(LUDO_COMPUTER)
-    GameStatusBanner(accent = if (humanWon) gold else colorFor(LUDO_COMPUTER), modifier = modifier) {
-        if (humanWon) {
-            Icon(imageVector = Icons.Filled.EmojiEvents, contentDescription = null, tint = gold, modifier = Modifier.size(26.dp))
-        } else {
-            Canvas(modifier = Modifier.size(26.dp)) {
-                if (computerToken != null) drawToken(center = center, radius = size.minDimension * 0.42f, image = computerToken)
-            }
-        }
-        Text(
-            text = if (humanWon) "You win! Claiming your coupon…" else "The computer wins this round",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 12.dp)
-        )
-    }
 }
 
 // --- Board geometry: ludo_board.png is a classic 15x15 board - 6x6 yards in the
