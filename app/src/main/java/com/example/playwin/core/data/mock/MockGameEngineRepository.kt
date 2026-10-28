@@ -11,6 +11,7 @@ import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.rummy.RummyValidator
 import com.example.playwin.core.domain.snakesandladders.SnakesAndLaddersRules
 import com.example.playwin.core.domain.sudoku.SudokuRules
+import com.example.playwin.core.domain.sudoku.SudokuSolver
 import com.example.playwin.core.domain.twenty48.Twenty48Rules
 import kotlinx.coroutines.delay
 import javax.inject.Inject
@@ -104,10 +105,15 @@ class MockGameEngineRepository internal constructor(
         }
     }
 
-    private fun resolveSudoku(snapshot: GameSnapshot.Sudoku): GameOutcome =
+    private fun resolveSudoku(snapshot: GameSnapshot.Sudoku): GameOutcome = when {
         // Re-checked from the raw cells: every given kept, all 81 filled, no repeats.
         // A full grid that breaks a rule just isn't solved yet - the player can fix it.
-        if (SudokuRules.isSolved(snapshot.givens, snapshot.grid)) GameOutcome.WIN else GameOutcome.IN_PROGRESS
+        !SudokuRules.isSolved(snapshot.givens, snapshot.grid) -> GameOutcome.IN_PROGRESS
+        // Every dealt puzzle has exactly one solution; "givens" that don't were made
+        // up (blanking the grid to fill it any old way), not dealt - a loss.
+        SudokuSolver.countSolutions(snapshot.givens, limit = 2) != 1 -> GameOutcome.LOSE
+        else -> GameOutcome.WIN
+    }
 
     private fun resolveSnakesAndLadders(snapshot: GameSnapshot.SnakesAndLadders): GameOutcome {
         // The move is replayed here from the position and the roll, never taken

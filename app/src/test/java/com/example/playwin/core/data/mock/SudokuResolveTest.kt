@@ -38,6 +38,24 @@ class SudokuResolveTest {
     }
 
     @Test
+    fun `givens that are no real puzzle cannot win`() {
+        // Blank the puzzle out and "solve" it any valid way: the fill is legal, but no
+        // dealt puzzle has more than one solution, so these givens were made up.
+        val noGivens = List(81) { 0 }
+        assertEquals(GameOutcome.LOSE, runBlocking { engine.resolve(GameId.SUDOKU, GameSnapshot.Sudoku(noGivens, puzzle.solution)) })
+        val tooFew = puzzle.givens.mapIndexed { i, d -> if (i % 3 == 0) 0 else d }
+        assertEquals(GameOutcome.LOSE, runBlocking { engine.resolve(GameId.SUDOKU, GameSnapshot.Sudoku(tooFew, puzzle.solution)) })
+    }
+
+    @Test
+    fun `every difficulty deals a unique-solution puzzle that its solution wins`() {
+        SudokuDifficulty.entries.forEach { difficulty ->
+            val dealt = SudokuGenerator.generate(difficulty, Random(11))
+            assertEquals(GameOutcome.WIN, runBlocking { engine.resolve(GameId.SUDOKU, GameSnapshot.Sudoku(dealt.givens, dealt.solution)) })
+        }
+    }
+
+    @Test
     fun `a claimed fill that ignores the givens is not a win`() {
         val given = puzzle.givens.indexOfFirst { it != 0 }
         val tampered = puzzle.solution.toMutableList().also { it[given] = it[given] % 9 + 1 }
