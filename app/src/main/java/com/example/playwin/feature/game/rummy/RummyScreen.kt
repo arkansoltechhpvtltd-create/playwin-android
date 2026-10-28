@@ -22,10 +22,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,13 +33,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -70,29 +72,37 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
+import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.playwin.feature.game.GameScaffold
-import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
-import com.example.playwin.core.designsystem.theme.PwBrandGradientEnd
-import com.example.playwin.core.designsystem.theme.PwBrandGradientStart
 import com.example.playwin.core.designsystem.theme.PwGoldDark
 import com.example.playwin.core.designsystem.theme.PwGoldLight
+import com.example.playwin.core.designsystem.theme.PwTableTextMuted
 import com.example.playwin.core.domain.rummy.Card
 import com.example.playwin.core.domain.rummy.Rank
 import com.example.playwin.core.domain.rummy.Suit
 import com.example.playwin.core.domain.rummy.isWild
 import com.example.playwin.feature.game.CelebrationBurst
-import com.example.playwin.feature.game.GameStatusBanner
+import com.example.playwin.feature.game.GameDock
+import com.example.playwin.feature.game.GameDockButton
+import com.example.playwin.feature.game.GameGoldButton
+import com.example.playwin.feature.game.GameNote
+import com.example.playwin.feature.game.GameScaffold
+import com.example.playwin.feature.game.GameStatCard
+import com.example.playwin.feature.game.GameTone
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @Composable
@@ -122,7 +132,6 @@ fun RummyRoute(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun RummyScreen(
     uiState: RummyUiState,
@@ -136,14 +145,6 @@ fun RummyScreen(
     onPlayAgain: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scroll = rememberScrollState()
-    // Bring the revealed hand into view when the round ends.
-    LaunchedEffect(uiState.isGameOver) {
-        if (!uiState.isGameOver) return@LaunchedEffect
-        delay(120) // the panel has to be laid out before maxValue covers it
-        scroll.animateScrollTo(scroll.maxValue)
-    }
-
     GameScaffold(
         modifier = modifier.fillMaxSize(),
         topBar = { PwTopBar(title = "Rummy · vs Computer", onBack = onBack) }
@@ -152,146 +153,70 @@ fun RummyScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(vertical = 16.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            StatusBanner(uiState, modifier = Modifier.padding(horizontal = 16.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GameStatCard(
+                    label = "Turn",
+                    value = when {
+                        uiState.hasWon -> "You won"
+                        uiState.isGameOver -> "Over"
+                        uiState.isPlayerTurn -> "You"
+                        else -> "Computer"
+                    },
+                    icon = Icons.Filled.Person,
+                    highlight = (uiState.isPlayerTurn && !uiState.isGameOver) || uiState.hasWon,
+                    modifier = Modifier.weight(1f)
+                )
+                GameStatCard(label = "Deck", value = uiState.game.shoe.size.toString(), icon = Icons.Filled.Layers, modifier = Modifier.weight(1f))
+                GameStatCard(label = "Wild", value = rankLabel(uiState.game.wildRank), icon = Icons.Filled.Star, modifier = Modifier.weight(1f))
+            }
+            StatusNote(uiState)
 
-            // The table, the hand and (once the round is over) the computer's cards scroll
-            // between the fixed status line and buttons whenever they don't all fit.
-            // Centred in its space when it all fits, so there's no dead band above the buttons.
-            BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scroll)
-                        .heightIn(min = maxHeight)
-                        .padding(horizontal = 16.dp), // inside the scroll, so shadows aren't clipped at the sides
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = "Wild joker: ${rankLabel(uiState.game.wildRank)} (any suit) + printed jokers",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp)
+            Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 10.dp)) {
+                Table(
+                    uiState = uiState,
+                    onDrawFromShoe = onDrawFromShoe,
+                    onDrawFromDiscard = onDrawFromDiscard,
+                    modifier = Modifier.fillMaxSize()
+                )
+                if (uiState.hasWon) {
+                    CelebrationBurst(
+                        colors = listOf(PwGoldDark, PwGoldLight, Color.White, SuitRed),
+                        modifier = Modifier.matchParentSize()
                     )
-
-                    // The table: deck, discard pile and the computer's hand on green felt.
-                    val drawPulse = if (uiState.canDraw) rememberDrawPulse() else null
-                    val feltShape = RoundedCornerShape(20.dp)
-                    Box(modifier = Modifier.padding(top = 12.dp)) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .shadow(elevation = 10.dp, shape = feltShape)
-                                .clip(feltShape)
-                                .background(Brush.verticalGradient(listOf(FeltLight, FeltDark)))
-                                .border(1.5.dp, Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark)), feltShape)
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
-                            horizontalArrangement = Arrangement.spacedBy(20.dp)
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                FeltLabel("Deck (${uiState.game.shoe.size})")
-                                DeckStack(
-                                    modifier = Modifier.padding(top = 6.dp),
-                                    enabled = uiState.canDraw,
-                                    pulse = drawPulse,
-                                    onClick = onDrawFromShoe
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                FeltLabel("Discard")
-                                val top = uiState.game.discardPile.lastOrNull()
-                                Box(modifier = Modifier.padding(top = 6.dp)) {
-                                    if (top != null) {
-                                        // Keyed by card, so each new discard lands with its own entrance.
-                                        key(top.id) {
-                                            CardView(
-                                                card = top,
-                                                isWild = isWild(top, uiState.game.wildRank),
-                                                isSelected = false,
-                                                onClick = if (uiState.canDraw) onDrawFromDiscard else null,
-                                                pulse = drawPulse
-                                            )
-                                        }
-                                    } else {
-                                        EmptyPileSlot()
-                                    }
-                                }
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                FeltLabel("Computer's hand")
-                                OpponentFan(count = uiState.game.botHand.size, modifier = Modifier.padding(top = 6.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                                    Text(
-                                        text = "${uiState.game.botHand.size} cards",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = Color.White.copy(alpha = 0.85f)
-                                    )
-                                    if (uiState.isBotThinking) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.padding(start = 6.dp).size(12.dp),
-                                            strokeWidth = 2.dp,
-                                            color = PwGoldDark
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        if (uiState.hasWon) {
-                            CelebrationBurst(
-                                colors = listOf(PwGoldDark, PwGoldLight, Color.White, SuitRed),
-                                modifier = Modifier.matchParentSize()
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = "Your hand (drag to rearrange; tap a card, then Discard or Declare)",
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(top = 18.dp)
-                    )
-                    DraggableHand(
-                        hand = uiState.arrangedHand,
-                        wildRank = uiState.game.wildRank,
-                        selectedCardId = uiState.selectedCard?.id,
-                        onCardTap = if (uiState.canDiscard) onCardTap else null,
-                        onMoveCard = onMoveCard,
-                        modifier = Modifier.padding(top = 12.dp)
-                    )
-
-                    uiState.revealedOpponentHand?.let { cards ->
-                        RevealedOpponentHand(
-                            cards = cards,
-                            wildRank = uiState.game.wildRank,
-                            modifier = Modifier.padding(top = 20.dp)
-                        )
-                    }
                 }
             }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, top = 16.dp, end = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            HandRack(
+                uiState = uiState,
+                onCardTap = onCardTap,
+                onMoveCard = onMoveCard,
+                modifier = Modifier.padding(top = 10.dp)
+            )
+
+            GameDock(modifier = Modifier.padding(top = 10.dp)) {
                 // A win moves on to the reward screen by itself; Play again is for the other endings.
                 if (uiState.isGameOver && !uiState.hasWon) {
-                    PrimaryButton(text = "Play again", onClick = onPlayAgain)
+                    GameGoldButton(text = "Play again", icon = Icons.Filled.Refresh, onClick = onPlayAgain, modifier = Modifier.fillMaxWidth())
                 } else {
-                    OutlinedButton(
-                        onClick = onConfirmDiscard,
-                        enabled = uiState.canConfirmDiscard,
-                        shape = MaterialTheme.shapes.large
-                    ) {
-                        Text("Discard")
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        GameDockButton(
+                            label = "Discard",
+                            icon = Icons.AutoMirrored.Filled.CallMade,
+                            onClick = onConfirmDiscard,
+                            enabled = uiState.canConfirmDiscard,
+                            modifier = Modifier.weight(1f)
+                        )
+                        GameGoldButton(
+                            text = "Declare",
+                            icon = Icons.Filled.EmojiEvents,
+                            onClick = onDeclare,
+                            enabled = uiState.canDeclare,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
-                    PrimaryButton(
-                        text = "Declare",
-                        onClick = onDeclare,
-                        enabled = uiState.canDeclare,
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 10.dp)
-                    )
                 }
             }
         }
@@ -302,43 +227,135 @@ fun RummyScreen(
 private const val REVEAL_HOLD_MILLIS = 3_500L
 
 @Composable
-private fun StatusBanner(uiState: RummyUiState, modifier: Modifier = Modifier) {
-    val text = when {
-        uiState.hasWon -> "You win! Claiming your coupon…"
-        uiState.computerDeclared -> "The computer declared a valid hand - you lose this round."
-        uiState.hasLost -> "Invalid declaration - you lose this round."
-        uiState.isPlayerTurn && uiState.canDraw -> "Your turn - draw a card"
-        uiState.isPlayerTurn -> "Your turn - discard or declare"
-        else -> "Computer's turn…"
-    }
-    val gold = MaterialTheme.colorScheme.primary
-    val lost = uiState.computerDeclared || uiState.hasLost
-    GameStatusBanner(accent = if (lost) MaterialTheme.colorScheme.error else gold, modifier = modifier) {
-        if (uiState.hasWon) {
-            Icon(
-                imageVector = Icons.Filled.EmojiEvents,
-                contentDescription = null,
-                tint = gold,
-                modifier = Modifier
-                    .padding(end = 12.dp)
-                    .size(26.dp)
-            )
+private fun StatusNote(uiState: RummyUiState) {
+    GameNote(
+        text = when {
+            uiState.hasWon -> "You win! Claiming your coupon…"
+            uiState.computerDeclared -> "The computer declared a valid hand - you lose this round"
+            uiState.hasLost -> "Invalid declaration - you lose this round"
+            uiState.isResolving -> "Checking your declaration…"
+            uiState.isPlayerTurn && uiState.canDraw -> "Your turn - draw from the deck or the discard pile"
+            uiState.isPlayerTurn && uiState.selectedCard == null -> "Tap a card to discard it, or to declare with it"
+            uiState.isPlayerTurn -> "Discard it, or Declare if your sets are complete"
+            else -> "Computer is playing…"
+        },
+        tone = when {
+            uiState.hasWon -> GameTone.WIN
+            uiState.computerDeclared || uiState.hasLost -> GameTone.BAD
+            else -> GameTone.PLAIN
         }
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f)
-        )
-        if (uiState.isResolving) {
-            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+    )
+}
+
+/**
+ * The card table: navy velvet under a soft lamp, in a gold bevel. The
+ * computer sits at the far side with its hand fanned face down; the deck and
+ * discard pile lie in the middle. Once the round is over the computer's
+ * cards are laid face up in its place.
+ */
+@Composable
+private fun Table(
+    uiState: RummyUiState,
+    onDrawFromShoe: () -> Unit,
+    onDrawFromDiscard: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val frame = RoundedCornerShape(28.dp)
+    val felt = RoundedCornerShape(23.dp)
+    val drawPulse = if (uiState.canDraw) rememberDrawPulse() else null
+    BoxWithConstraints(
+        modifier = modifier
+            .shadow(elevation = 16.dp, shape = frame, ambientColor = Color.Black, spotColor = Color.Black)
+            .clip(frame)
+            .background(GoldBevel)
+            .padding(5.dp)
+            .clip(felt)
+            .drawBehind {
+                drawRect(Brush.radialGradient(listOf(FeltLit, FeltMid, FeltEdge), center = Offset(size.width / 2f, size.height * 0.42f), radius = size.maxDimension * 0.75f))
+                // A gold hairline inlaid just inside the rim.
+                val inset = 8.dp.toPx()
+                drawRoundRect(
+                    color = PwGoldDark.copy(alpha = 0.3f),
+                    topLeft = Offset(inset, inset),
+                    size = Size(size.width - inset * 2, size.height - inset * 2),
+                    cornerRadius = CornerRadius(17.dp.toPx()),
+                    style = Stroke(1.dp.toPx())
+                )
+            }
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    ) {
+        val revealed = uiState.revealedOpponentHand
+        if (revealed != null) {
+            RevealedOpponentHand(cards = revealed, wildRank = uiState.game.wildRank, width = maxWidth)
+            return@BoxWithConstraints
+        }
+        // The piles grow with the table, within reason.
+        val pileWidth = min(min(maxWidth * 0.26f, (maxHeight - 110.dp) / CARD_ASPECT), 96.dp).coerceAtLeast(44.dp)
+        Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+            ComputerSeat(cards = uiState.game.botHand.size, thinking = uiState.isBotThinking)
+            Spacer(modifier = Modifier.weight(1f))
+            Row(horizontalArrangement = Arrangement.spacedBy(28.dp), verticalAlignment = Alignment.Bottom) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    DeckStack(width = pileWidth, enabled = uiState.canDraw, pulse = drawPulse, onClick = onDrawFromShoe)
+                    TableLabel("Deck", modifier = Modifier.padding(top = 8.dp))
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    DiscardPile(
+                        pile = uiState.game.discardPile,
+                        wildRank = uiState.game.wildRank,
+                        width = pileWidth,
+                        pulse = drawPulse,
+                        onClick = if (uiState.canDraw) onDrawFromDiscard else null
+                    )
+                    TableLabel("Discard", modifier = Modifier.padding(top = 8.dp))
+                }
+            }
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }
 
 @Composable
-private fun FeltLabel(text: String) {
-    Text(text = text, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.85f))
+private fun TableLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp),
+        color = PwGoldDark.copy(alpha = 0.9f),
+        maxLines = 1,
+        modifier = modifier
+    )
+}
+
+/** The computer's place at the far side of the table: its hand fanned face down and how many cards it holds. */
+@Composable
+private fun ComputerSeat(cards: Int, thinking: Boolean) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        OpponentFan(count = cards)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .padding(top = 6.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color.Black.copy(alpha = 0.28f))
+                .border(1.dp, PwGoldDark.copy(alpha = if (thinking) 0.8f else 0.25f), RoundedCornerShape(50))
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+        ) {
+            Text(
+                text = "Computer · $cards cards",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = Color.White.copy(alpha = 0.9f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (thinking) {
+                CircularProgressIndicator(
+                    modifier = Modifier.padding(start = 8.dp).size(12.dp),
+                    strokeWidth = 2.dp,
+                    color = PwGoldDark
+                )
+            }
+        }
+    }
 }
 
 /** The slow gold breath on the deck and discard pile while it's the player's turn to draw. */
@@ -370,24 +387,32 @@ private fun suitSymbol(suit: Suit): String = when (suit) {
 private val SuitRed = Color(0xFFC62828)
 private val SuitBlack = Color(0xFF1A1A1A)
 private val CardFace = Color(0xFFFFFDF7)
-private val CardFaceShade = Color(0xFFF0E9D8)
+private val CardFaceShade = Color(0xFFF1EAD9)
 private val CardEdge = Color(0xFFC9BFA6)
-private val FeltLight = Color(0xFF1B6B53)
-private val FeltDark = Color(0xFF0B3C2E)
+private val FeltLit = Color(0xFF26457F)
+private val FeltMid = Color(0xFF172E5C)
+private val FeltEdge = Color(0xFF0B1834)
+private val BackNavy = Color(0xFF0E1D3E)
+private val BackNavyDeep = Color(0xFF07112A)
+private val GoldBevel = Brush.linearGradient(listOf(Color(0xFFFFEBB0), PwGoldDark, PwGoldLight, Color(0xFF6E4B10), PwGoldDark))
+private val GoldFoil = Brush.linearGradient(listOf(Color(0xFFFFE9A8), PwGoldLight, Color(0xFFFFE9A8), PwGoldLight))
 
 private fun suitColor(suit: Suit): Color = when (suit) {
     Suit.HEARTS, Suit.DIAMONDS -> SuitRed
     Suit.SPADES, Suit.CLUBS -> SuitBlack
 }
 
-private val CARD_WIDTH = 48.dp
-private val CARD_HEIGHT = 66.dp
-private val CardShape = RoundedCornerShape(8.dp)
+/** A card is always this much taller than it is wide. */
+private const val CARD_ASPECT = 1.4f
+
+private fun cardShape(width: Dp) = RoundedCornerShape(width * 0.14f)
 
 /**
- * A card face: rank and suit in the corner, a large suit in the middle. A wild
- * card carries a gold frame and star. It pops in when it first appears (after
+ * A card face, [width] wide: rank and suit in two corners, a large suit in
+ * the middle - a framed rank for picture cards. A wild card carries a gold
+ * foil frame and star. It pops in when it first appears (after
  * [entranceDelayMillis]) and lifts out of the row while [isSelected].
+ * Everything is sized to the card, so it reads the same at any font scale.
  */
 @Composable
 private fun CardView(
@@ -395,6 +420,7 @@ private fun CardView(
     isWild: Boolean,
     isSelected: Boolean,
     onClick: (() -> Unit)?,
+    width: Dp,
     modifier: Modifier = Modifier,
     entranceDelayMillis: Int = 0,
     pulse: State<Float>? = null
@@ -413,6 +439,9 @@ private fun CardView(
         is Card.PrintedJoker -> PwGoldLight
         is Card.Standard -> suitColor(card.suit)
     }
+    val shape = cardShape(width)
+    val density = LocalDensity.current
+    fun sized(fraction: Float) = with(density) { (width * fraction).toSp() }
 
     Box(
         modifier = modifier
@@ -421,27 +450,32 @@ private fun CardView(
                 alpha = e.coerceIn(0f, 1f)
                 scaleX = 0.6f + 0.4f * e + 0.06f * lift
                 scaleY = 0.6f + 0.4f * e + 0.06f * lift
-                translationY = -10.dp.toPx() * lift
+                translationY = -width.toPx() * 0.22f * lift
             }
-            .size(width = CARD_WIDTH, height = CARD_HEIGHT)
-            .shadow(elevation = if (isSelected) 8.dp else 3.dp, shape = CardShape)
-            .clip(CardShape)
+            .size(width = width, height = width * CARD_ASPECT)
+            .shadow(
+                elevation = if (isSelected) 12.dp else 3.dp,
+                shape = shape,
+                ambientColor = if (isSelected) PwGoldDark else Color.Black,
+                spotColor = if (isSelected) PwGoldDark else Color.Black
+            )
+            .clip(shape)
             .background(Brush.verticalGradient(listOf(CardFace, CardFaceShade)))
             .drawBehind {
                 val glow = pulse?.value
-                val frame = when {
-                    isSelected -> PwGoldLight
-                    glow != null -> PwGoldDark.copy(alpha = 0.5f + 0.5f * glow)
-                    isWild -> PwGoldLight
-                    else -> CardEdge
+                val radius = width.toPx() * 0.14f
+                val (frame, stroke) = when {
+                    isSelected -> Brush.linearGradient(listOf(PwGoldDark, PwGoldLight)) to 2.5.dp.toPx()
+                    glow != null -> Brush.linearGradient(listOf(PwGoldDark.copy(alpha = 0.5f + 0.5f * glow), PwGoldDark.copy(alpha = 0.5f + 0.5f * glow))) to 2.dp.toPx()
+                    isWild -> GoldFoil to 2.5.dp.toPx()
+                    else -> Brush.linearGradient(listOf(CardEdge, CardEdge)) to 1.dp.toPx()
                 }
-                val width = (if (isSelected || isWild || glow != null) 2.dp else 1.dp).toPx()
                 drawRoundRect(
-                    color = frame,
-                    topLeft = Offset(width / 2f, width / 2f),
-                    size = Size(size.width - width, size.height - width),
-                    cornerRadius = CornerRadius(8.dp.toPx() - width / 2f),
-                    style = Stroke(width)
+                    brush = frame,
+                    topLeft = Offset(stroke / 2f, stroke / 2f),
+                    size = Size(size.width - stroke, size.height - stroke),
+                    cornerRadius = CornerRadius(radius - stroke / 2f),
+                    style = Stroke(stroke)
                 )
             }
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
@@ -452,55 +486,65 @@ private fun CardView(
                     imageVector = Icons.Filled.Star,
                     contentDescription = null,
                     tint = ink,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(24.dp)
+                    modifier = Modifier.align(Alignment.Center).size(width * 0.5f)
                 )
                 Text(
                     text = "JOKER",
                     color = ink,
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 9.sp,
-                    lineHeight = 10.sp,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 5.dp)
+                    fontSize = sized(0.18f),
+                    lineHeight = sized(0.2f),
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = width * 0.09f)
                 )
             }
             is Card.Standard -> {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(start = 5.dp, top = 3.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
+                val rank = rankLabel(card.rank)
+                val suit = suitSymbol(card.suit)
+                val picture = card.rank == Rank.JACK || card.rank == Rank.QUEEN || card.rank == Rank.KING
+                CornerIndex(rank, suit, ink, width, Modifier.align(Alignment.TopStart))
+                if (picture) {
+                    // A framed panel with the rank set large, for J, Q and K.
+                    val panel = RoundedCornerShape(width * 0.08f)
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = width * 0.08f, bottom = width * 0.08f)
+                            .size(width = width * 0.52f, height = width * 0.72f)
+                            .clip(panel)
+                            .background(Brush.verticalGradient(listOf(ink.copy(alpha = 0.08f), ink.copy(alpha = 0.16f))))
+                            .border(1.dp, PwGoldLight.copy(alpha = 0.7f), panel),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = rank,
+                            color = ink,
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = sized(0.4f),
+                            lineHeight = sized(0.42f),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                } else {
                     Text(
-                        text = rankLabel(card.rank),
+                        text = suit,
                         color = ink,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 15.sp,
-                        lineHeight = 16.sp
+                        fontSize = sized(0.56f),
+                        lineHeight = sized(0.58f),
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(end = width * 0.08f, bottom = width * 0.04f)
                     )
-                    Text(text = suitSymbol(card.suit), color = ink, fontSize = 10.sp, lineHeight = 10.sp)
                 }
-                Text(
-                    text = suitSymbol(card.suit),
-                    color = ink,
-                    fontSize = 24.sp,
-                    lineHeight = 24.sp,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 5.dp, bottom = 4.dp)
-                )
                 if (isWild) {
                     Icon(
                         imageVector = Icons.Filled.Star,
                         contentDescription = "Wild",
                         tint = PwGoldLight,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(3.dp)
-                            .size(11.dp)
+                        modifier = Modifier.align(Alignment.TopEnd).padding(width * 0.07f).size(width * 0.22f)
                     )
                 }
             }
@@ -508,16 +552,31 @@ private fun CardView(
     }
 }
 
-/** The patterned back of a card: deep navy-to-emerald with a gold frame and lattice. */
+/** A card's corner: the rank over a small suit. */
+@Composable
+private fun CornerIndex(rank: String, suit: String, ink: Color, width: Dp, modifier: Modifier = Modifier) {
+    val density = LocalDensity.current
+    val rankSize = with(density) { (width * 0.3f).toSp() }
+    val suitSize = with(density) { (width * 0.22f).toSp() }
+    Column(
+        modifier = modifier.padding(start = width * 0.08f, top = width * 0.05f),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = rank, color = ink, fontWeight = FontWeight.ExtraBold, fontSize = rankSize, lineHeight = rankSize, maxLines = 1, softWrap = false)
+        Text(text = suit, color = ink, fontSize = suitSize, lineHeight = suitSize, maxLines = 1, softWrap = false)
+    }
+}
+
+/** The patterned back of a card: deep navy with a gold frame, lattice and a gold diamond. */
 private fun DrawScope.drawCardBack() {
-    drawRect(Brush.linearGradient(listOf(PwBrandGradientStart, PwBrandGradientEnd), Offset.Zero, Offset(size.width, size.height)))
+    drawRect(Brush.linearGradient(listOf(BackNavy, BackNavyDeep), Offset.Zero, Offset(size.width, size.height)))
     val inset = size.width * 0.1f
     clipRect(inset, inset, size.width - inset, size.height - inset) {
         val step = size.width * 0.2f
         var x = -size.height
         while (x < size.width) {
-            drawLine(PwGoldDark.copy(alpha = 0.3f), Offset(x, 0f), Offset(x + size.height, size.height), strokeWidth = 1f)
-            drawLine(PwGoldDark.copy(alpha = 0.3f), Offset(x + size.height, 0f), Offset(x, size.height), strokeWidth = 1f)
+            drawLine(PwGoldDark.copy(alpha = 0.28f), Offset(x, 0f), Offset(x + size.height, size.height), strokeWidth = 1f)
+            drawLine(PwGoldDark.copy(alpha = 0.28f), Offset(x + size.height, 0f), Offset(x, size.height), strokeWidth = 1f)
             x += step
         }
     }
@@ -537,38 +596,46 @@ private fun DrawScope.drawCardBack() {
         lineTo(c.x - d, c.y)
         close()
     }
-    drawPath(diamond, PwBrandGradientStart)
-    drawPath(diamond, PwGoldDark, style = Stroke(width = size.width * 0.04f))
+    drawPath(diamond, Brush.verticalGradient(listOf(Color(0xFFFFE9A8), PwGoldLight), startY = c.y - d * 1.3f, endY = c.y + d * 1.3f))
+    // A soft sheen across the upper half.
+    drawRect(Brush.verticalGradient(0f to Color.White.copy(alpha = 0.1f), 0.5f to Color.Transparent))
 }
 
 /** The deck, drawn as a short stack; its top card is what you tap to draw. */
 @Composable
-private fun DeckStack(enabled: Boolean, pulse: State<Float>?, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.padding(end = 4.dp, bottom = 4.dp)) {
-        for (layer in 2 downTo 1) {
+private fun DeckStack(width: Dp, enabled: Boolean, pulse: State<Float>?, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = cardShape(width)
+    Box(modifier = modifier.padding(end = 6.dp, bottom = 6.dp)) {
+        for (layer in 3 downTo 1) {
             Box(
                 modifier = Modifier
                     .offset(x = (layer * 2).dp, y = (layer * 2).dp)
-                    .size(width = CARD_WIDTH, height = CARD_HEIGHT)
-                    .clip(CardShape)
+                    .size(width = width, height = width * CARD_ASPECT)
+                    .shadow(elevation = 2.dp, shape = shape)
+                    .clip(shape)
                     .drawBehind { drawCardBack() }
             )
         }
         Box(
             modifier = Modifier
-                .size(width = CARD_WIDTH, height = CARD_HEIGHT)
-                .shadow(elevation = 3.dp, shape = CardShape)
-                .clip(CardShape)
+                .size(width = width, height = width * CARD_ASPECT)
+                .shadow(
+                    elevation = if (pulse != null) 10.dp else 4.dp,
+                    shape = shape,
+                    ambientColor = if (pulse != null) PwGoldDark else Color.Black,
+                    spotColor = if (pulse != null) PwGoldDark else Color.Black
+                )
+                .clip(shape)
                 .drawBehind {
                     drawCardBack()
                     pulse?.let {
-                        val width = 2.dp.toPx()
+                        val stroke = 2.5.dp.toPx()
                         drawRoundRect(
-                            color = PwGoldDark.copy(alpha = 0.5f + 0.5f * it.value),
-                            topLeft = Offset(width / 2f, width / 2f),
-                            size = Size(size.width - width, size.height - width),
-                            cornerRadius = CornerRadius(8.dp.toPx() - width / 2f),
-                            style = Stroke(width)
+                            color = PwGoldDark.copy(alpha = 0.45f + 0.55f * it.value),
+                            topLeft = Offset(stroke / 2f, stroke / 2f),
+                            size = Size(size.width - stroke, size.height - stroke),
+                            cornerRadius = CornerRadius(width.toPx() * 0.14f - stroke / 2f),
+                            style = Stroke(stroke)
                         )
                     }
                 }
@@ -577,23 +644,66 @@ private fun DeckStack(enabled: Boolean, pulse: State<Float>?, onClick: () -> Uni
     }
 }
 
-/** The computer's hand as a fan of small face-down cards - up to five shown, however many it holds. */
+/** The discard pile: the top card face up with the one before it tucked underneath at an angle. */
+@Composable
+private fun DiscardPile(
+    pile: List<Card>,
+    wildRank: Rank,
+    width: Dp,
+    pulse: State<Float>?,
+    onClick: (() -> Unit)?
+) {
+    val top = pile.lastOrNull()
+    val under = pile.getOrNull(pile.size - 2)
+    Box(modifier = Modifier.padding(end = 6.dp, bottom = 6.dp)) {
+        if (under != null) {
+            key(under.id) {
+                CardView(
+                    card = under,
+                    isWild = isWild(under, wildRank),
+                    isSelected = false,
+                    onClick = null,
+                    width = width,
+                    modifier = Modifier.graphicsLayer { rotationZ = -8f; alpha = 0.9f }
+                )
+            }
+        }
+        if (top != null) {
+            // Keyed by card, so each new discard lands with its own entrance.
+            key(top.id) {
+                CardView(
+                    card = top,
+                    isWild = isWild(top, wildRank),
+                    isSelected = false,
+                    onClick = onClick,
+                    width = width,
+                    pulse = pulse
+                )
+            }
+        } else {
+            EmptyPileSlot(width)
+        }
+    }
+}
+
+/** The computer's hand as a fan of small face-down cards - up to seven shown, however many it holds. */
 @Composable
 private fun OpponentFan(count: Int, modifier: Modifier = Modifier) {
-    val shown = count.coerceIn(0, 5)
-    val miniShape = RoundedCornerShape(4.dp)
-    Box(modifier = modifier.size(width = 76.dp, height = 46.dp), contentAlignment = Alignment.BottomCenter) {
+    val shown = count.coerceIn(0, 7)
+    val miniShape = RoundedCornerShape(5.dp)
+    Box(modifier = modifier.size(width = 150.dp, height = 58.dp), contentAlignment = Alignment.BottomCenter) {
         for (i in 0 until shown) {
             val spread = i - (shown - 1) / 2f
             Box(
                 modifier = Modifier
                     .graphicsLayer {
-                        translationX = spread * 11.dp.toPx()
-                        translationY = kotlin.math.abs(spread) * 2.dp.toPx()
-                        rotationZ = spread * 9f
+                        translationX = spread * 15.dp.toPx()
+                        translationY = abs(spread) * abs(spread) * 1.2.dp.toPx()
+                        rotationZ = spread * 7f
+                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
                     }
-                    .size(width = 28.dp, height = 40.dp)
-                    .shadow(elevation = 2.dp, shape = miniShape)
+                    .size(width = 34.dp, height = 48.dp)
+                    .shadow(elevation = 3.dp, shape = miniShape)
                     .clip(miniShape)
                     .drawBehind { drawCardBack() }
             )
@@ -603,12 +713,60 @@ private fun OpponentFan(count: Int, modifier: Modifier = Modifier) {
 
 private val HAND_GAP = 6.dp
 private val HAND_ROW_GAP = 10.dp
+private const val HAND_PER_ROW = 7
+
+/** The player's hand on a rack panel, under a small header. */
+@Composable
+private fun HandRack(
+    uiState: RummyUiState,
+    onCardTap: (Card) -> Unit,
+    onMoveCard: (fromIndex: Int, toIndex: Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(22.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(elevation = 8.dp, shape = shape)
+            .clip(shape)
+            .background(Brush.verticalGradient(listOf(Color(0xFF1A2E5A), Color(0xFF0E1C3B))))
+            .border(1.dp, Brush.verticalGradient(listOf(PwGoldDark.copy(alpha = 0.6f), PwGoldLight.copy(alpha = 0.15f))), shape)
+            .padding(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
+            Text(
+                text = "YOUR HAND",
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp),
+                color = PwGoldDark,
+                maxLines = 1,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "Drag to arrange",
+                style = MaterialTheme.typography.labelMedium,
+                color = PwTableTextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        DraggableHand(
+            hand = uiState.arrangedHand,
+            wildRank = uiState.game.wildRank,
+            selectedCardId = uiState.selectedCard?.id,
+            onCardTap = if (uiState.canDiscard) onCardTap else null,
+            onMoveCard = onMoveCard,
+            // Room above the cards for a selected one to lift into.
+            modifier = Modifier.padding(top = 14.dp)
+        )
+    }
+}
 
 /**
- * The player's hand, wrapped into rows of equal slots. Dragging a card lifts
- * it under the finger while the others slide aside to open its new slot; on
- * release it settles there and the move is committed through [onMoveCard].
- * Only the on-screen order changes. Tapping still selects a card.
+ * The player's hand, wrapped into rows of equal slots sized to fill the
+ * width. Dragging a card lifts it under the finger while the others slide
+ * aside to open its new slot; on release it settles there and the move is
+ * committed through [onMoveCard]. Only the on-screen order changes. Tapping
+ * still selects a card.
  *
  * Cards present on the first frame are dealt in one after another; a card
  * drawn later just pops in.
@@ -635,24 +793,29 @@ private fun DraggableHand(
     }
 
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val cardWidth = ((maxWidth - HAND_GAP * (HAND_PER_ROW - 1)) / HAND_PER_ROW).coerceAtMost(64.dp)
+        val cardHeight = cardWidth * CARD_ASPECT
         val density = LocalDensity.current
         val grid = with(density) {
-            val stepX = (CARD_WIDTH + HAND_GAP).toPx()
             HandGrid(
-                perRow = ((constraints.maxWidth + HAND_GAP.toPx()) / stepX).toInt().coerceAtLeast(1),
-                stepX = stepX,
-                stepY = (CARD_HEIGHT + HAND_ROW_GAP).toPx()
+                perRow = HAND_PER_ROW,
+                stepX = (cardWidth + HAND_GAP).toPx(),
+                stepY = (cardHeight + HAND_ROW_GAP).toPx()
             )
         }
         val latestHand by rememberUpdatedState(hand)
         val latestGrid by rememberUpdatedState(grid)
         val latestOnMoveCard by rememberUpdatedState(onMoveCard)
+        val cardShape = cardShape(cardWidth)
 
         val draggedFrom = draggedId?.let { id -> hand.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
         val shown = if (draggedFrom != null) HandArrangement.move(hand, draggedFrom, dropIndex) else hand
-        val rows = ((hand.size + grid.perRow - 1) / grid.perRow).coerceAtLeast(1)
+        // Always room for two rows, so drawing a fourteenth card never shifts the screen.
+        val rows = ((hand.size + grid.perRow - 1) / grid.perRow).coerceAtLeast(2)
+        // Centre the rows when the cards don't fill the width.
+        val sideInset = (maxWidth - (cardWidth * HAND_PER_ROW + HAND_GAP * (HAND_PER_ROW - 1))) / 2
 
-        Box(modifier = Modifier.fillMaxWidth().height(CARD_HEIGHT * rows + HAND_ROW_GAP * (rows - 1))) {
+        Box(modifier = Modifier.fillMaxWidth().padding(start = sideInset).height(cardHeight * rows + HAND_ROW_GAP * (rows - 1))) {
             shown.forEachIndexed { index, card ->
                 key(card.id) {
                     val slot = IntOffset(grid.slotX(index).roundToInt(), grid.slotY(index).roundToInt())
@@ -671,6 +834,7 @@ private fun DraggableHand(
                         isWild = isWild(card, wildRank),
                         isSelected = selectedCardId == card.id,
                         onClick = onCardTap?.let { tap -> { tap(card) } },
+                        width = cardWidth,
                         entranceDelayMillis = if (dealt[0]) 0 else index * 40,
                         modifier = Modifier
                             .zIndex(if (card.id == draggedId) 1f else 0f)
@@ -679,7 +843,7 @@ private fun DraggableHand(
                                 scaleX = 1f + 0.1f * dragLift
                                 scaleY = 1f + 0.1f * dragLift
                                 shadowElevation = 14.dp.toPx() * dragLift
-                                shape = CardShape
+                                shape = cardShape
                             }
                             .pointerInput(card.id) {
                                 var x = 0f
@@ -718,34 +882,27 @@ private fun DraggableHand(
     SideEffect { dealt[0] = true }
 }
 
-/** The computer's hand, face up, shown only once the round is over: navy with a gold frame. */
+/** The computer's hand, face up on the table, shown only once the round is over. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun RevealedOpponentHand(cards: List<Card>, wildRank: Rank, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(20.dp)
+private fun RevealedOpponentHand(cards: List<Card>, wildRank: Rank, width: Dp) {
+    // A hair under the exact fit, so rounding never pushes the seventh card onto a new row.
+    val cardWidth = ((width - HAND_GAP * (HAND_PER_ROW - 1)) / HAND_PER_ROW - 1.dp).coerceAtMost(52.dp)
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .shadow(elevation = 10.dp, shape = shape)
-            .clip(shape)
-            .background(Brush.linearGradient(listOf(PwBrandGradientStart, RevealNavy)))
-            .border(1.5.dp, Brush.linearGradient(listOf(PwGoldDark, PwGoldLight, PwGoldDark)), shape)
-            .padding(16.dp)
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            text = "COMPUTER'S HAND",
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp),
-            color = PwGoldDark
-        )
+        TableLabel("Computer's hand")
         Text(
             text = "The ${cards.size} cards it was holding",
             style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.75f),
+            color = PwTableTextMuted,
             modifier = Modifier.padding(top = 2.dp)
         )
         FlowRow(
             modifier = Modifier.padding(top = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(HAND_GAP),
+            horizontalArrangement = Arrangement.spacedBy(HAND_GAP, Alignment.CenterHorizontally),
             verticalArrangement = Arrangement.spacedBy(HAND_ROW_GAP)
         ) {
             cards.forEachIndexed { index, card ->
@@ -755,6 +912,7 @@ private fun RevealedOpponentHand(cards: List<Card>, wildRank: Rank, modifier: Mo
                         isWild = isWild(card, wildRank),
                         isSelected = false,
                         onClick = null,
+                        width = cardWidth,
                         entranceDelayMillis = index * 50
                     )
                 }
@@ -763,16 +921,15 @@ private fun RevealedOpponentHand(cards: List<Card>, wildRank: Rank, modifier: Mo
     }
 }
 
-private val RevealNavy = Color(0xFF14233F)
-
 @Composable
-private fun EmptyPileSlot(modifier: Modifier = Modifier) {
+private fun EmptyPileSlot(width: Dp, modifier: Modifier = Modifier) {
+    val shape = cardShape(width)
     Box(
         modifier = modifier
-            .size(width = CARD_WIDTH, height = CARD_HEIGHT)
-            .clip(CardShape)
-            .background(Color.Black.copy(alpha = 0.18f))
-            .border(1.dp, Color.White.copy(alpha = 0.35f), CardShape)
+            .size(width = width, height = width * CARD_ASPECT)
+            .clip(shape)
+            .background(Color.Black.copy(alpha = 0.22f))
+            .border(1.dp, PwGoldDark.copy(alpha = 0.35f), shape)
     )
 }
 
