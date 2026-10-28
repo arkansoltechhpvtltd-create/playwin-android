@@ -15,8 +15,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.filled.Check
@@ -47,8 +45,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -67,6 +63,24 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SmartToy
+import com.example.playwin.core.designsystem.theme.PwTableSurface
+import com.example.playwin.core.designsystem.theme.PwTableSurfaceRaised
+import com.example.playwin.feature.game.GameDockButton
+import com.example.playwin.feature.game.GameGoldButton
+import com.example.playwin.feature.game.GameNote
+import com.example.playwin.feature.game.GameStatCard
+import com.example.playwin.feature.game.GameTone
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -94,7 +108,6 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.playwin.feature.game.GameScaffold
 import com.example.playwin.R
-import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import com.example.playwin.core.designsystem.theme.PwGoldDark
@@ -102,7 +115,6 @@ import com.example.playwin.core.designsystem.theme.PwGoldLight
 import com.example.playwin.core.domain.chess.ChessEngine
 import com.example.playwin.core.domain.chess.ChessPiece
 import com.example.playwin.core.domain.chess.CHESS_TIME_CONTROLS
-import com.example.playwin.core.domain.chess.ChessClock
 import com.example.playwin.core.domain.chess.ChessDifficulty
 import com.example.playwin.core.domain.chess.TimeControl
 import com.example.playwin.core.domain.chess.ChessPosition
@@ -110,7 +122,6 @@ import com.example.playwin.core.domain.chess.PieceColor
 import com.example.playwin.core.domain.chess.PieceType
 import com.example.playwin.core.domain.chess.Square
 import com.example.playwin.feature.game.CelebrationBurst
-import com.example.playwin.feature.game.GameStatusBanner
 import com.example.playwin.feature.game.chess.online.ChessOnlineRoute
 import com.example.playwin.feature.game.online.GameModeSelectScreen
 import com.example.playwin.feature.game.online.PlayMode
@@ -195,13 +206,14 @@ private fun MovesPanel(
     difficulty: ChessDifficulty? = null,
     onDifficultyChosen: (ChessDifficulty) -> Unit = {}
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(22.dp)
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .shadow(elevation = 8.dp, shape = shape)
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(PickerNavyTop, PickerNavyBottom)))
-            .border(1.dp, PickerGoldRim, shape)
+            .background(Brush.verticalGradient(listOf(PwTableSurfaceRaised, PwTableSurface)))
+            .border(1.dp, Brush.verticalGradient(listOf(PwGoldDark.copy(alpha = 0.55f), PwGoldLight.copy(alpha = 0.15f))), shape)
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         val pairs = moves.chunked(2)
@@ -237,7 +249,8 @@ private fun MovesPanel(
                 )
             }
         } else {
-            LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f)) {
+            PickerLabel("Moves")
+            LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 4.dp)) {
                 itemsIndexed(pairs) { index, pair ->
                     val latest = index == pairs.lastIndex
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
@@ -268,10 +281,10 @@ private fun DifficultyPicker(selected: ChessDifficulty, onChoose: (ChessDifficul
 @Composable
 private fun PickerLabel(text: String) {
     Text(
-        text = text,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 1,
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp),
+        color = PwGoldDark,
+        maxLines = 2,
         overflow = TextOverflow.Ellipsis
     )
 }
@@ -314,10 +327,14 @@ private fun PickerChip(label: String, chosen: Boolean, onClick: () -> Unit, modi
     val shape = RoundedCornerShape(50)
     Row(
         modifier = modifier
-            .height(40.dp)
+            .heightIn(min = 40.dp)
+            .shadow(elevation = if (chosen) 6.dp else 0.dp, shape = shape, ambientColor = PwGoldDark, spotColor = PwGoldDark)
             .clip(shape)
-            .background(if (chosen) Brush.linearGradient(listOf(PwGoldLight, PwGoldDark)) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
-            .border(1.dp, if (chosen) PickerGoldRim else Brush.linearGradient(listOf(PwGoldDark.copy(alpha = 0.6f), PwGoldDark.copy(alpha = 0.6f))), shape)
+            .background(
+                if (chosen) Brush.verticalGradient(listOf(Color(0xFFFFE9A8), PwGoldDark, PwGoldLight))
+                else Brush.verticalGradient(listOf(Color(0xFF0E1A33), Color(0xFF0A1428)))
+            )
+            .border(1.dp, if (chosen) Brush.verticalGradient(listOf(Color(0xFFFFF4CF), Color(0xFF7A5512))) else Brush.verticalGradient(listOf(PwGoldDark.copy(alpha = 0.6f), PwGoldLight.copy(alpha = 0.25f))), shape)
             .selectable(selected = chosen, role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.Center,
@@ -343,38 +360,6 @@ private fun PickerChip(label: String, chosen: Boolean, onClick: () -> Unit, modi
     }
 }
 
-/** During play: a gold-rimmed navy pill that asks before resigning. */
-@Composable
-private fun ResignButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(50)
-    Row(
-        modifier = modifier
-            .height(44.dp)
-            .widthIn(min = 180.dp)
-            .clip(shape)
-            .background(Brush.verticalGradient(listOf(PickerNavyTop, PickerNavyBottom)))
-            .border(1.5.dp, PickerGoldRim, shape)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 24.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Flag,
-            contentDescription = null,
-            tint = PwGoldLight,
-            modifier = Modifier
-                .padding(end = 8.dp)
-                .size(18.dp)
-        )
-        Text(
-            text = "Resign",
-            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = PwGoldLight
-        )
-    }
-}
-
 /** "Resign this game?" - confirming gives the game to the computer; cancelling plays on. */
 @Composable
 private fun ResignDialog(onConfirm: () -> Unit, onCancel: () -> Unit) {
@@ -392,77 +377,22 @@ private fun ResignDialog(onConfirm: () -> Unit, onCancel: () -> Unit) {
             Text(
                 text = "Resign this game?",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = Color.White
+                color = Color.White,
+                textAlign = TextAlign.Center
             )
             Text(
                 text = "The computer will win this game.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = PwGoldDark,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 4.dp)
             )
-            Row(
-                modifier = Modifier.padding(top = 18.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(onClick = onCancel) {
-                    Text(text = "Keep playing", color = PwGoldDark, style = MaterialTheme.typography.labelLarge)
-                }
-                PrimaryButton(
-                    text = "Resign",
-                    onClick = onConfirm,
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp)
-                )
+            // Stacked, so neither choice is ever squeezed at large text sizes.
+            GameGoldButton(text = "Resign", icon = Icons.Filled.Flag, onClick = onConfirm, modifier = Modifier.padding(top = 18.dp).fillMaxWidth())
+            TextButton(onClick = onCancel, modifier = Modifier.padding(top = 4.dp)) {
+                Text(text = "Keep playing", color = PwGoldDark, style = MaterialTheme.typography.labelLarge)
             }
         }
-    }
-}
-
-/**
- * Both clocks: the computer's and yours, the running one outlined in gold,
- * turning red in its last [CLOCK_LOW_SECONDS] seconds.
- */
-@Composable
-private fun ClockRow(clock: ChessClock, modifier: Modifier = Modifier) {
-    Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        ClockFace(label = "Computer", clock = clock, color = CHESS_HUMAN.opposite(), modifier = Modifier.weight(1f))
-        ClockFace(label = "You", clock = clock, color = CHESS_HUMAN, modifier = Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun ClockFace(label: String, clock: ChessClock, color: PieceColor, modifier: Modifier = Modifier) {
-    val running = clock.running == color
-    val millis = clock.millisLeft(color)
-    val low = millis <= CLOCK_LOW_SECONDS * 1000L
-    val shape = RoundedCornerShape(14.dp)
-    Row(
-        modifier = modifier
-            .clip(shape)
-            .background(Brush.verticalGradient(listOf(PickerNavyTop, PickerNavyBottom)))
-            .border(
-                width = if (running) 2.dp else 1.dp,
-                brush = if (running) PickerGoldRim else Brush.linearGradient(listOf(PwGoldDark.copy(alpha = 0.45f), PwGoldDark.copy(alpha = 0.45f))),
-                shape = shape
-            )
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = formatClock(millis, showHours = (clock.control.seconds ?: 0) >= 3600),
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"),
-            color = when {
-                low -> CheckRed
-                running -> PwGoldLight
-                else -> MaterialTheme.colorScheme.onSurface
-            }
-        )
     }
 }
 
@@ -501,7 +431,8 @@ private fun CapturedRow(label: String, pieces: List<ChessPiece>, modifier: Modif
             text = label,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(112.dp)
+            maxLines = 1,
+            modifier = Modifier.widthIn(min = 112.dp).padding(end = 12.dp)
         )
         if (pieces.isEmpty()) {
             Text(text = "-", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -558,27 +489,30 @@ fun ChessScreen(
         ) {
             val humanWon = uiState.winner == 1
             val bannerInset = Modifier.padding(horizontal = 16.dp - BoardSideMargin)
-            when {
-                uiState.isDraw && uiState.timedOut != null ->
-                    StatusBanner(text = "Time's up - draw, no mating material left", modifier = bannerInset)
-                uiState.isDraw -> StatusBanner(text = drawBannerText(uiState.drawReason), modifier = bannerInset)
-                uiState.winner != null -> StatusBanner(
-                    text = when {
-                        uiState.resigned != null -> "You resigned - the computer wins"
-                        uiState.timedOut != null && humanWon -> "The computer ran out of time - you win! Claiming your coupon…"
-                        uiState.timedOut != null -> "You ran out of time - the computer wins"
-                        humanWon -> "Checkmate - you win! Claiming your coupon…"
-                        else -> "Checkmate - the computer wins"
-                    },
-                    modifier = bannerInset,
-                    trophy = humanWon
-                )
-                else -> TurnBanner(uiState, modifier = bannerInset)
-            }
-
-            if (!uiState.clock.control.isUnlimited) {
-                ClockRow(clock = uiState.clock, modifier = bannerInset.padding(top = 10.dp))
-            }
+            PlayerRow(uiState, modifier = bannerInset)
+            GameNote(
+                text = when {
+                    uiState.isDraw && uiState.timedOut != null -> "Time's up - draw, no mating material left"
+                    uiState.isDraw -> drawBannerText(uiState.drawReason)
+                    uiState.resigned != null -> "You resigned - the computer wins"
+                    uiState.winner != null && uiState.timedOut != null && humanWon -> "The computer ran out of time - you win! Claiming your coupon…"
+                    uiState.winner != null && uiState.timedOut != null -> "You ran out of time - the computer wins"
+                    humanWon -> "Checkmate - you win! Claiming your coupon…"
+                    uiState.winner != null -> "Checkmate - the computer wins"
+                    uiState.isResolving -> "Checking the position…"
+                    uiState.isHumanTurn && uiState.isInCheck -> "Check! Your move - get your king to safety"
+                    uiState.isInCheck -> "Check! Computer is thinking…"
+                    uiState.isHumanTurn -> "Your move - you play White"
+                    else -> "Computer is thinking…"
+                },
+                tone = when {
+                    humanWon -> GameTone.WIN
+                    uiState.winner != null -> GameTone.BAD
+                    uiState.isInCheck && !uiState.isGameOver -> GameTone.BAD
+                    else -> GameTone.PLAIN
+                },
+                modifier = bannerInset
+            )
 
             // The board sits right under the banner at full width; the height left
             // below it holds the captured pieces and the moves. On a short screen the
@@ -589,7 +523,9 @@ fun ChessScreen(
                     .weight(1f)
                     .padding(top = 12.dp)
             ) {
-                val boardSize = minOf(maxWidth, maxHeight - BelowBoardMinHeight).coerceAtLeast(0.dp)
+                // Larger text needs a taller panel, so the reserve grows with the font scale.
+                val belowBoard = BelowBoardMinHeight * LocalDensity.current.fontScale.coerceAtLeast(1f)
+                val boardSize = minOf(maxWidth, maxHeight - belowBoard).coerceAtLeast(0.dp)
                 Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(modifier = Modifier.size(boardSize)) {
                         ChessBoard(
@@ -621,9 +557,19 @@ fun ChessScreen(
                     )
 
                     if (uiState.isDraw || uiState.winner == 2) {
-                        PrimaryButton(text = "Play again", onClick = onPlayAgain, modifier = Modifier.padding(top = 12.dp))
+                        GameGoldButton(
+                            text = "Play again",
+                            icon = Icons.Filled.Refresh,
+                            onClick = onPlayAgain,
+                            modifier = bannerInset.padding(top = 12.dp).fillMaxWidth()
+                        )
                     } else if (uiState.canResign) {
-                        ResignButton(onClick = { askingToResign = true }, modifier = Modifier.padding(top = 12.dp))
+                        GameDockButton(
+                            label = "Resign",
+                            icon = Icons.Filled.Flag,
+                            onClick = { askingToResign = true },
+                            modifier = bannerInset.padding(top = 12.dp).fillMaxWidth()
+                        )
                     }
                 }
             }
@@ -631,51 +577,36 @@ fun ChessScreen(
     }
 }
 
+/**
+ * The two sides as cards: the computer (Black) and you (White), each with its
+ * clock. The side to move glows; a clock in its last [CLOCK_LOW_SECONDS]
+ * seconds turns red. Without a timer the cards say which colour each side plays.
+ */
 @Composable
-private fun TurnBanner(uiState: ChessUiState, modifier: Modifier = Modifier) {
-    val accent = if (uiState.isInCheck) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-    val density = LocalDensity.current
-    GameStatusBanner(accent = accent, modifier = modifier) {
-        Box(modifier = Modifier.size(30.dp), contentAlignment = Alignment.Center) {
-            PieceGlyph(
-                piece = ChessPiece(PieceType.KING, uiState.position.sideToMove),
-                fontSize = with(density) { 24.dp.toSp() }
+private fun PlayerRow(uiState: ChessUiState, modifier: Modifier = Modifier) {
+    val clock = uiState.clock
+    val showHours = (clock.control.seconds ?: 0) >= 3600
+    Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        listOf(CHESS_HUMAN.opposite() to "Computer", CHESS_HUMAN to "You").forEach { (color, name) ->
+            val millis = clock.millisLeft(color)
+            val toMove = !uiState.isGameOver && uiState.position.sideToMove == color
+            GameStatCard(
+                label = name,
+                value = if (clock.control.isUnlimited) {
+                    if (color == PieceColor.WHITE) "White" else "Black"
+                } else {
+                    formatClock(millis, showHours)
+                },
+                icon = if (color == CHESS_HUMAN) Icons.Filled.Person else Icons.Filled.SmartToy,
+                highlight = toMove || (color == CHESS_HUMAN && uiState.winner == 1),
+                valueColor = when {
+                    !clock.control.isUnlimited && millis <= CLOCK_LOW_SECONDS * 1000L -> CheckRed
+                    toMove && clock.running == color -> PwGoldDark
+                    else -> null
+                },
+                modifier = Modifier.weight(1f)
             )
         }
-        Text(
-            text = (if (uiState.isHumanTurn) "Your move (White)" else "Computer is thinking…") + if (uiState.isInCheck) " - check!" else "",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = if (uiState.isInCheck) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 12.dp)
-        )
-        if (uiState.isResolving || uiState.isComputerThinking) {
-            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-        }
-    }
-}
-
-@Composable
-private fun StatusBanner(text: String, modifier: Modifier = Modifier, trophy: Boolean = false) {
-    val gold = MaterialTheme.colorScheme.primary
-    GameStatusBanner(accent = gold, modifier = modifier) {
-        if (trophy) {
-            Icon(
-                imageVector = Icons.Filled.EmojiEvents,
-                contentDescription = null,
-                tint = gold,
-                modifier = Modifier
-                    .padding(end = 12.dp)
-                    .size(26.dp)
-            )
-        }
-        Text(
-            text = text,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f)
-        )
     }
 }
 
@@ -688,7 +619,12 @@ private val CheckRed = Color(0xFFD5402F)
 private val WhitePieceFill = Color(0xFFFFFBF0)
 private val WhitePieceOutline = Color(0xFF2A2118)
 private val BlackPieceFill = Color(0xFF1E1A17)
-private val BlackPieceOutline = Color(0xFFEADFC6)
+private val BlackPieceOutline = PwGoldDark
+
+private val ChessGoldBevel = Brush.linearGradient(listOf(Color(0xFFFFEBB0), PwGoldDark, PwGoldLight, Color(0xFF6E4B10), PwGoldDark))
+
+/** The ebony band round the squares that carries the file letters and rank numbers. */
+private val LabelBand = 14.dp
 
 private const val MOVE_MILLIS = 240
 private const val CAPTURE_MILLIS = 220
@@ -825,17 +761,47 @@ fun ChessBoard(
     fun displayRow(row: Float) = if (flipped) row else 7f - row
 
     val boardImage = rememberBoardImage()
-    val frameShape = RoundedCornerShape(4.dp)
-    // A slim gold edge, then the artwork cropped close around its squares (see [BoardArt]).
+    val frameShape = RoundedCornerShape(10.dp)
+    val labelPaint = remember {
+        android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = PwGoldDark.toArgb()
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        }
+    }
+    // A polished gold bevel, then a dark ebony band carrying the files and ranks in
+    // gold, then the artwork cropped close around its squares (see [BoardArt]).
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .shadow(elevation = 12.dp, shape = frameShape)
+            .shadow(elevation = 18.dp, shape = frameShape, ambientColor = Color.Black, spotColor = Color.Black)
             .clip(frameShape)
-            .background(FrameDark)
-            .border(BoardEdge, Brush.linearGradient(listOf(PwGoldLight, PwGoldDark, PwGoldLight, PwGoldDark)), frameShape)
+            .background(ChessGoldBevel)
             .padding(BoardEdge)
+            .clip(RoundedCornerShape(7.dp))
+            .background(Brush.verticalGradient(listOf(Color(0xFF26211B), FrameDark, Color(0xFF0F0D0B))))
+            .drawWithContent {
+                drawContent()
+                // Lines the labels up with the artwork's grid, exactly as the squares below are placed.
+                val band = LabelBand.toPx()
+                val inner = size.width - band * 2
+                val art = inner / BoardArt.CROP_WIDTH
+                val cell = art * BoardArt.GRID_WIDTH / 8f
+                val gridX = band + art * (BoardArt.GRID_LEFT - BoardArt.CROP_LEFT)
+                val gridY = band + inner / BoardArt.CROP_HEIGHT * (BoardArt.GRID_TOP - BoardArt.CROP_TOP)
+                labelPaint.textSize = band * 0.62f
+                val baseline = labelPaint.textSize * 0.36f
+                val canvas = drawContext.canvas.nativeCanvas
+                for (i in 0..7) {
+                    val file = ('a' + if (flipped) 7 - i else i).toString()
+                    val rank = (if (flipped) i + 1 else 8 - i).toString()
+                    canvas.drawText(file, gridX + (i + 0.5f) * cell, size.height - band / 2f + baseline, labelPaint)
+                    canvas.drawText(rank, band / 2f, gridY + (i + 0.5f) * cell + baseline, labelPaint)
+                }
+            }
+            .padding(LabelBand)
+            .border(1.dp, PwGoldDark.copy(alpha = 0.55f))
     ) {
         if (boardImage != null) {
             Canvas(modifier = Modifier.matchParentSize()) {
@@ -962,6 +928,24 @@ fun ChessBoard(
                                 scaleX = lift * (0.5f + 0.5f * presence)
                                 scaleY = lift * (0.5f + 0.5f * presence)
                                 alpha = presence
+                            }
+                            .drawBehind {
+                                // A soft contact shadow, so the piece stands on the marble; it spreads as the piece lifts.
+                                val spread = (lift - 1f) / 0.18f
+                                val w = size.width * (0.62f + 0.12f * spread)
+                                val h = size.height * 0.16f
+                                val c = Offset(size.width / 2f, size.height * (0.86f + 0.03f * spread))
+                                scale(scaleX = 1f, scaleY = h / w, pivot = c) {
+                                    drawCircle(
+                                        brush = Brush.radialGradient(
+                                            listOf(Color.Black.copy(alpha = 0.5f - 0.2f * spread), Color.Transparent),
+                                            center = c,
+                                            radius = w / 2f
+                                        ),
+                                        radius = w / 2f,
+                                        center = c
+                                    )
+                                }
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -1150,9 +1134,17 @@ private fun PieceGlyph(piece: ChessPiece, fontSize: TextUnit) {
             shadow = Shadow(color = Color.Black.copy(alpha = 0.45f), offset = Offset(0f, outlineWidth), blurRadius = outlineWidth * 2f)
         )
     )
+    // Ivory lit from above for White; polished ebony for Black, trimmed in gold.
     Text(
         text = glyph,
-        style = TextStyle(fontSize = fontSize, color = if (isWhite) WhitePieceFill else BlackPieceFill)
+        style = TextStyle(
+            fontSize = fontSize,
+            brush = if (isWhite) {
+                Brush.verticalGradient(listOf(Color.White, WhitePieceFill, Color(0xFFE9D9B4)))
+            } else {
+                Brush.verticalGradient(listOf(Color(0xFF4E453C), BlackPieceFill, Color(0xFF0B0907)))
+            }
+        )
     )
 }
 

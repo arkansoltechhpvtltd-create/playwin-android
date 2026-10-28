@@ -102,7 +102,9 @@ fun GameStatCard(
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
     highlight: Boolean = false,
-    progress: Float? = null
+    progress: Float? = null,
+    /** Overrides the value's colour - red for a clock running low, say. */
+    valueColor: Color? = null
 ) {
     val shape = RoundedCornerShape(18.dp)
     val glow by animateFloatAsState(if (highlight) 1f else 0f, tween(300), label = "statCardGlow")
@@ -141,8 +143,8 @@ fun GameStatCard(
         }
         Text(
             text = value,
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
-            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold, fontFeatureSettings = "tnum"),
+            color = valueColor ?: MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
