@@ -54,10 +54,7 @@ class Twenty48ViewModel @Inject constructor(
         viewModelScope.launch {
             val outcome = gameEngineRepository.resolve(
                 GameId.TWENTY_FORTY_EIGHT,
-                GameSnapshot.TwentyFortyEight(
-                    board = newBoard,
-                    hasMovesLeft = Twenty48Board.hasMovesLeft(newBoard)
-                )
+                GameSnapshot.TwentyFortyEight(board = newBoard)
             )
 
             when (outcome) {

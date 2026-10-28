@@ -1,9 +1,11 @@
 package com.example.playwin.feature.game.twenty48
 
-const val GRID_SIZE = 4
-const val WIN_TILE = 2048
+import com.example.playwin.core.domain.twenty48.Twenty48Rules
 
-enum class SwipeDirection { LEFT, RIGHT, UP, DOWN }
+const val GRID_SIZE = Twenty48Rules.GRID_SIZE
+const val WIN_TILE = Twenty48Rules.WIN_TILE
+
+typealias SwipeDirection = com.example.playwin.core.domain.twenty48.SwipeDirection
 
 data class Twenty48UiState(
     val board: List<List<Int>> = List(GRID_SIZE) { List(GRID_SIZE) { 0 } },

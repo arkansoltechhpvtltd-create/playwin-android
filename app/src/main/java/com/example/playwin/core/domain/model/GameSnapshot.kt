@@ -34,12 +34,15 @@ sealed interface GameSnapshot {
     ) : GameSnapshot
 
     /**
+     * The 2048 board after a move. The engine re-derives everything from it with
+     * [com.example.playwin.core.domain.twenty48.Twenty48Rules] - whether the
+     * target tile is reached and whether any move remains - rather than taking
+     * the client's word for either.
+     *
      * @param board 4 rows x 4 columns of tile values (0 = empty).
-     * @param hasMovesLeft whether at least one legal move remains.
      */
     data class TwentyFortyEight(
-        val board: List<List<Int>>,
-        val hasMovesLeft: Boolean
+        val board: List<List<Int>>
     ) : GameSnapshot
 
     /**

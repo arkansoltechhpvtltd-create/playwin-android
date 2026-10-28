@@ -74,13 +74,37 @@ class GameVerdictResolveTest {
 
     // --- 2048 ---
 
+    private fun twenty48(board: List<List<Int>>) = resolve(GameId.TWENTY_FORTY_EIGHT, GameSnapshot.TwentyFortyEight(board))
+
+    /** A full board with no two equal neighbours: no move left. */
+    private val stuck = listOf(
+        listOf(2, 4, 2, 4),
+        listOf(4, 2, 4, 2),
+        listOf(2, 4, 2, 4),
+        listOf(4, 2, 4, 2)
+    )
+
     @Test
-    fun `2048 wins on the 2048 tile, loses only when stuck`() {
+    fun `2048 wins on the 2048 tile`() {
         val withTile = List(4) { r -> List(4) { c -> if (r == 0 && c == 0) 2048 else 0 } }
-        assertEquals(GameOutcome.WIN, resolve(GameId.TWENTY_FORTY_EIGHT, GameSnapshot.TwentyFortyEight(withTile, hasMovesLeft = false)))
-        val plain = List(4) { List(4) { 2 } }
-        assertEquals(GameOutcome.IN_PROGRESS, resolve(GameId.TWENTY_FORTY_EIGHT, GameSnapshot.TwentyFortyEight(plain, hasMovesLeft = true)))
-        assertEquals(GameOutcome.LOSE, resolve(GameId.TWENTY_FORTY_EIGHT, GameSnapshot.TwentyFortyEight(plain, hasMovesLeft = false)))
+        assertEquals(GameOutcome.WIN, twenty48(withTile))
+        // Even on a board with no move left: reaching the tile is what counts.
+        assertEquals(GameOutcome.WIN, twenty48(stuck.mapIndexed { r, row -> if (r == 0) listOf(2048) + row.drop(1) else row }))
+    }
+
+    @Test
+    fun `2048 game over is re-derived from the board, not taken from the client`() {
+        // A full board where tiles can still merge is not over.
+        assertEquals(GameOutcome.IN_PROGRESS, twenty48(List(4) { List(4) { 2 } }))
+        assertEquals(GameOutcome.IN_PROGRESS, twenty48(stuck.mapIndexed { r, row -> if (r == 3) listOf(4, 2, 4, 4) else row }))
+        assertEquals(GameOutcome.LOSE, twenty48(stuck))
+    }
+
+    @Test
+    fun `a 2048 board no game could show loses`() {
+        assertEquals(GameOutcome.LOSE, twenty48(List(4) { List(4) { 0 } }.mapIndexed { r, row -> if (r == 0) listOf(3) + row.drop(1) else row }))
+        assertEquals(GameOutcome.LOSE, twenty48(List(3) { List(4) { 0 } }))
+        assertEquals(GameOutcome.LOSE, twenty48(List(4) { List(5) { 0 } }))
     }
 
     // --- Ludo ---

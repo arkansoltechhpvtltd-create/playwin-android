@@ -11,6 +11,7 @@ import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.rummy.RummyValidator
 import com.example.playwin.core.domain.snakesandladders.SnakesAndLaddersRules
 import com.example.playwin.core.domain.sudoku.SudokuRules
+import com.example.playwin.core.domain.twenty48.Twenty48Rules
 import kotlinx.coroutines.delay
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -65,10 +66,16 @@ class MockGameEngineRepository internal constructor(
     }
 
     private fun resolveTwentyFortyEight(snapshot: GameSnapshot.TwentyFortyEight): GameOutcome {
-        val reached2048 = snapshot.board.any { row -> row.any { it >= 2048 } }
-        if (reached2048) return GameOutcome.WIN
-        if (!snapshot.hasMovesLeft) return GameOutcome.LOSE
-        return GameOutcome.IN_PROGRESS
+        // Everything is re-derived from the board itself: a board no game could
+        // show (wrong size, a tile that isn't a power of two) is fabricated - a
+        // loss; then the target tile wins and a board with no move left loses.
+        val board = snapshot.board
+        return when {
+            !Twenty48Rules.isWellFormed(board) -> GameOutcome.LOSE
+            Twenty48Rules.hasReachedWinTile(board) -> GameOutcome.WIN
+            !Twenty48Rules.hasMovesLeft(board) -> GameOutcome.LOSE
+            else -> GameOutcome.IN_PROGRESS
+        }
     }
 
     private fun resolveEightBall(snapshot: GameSnapshot.EightBall): GameOutcome {
