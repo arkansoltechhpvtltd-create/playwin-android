@@ -41,7 +41,8 @@ class LudoOnlineViewModel @Inject constructor(
         if (game.diceValue != null) return
 
         controller.runMove {
-            val rolled = LudoEngine.rollDice(game)
+            // The die is the game engine's, as against the computer - never thrown here.
+            val rolled = LudoEngine.rollDice(game, gameEngineRepository.rollDie(GameId.LUDO))
             val dice = rolled.diceValue
             if (LudoEngine.movableTokens(rolled).isEmpty()) {
                 val passed = LudoEngine.passTurn(rolled)

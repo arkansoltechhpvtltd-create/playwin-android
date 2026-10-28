@@ -23,10 +23,11 @@ class GamesFinishTest {
     @Test
     fun `ludo always finishes`() {
         repeat(20) { seed ->
+            val random = Random(seed)
             var state = LudoEngine.initialState()
             var turns = 0
             while (state.players.none { color -> LudoEngine.hasAllTokensHome(state.tokens.filter { it.color == color }.map { it.position }) }) {
-                val rolled = LudoEngine.rollDice(state)
+                val rolled = LudoEngine.rollDice(state, random.nextInt(1, 7))
                 state = LudoBot.chooseToken(rolled)?.let { LudoEngine.applyMove(rolled, it.color, it.index) } ?: LudoEngine.passTurn(rolled)
                 turns++
                 assertTrue("game $seed still going after $turns turns", turns < 20_000)

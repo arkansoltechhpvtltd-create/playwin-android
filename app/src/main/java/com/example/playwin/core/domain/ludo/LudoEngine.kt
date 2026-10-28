@@ -50,7 +50,13 @@ object LudoEngine {
     /** Sixes in a row that forfeit the turn: the third one is void and play passes on. */
     const val MAX_SIXES_IN_A_ROW = 3
 
-    fun rollDice(state: LudoState, value: Int = (1..6).random()): LudoState = state.copy(
+    /** [state] after the player to move throws [value] - the game engine's die, never one thrown here. */
+    fun rollDice(state: LudoState, value: Int): LudoState {
+        require(value in 1..6) { "Not a die roll: $value" }
+        return rollDiceUnchecked(state, value)
+    }
+
+    private fun rollDiceUnchecked(state: LudoState, value: Int): LudoState = state.copy(
         diceValue = value,
         hasRolled = true,
         sixesInARow = if (value == 6) state.sixesInARow + 1 else 0

@@ -72,13 +72,16 @@ class LudoViewModel @Inject constructor(
         startTimer()
     }
 
+    /** Throws the die - always the game engine's, never one picked here - and plays out what it allows. */
     private fun roll(game: LudoState) {
-        val rolled = LudoEngine.rollDice(game)
-        val movable = LudoEngine.movableTokens(rolled)
+        // Busy while the engine throws, so a second tap can't roll twice.
+        _uiState.update { it.copy(isResolving = true) }
+        viewModelScope.launch {
+            val rolled = LudoEngine.rollDice(game, gameEngineRepository.rollDie(GameId.LUDO))
+            val movable = LudoEngine.movableTokens(rolled)
 
-        if (movable.isEmpty()) {
-            _uiState.update { it.copy(game = rolled, movableTokens = emptyList(), isResolving = true) }
-            viewModelScope.launch {
+            if (movable.isEmpty()) {
+                _uiState.update { it.copy(game = rolled, movableTokens = emptyList(), isResolving = true) }
                 delay(400) // let the rolled value render briefly before the turn moves on
                 val passed = LudoEngine.passTurn(rolled)
                 val forfeited = LudoEngine.isTurnForfeited(rolled)
@@ -86,14 +89,14 @@ class LudoViewModel @Inject constructor(
                     it.copy(game = passed, isResolving = false, lastTurnTimedOut = false, lastTurnForfeited = forfeited)
                 }
                 startTurn(passed)
-            }
-        } else if (rolled.currentColor == LUDO_HUMAN) {
-            _uiState.update { it.copy(game = rolled, movableTokens = movable) }
-        } else {
-            _uiState.update { it.copy(game = rolled, movableTokens = emptyList()) }
-            computerJob = viewModelScope.launch {
-                delay(COMPUTER_STEP_MILLIS)
-                LudoBot.chooseToken(rolled)?.let { move(rolled, it) }
+            } else if (rolled.currentColor == LUDO_HUMAN) {
+                _uiState.update { it.copy(game = rolled, movableTokens = movable, isResolving = false) }
+            } else {
+                _uiState.update { it.copy(game = rolled, movableTokens = emptyList(), isResolving = false) }
+                computerJob = viewModelScope.launch {
+                    delay(COMPUTER_STEP_MILLIS)
+                    LudoBot.chooseToken(rolled)?.let { move(rolled, it) }
+                }
             }
         }
     }
