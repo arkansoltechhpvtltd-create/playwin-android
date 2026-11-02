@@ -23,6 +23,13 @@ interface RewardsRepository {
     suspend fun claimRoomReward(roomId: String): Result<String>
 
     /**
+     * Collects any win the signed-in player hasn't been paid for, such as one
+     * whose app closed before [claimRoomReward] got through. Safe to call any
+     * time: it can't pay a room twice, and failing just leaves it for next time.
+     */
+    suspend fun claimPendingRewards()
+
+    /**
      * Claims the reward for a win against the computer. No server sees those
      * games, so a signed-in player gets [NO_COUPON_ID]; a guest's coupon lives
      * only in their in-memory demo wallet.

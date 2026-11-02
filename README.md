@@ -41,6 +41,7 @@ The single authority on "who won" — the client never decides a game's outcome 
 ### `RewardsRepository`
 Issues rewards for a confirmed win — deliberately separate from `GameEngineRepository`: that decides *whether* a round was won, this decides *what the player gets*.
 - `claimRoomReward(roomId: String): Result<String>` — claim the coupon for an online win through the `claim_room_coupon` Postgres function (`supabase/migrations/0010_server_issued_coupons.sql`). The server reads the winner from the room, issues one coupon per room, and only pays out games in `coupon_verified_games`, whose winner it decides itself (today: Snakes & Ladders). Returns the coupon id, or `NO_COUPON_ID` when that game doesn't pay out.
+- `claimPendingRewards(): Unit` — collect every win the player hasn't been paid for, through the `claim_pending_coupons` Postgres function (`supabase/migrations/0011_claim_pending_coupons.sql`). Runs on launch, on sign-in and when the wallet opens, so a win isn't lost if the app closed before `claimRoomReward` got through. Rooms finished before 0011 never pay out: their winner wasn't decided by the server.
 - `claimVsComputerReward(gameId: GameId): String` — vs-Computer games run entirely on the device, so nothing can prove a win. A signed-in player gets `NO_COUPON_ID`; a guest gets a demo coupon that lives only in their in-memory wallet.
 
 ### Server-side win resolution: Supabase Edge Function contract

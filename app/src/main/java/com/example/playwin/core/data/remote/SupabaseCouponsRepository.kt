@@ -101,6 +101,12 @@ class SupabaseCouponsRepository @Inject constructor(
         remoteCoupons.update { list -> listOf(coupon) + list.filterNot { it.id == coupon.id } }
     }
 
+    /** Replaces the wallet with [userId]'s full coupon list, just read from the server. */
+    fun onCouponsLoaded(userId: String, coupons: List<Coupon>) {
+        remoteCoupons.value = coupons
+        cachedUserId = userId
+    }
+
     override suspend fun redeemCoupon(couponId: String) {
         val user = authRepository.observeCurrentUser().first()
         if (user == null || user.isGuest) {

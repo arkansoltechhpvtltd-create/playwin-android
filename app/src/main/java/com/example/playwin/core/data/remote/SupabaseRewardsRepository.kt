@@ -27,7 +27,8 @@ private data class ClaimRoomCouponParams(@SerialName("p_room_id") val roomId: St
  * Real [RewardsRepository]. The `claim_room_coupon` RPC (a `security definer`
  * Postgres function - see `supabase/migrations/0010_server_issued_coupons.sql`)
  * is the only thing that creates a coupon; the client sends a room id and
- * nothing else. Guests never touch Supabase and keep the demo rewards.
+ * nothing else, and `claim_pending_coupons` (0011) runs it for every unpaid win.
+ * Guests never touch Supabase and keep the demo rewards.
  */
 @Singleton
 class SupabaseRewardsRepository @Inject constructor(
@@ -50,6 +51,22 @@ class SupabaseRewardsRepository @Inject constructor(
     } catch (e: Exception) {
         Log.w(TAG, "Failed to claim the coupon for room $roomId", e)
         Result.failure(e)
+    }
+
+    override suspend fun claimPendingRewards() {
+        val user = authRepository.observeCurrentUser().first()
+        if (user == null || user.isGuest) return
+        try {
+            val coupons = supabaseClient.postgrest
+                .rpc("claim_pending_coupons")
+                .decodeList<CouponRow>()
+                .map { it.toDomain() }
+            couponsRepository.onCouponsLoaded(user.id, coupons)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to claim pending coupons", e)
+        }
     }
 
     override suspend fun claimVsComputerReward(gameId: GameId): String {

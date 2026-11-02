@@ -31,6 +31,8 @@ class MockRewardsRepository @Inject constructor(
     // Rooms need a real account, so a guest never has one to claim.
     override suspend fun claimRoomReward(roomId: String): Result<String> = Result.success(NO_COUPON_ID)
 
+    override suspend fun claimPendingRewards() = Unit
+
     override suspend fun claimVsComputerReward(gameId: GameId): String {
         // Simulated network latency, as if this were a real backend call.
         delay(400)

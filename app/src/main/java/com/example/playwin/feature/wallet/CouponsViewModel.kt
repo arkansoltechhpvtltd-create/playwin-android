@@ -3,6 +3,7 @@ package com.example.playwin.feature.wallet
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.playwin.core.domain.repository.CouponsRepository
+import com.example.playwin.core.domain.repository.RewardsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -13,7 +14,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class CouponsViewModel @Inject constructor(
-    private val couponsRepository: CouponsRepository
+    private val couponsRepository: CouponsRepository,
+    private val rewardsRepository: RewardsRepository
 ) : ViewModel() {
 
     val uiState: StateFlow<CouponsUiState> = couponsRepository.observeCoupons()
@@ -23,6 +25,13 @@ class CouponsViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = CouponsUiState()
         )
+
+    /** The wallet opened: collect any win that hasn't been paid yet. */
+    fun onOpened() {
+        viewModelScope.launch {
+            rewardsRepository.claimPendingRewards()
+        }
+    }
 
     fun onRedeem(couponId: String) {
         viewModelScope.launch {

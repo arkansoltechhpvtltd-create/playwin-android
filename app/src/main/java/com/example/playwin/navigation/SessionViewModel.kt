@@ -6,11 +6,15 @@ import com.example.playwin.core.domain.model.AppSettings
 import com.example.playwin.core.domain.model.AuthUser
 import com.example.playwin.core.domain.repository.AuthRepository
 import com.example.playwin.core.domain.repository.GamesRepository
+import com.example.playwin.core.domain.repository.RewardsRepository
 import com.example.playwin.core.domain.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -20,7 +24,8 @@ import javax.inject.Inject
 class SessionViewModel @Inject constructor(
     authRepository: AuthRepository,
     settingsRepository: SettingsRepository,
-    gamesRepository: GamesRepository
+    gamesRepository: GamesRepository,
+    rewardsRepository: RewardsRepository
 ) : ViewModel() {
 
     val authUser: StateFlow<AuthUser?> = authRepository.observeCurrentUser()
@@ -34,5 +39,14 @@ class SessionViewModel @Inject constructor(
         // so the lobby has it the moment someone signs in or continues as guest
         // (a guest's login makes no network call of its own to hide the wait).
         viewModelScope.launch { gamesRepository.observeGames().first() }
+
+        // On launch and on each sign-in, collect any win whose app closed before it was claimed.
+        viewModelScope.launch {
+            authRepository.observeCurrentUser()
+                .map { it?.id }
+                .distinctUntilChanged()
+                .filterNotNull()
+                .collect { rewardsRepository.claimPendingRewards() }
+        }
     }
 }
