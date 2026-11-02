@@ -179,7 +179,7 @@ fun ChineseCheckersScreen(
                         GameNote(
                             text = when {
                                 !uiState.started -> "Choose your pegs, then start"
-                                humanWon -> "Your point is filled - you win! Claiming your coupon…"
+                                humanWon -> "Your point is filled - you win! Checking for your coupon…"
                                 uiState.winner != null -> "The computer filled its point - it wins"
                                 uiState.isComputerThinking || !uiState.isHumanTurn -> "Computer is moving…"
                                 uiState.isResolving -> "Checking the board…"

@@ -151,7 +151,7 @@ fun SudokuScreen(
             GameNote(
                 text = when {
                     uiState.isGenerating -> "Dealing a new puzzle…"
-                    uiState.hasWon -> "Solved! Claiming your coupon…"
+                    uiState.hasWon -> "Solved! Checking for your coupon…"
                     uiState.isResolving -> "Checking your grid…"
                     uiState.isFilledButWrong -> "Not quite - fix the cells in red"
                     uiState.notesMode -> "Notes on - tap digits to pencil them in"

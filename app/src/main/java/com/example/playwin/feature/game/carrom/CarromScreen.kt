@@ -183,7 +183,7 @@ fun CarromScreen(
                 text = when {
                     !uiState.started -> "Choose your coins and who breaks"
                     uiState.isDraw -> "It's a draw! $score"
-                    humanWon -> "You win $score! Claiming your coupon…"
+                    humanWon -> "You win $score! Checking for your coupon…"
                     uiState.winner == CARROM_COMPUTER -> "The computer wins $score"
                     else -> when {
                         uiState.isComputerThinking -> "Computer is lining up a shot…"

@@ -142,7 +142,7 @@ fun Twenty48Screen(
             }
             GameNote(
                 text = when {
-                    uiState.hasWon -> "You reached 2048! Claiming your coupon…"
+                    uiState.hasWon -> "You reached 2048! Checking for your coupon…"
                     uiState.isGameOver -> "No more moves - the board is locked"
                     else -> "Swipe to slide - matching tiles merge"
                 },

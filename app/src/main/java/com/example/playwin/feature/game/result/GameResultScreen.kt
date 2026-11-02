@@ -59,7 +59,7 @@ fun GameResultScreen(
                 text = if (hasCoupon) {
                     "Here's your coupon — it's already in your wallet."
                 } else {
-                    "This game doesn't award coupons yet."
+                    "This win doesn't award a coupon."
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

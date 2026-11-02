@@ -478,9 +478,9 @@ fun ChessScreen(
                     uiState.isDraw && uiState.timedOut != null -> "Time's up - draw, no mating material left"
                     uiState.isDraw -> drawBannerText(uiState.drawReason)
                     uiState.resigned != null -> "You resigned - the computer wins"
-                    uiState.winner != null && uiState.timedOut != null && humanWon -> "The computer ran out of time - you win! Claiming your coupon…"
+                    uiState.winner != null && uiState.timedOut != null && humanWon -> "The computer ran out of time - you win! Checking for your coupon…"
                     uiState.winner != null && uiState.timedOut != null -> "You ran out of time - the computer wins"
-                    humanWon -> "Checkmate - you win! Claiming your coupon…"
+                    humanWon -> "Checkmate - you win! Checking for your coupon…"
                     uiState.winner != null -> "Checkmate - the computer wins"
                     uiState.isResolving -> "Checking the position…"
                     uiState.awaitingStart -> "Tap Start - the computer opens as White"

@@ -230,7 +230,7 @@ private const val REVEAL_HOLD_MILLIS = 3_500L
 private fun StatusNote(uiState: RummyUiState) {
     GameNote(
         text = when {
-            uiState.hasWon -> "You win! Claiming your coupon…"
+            uiState.hasWon -> "You win! Checking for your coupon…"
             uiState.computerDeclared -> "The computer declared a valid hand - you lose this round"
             uiState.hasLost -> "Invalid declaration - you lose this round"
             uiState.isResolving -> "Checking your declaration…"

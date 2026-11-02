@@ -40,25 +40,20 @@ The single authority on "who won" — the client never decides a game's outcome 
 
 ### `RewardsRepository`
 Issues rewards for a confirmed win — deliberately separate from `GameEngineRepository`: that decides *whether* a round was won, this decides *what the player gets*.
-- `claimReward(gameId: GameId): Coupon` — called only after `GameEngineRepository.resolve` has returned `WIN`. Should be server-authoritative (idempotent per round, rate-limited) so a client can't claim rewards for rounds it didn't win or claim the same win twice.
+- `claimRoomReward(roomId: String): Result<String>` — claim the coupon for an online win through the `claim_room_coupon` Postgres function (`supabase/migrations/0010_server_issued_coupons.sql`). The server reads the winner from the room, issues one coupon per room, and only pays out games in `coupon_verified_games`, whose winner it decides itself (today: Snakes & Ladders). Returns the coupon id, or `NO_COUPON_ID` when that game doesn't pay out.
+- `claimVsComputerReward(gameId: GameId): String` — vs-Computer games run entirely on the device, so nothing can prove a win. A signed-in player gets `NO_COUPON_ID`; a guest gets a demo coupon that lives only in their in-memory wallet.
 
 ### Server-side win resolution: Supabase Edge Function contract
 
-`GameEngineRepository.resolve` and `RewardsRepository.claimReward` are still
-mocked (`core/data/mock/MockGameEngineRepository.kt`,
-`core/data/mock/MockRewardsRepository.kt`) — deliberately, so this is a clean,
-already-isolated seam for a backend developer to fill in without touching any
-ViewModel, screen, or the other four repositories already live on Supabase.
+`GameEngineRepository.resolve` is still mocked
+(`core/data/mock/MockGameEngineRepository.kt`) — deliberately, so this is a
+clean, already-isolated seam for a backend developer to fill in without
+touching any ViewModel, screen, or the repositories already live on Supabase.
 
-This should ship as **one** Supabase Edge Function, not two separate
-endpoints — the client must never be able to call "claim reward" without the
-function having just verified a win itself, and the coupon must never be
-written by the client. Today `SupabaseCouponsRepository.addCoupon` does insert
-directly from the client; once this function exists it should replace that
-path for real wins, with the client only ever displaying what the function
-returns. (Not changed in this pass — noted here as the follow-up this
-unlocks, including tightening the `coupons` table's RLS to drop client
-`insert` once the function is the only writer.)
+Clients can't write to the `coupons` table, so this function is how a game
+would start paying out vs-Computer wins. It should ship as **one** Supabase
+Edge Function, not two separate endpoints — the client must never be able to
+call "claim reward" without the function having just verified a win itself.
 
 **What the function must do:**
 1. Authenticate the caller from the Supabase JWT (`auth.uid()`), never from a
@@ -108,8 +103,7 @@ remaining fields match that subtype's constructor 1:1 — see
 The player's coupon wallet.
 - `observeCoupons(): Flow<List<Coupon>>` — the player's full coupon list (won, locked, redeemed).
 - `observeCouponBalance(): Flow<Int>` — count of unredeemed, won coupons (lobby balance chip).
-- `addCoupon(coupon: Coupon): Unit` — persist a newly won coupon (typically called internally by the backend when `RewardsRepository.claimReward` succeeds, not by the client).
-- `redeemCoupon(couponId: String): Unit` — mark a coupon redeemed server-side; should validate the coupon belongs to the caller and isn't already redeemed/expired.
+- `redeemCoupon(couponId: String): Unit` — mark a coupon redeemed through the `redeem_coupon` Postgres function, which checks the coupon belongs to the caller and hasn't been redeemed.
 
 ### `SettingsRepository`
 App preferences and responsible-gaming controls for the current session.

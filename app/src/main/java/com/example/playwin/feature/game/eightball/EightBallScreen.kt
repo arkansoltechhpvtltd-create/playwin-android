@@ -249,7 +249,7 @@ fun EightBallScreen(
             Row(modifier = BannerInset.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 GameNote(
                     text = when (uiState.winner) {
-                        EIGHT_BALL_HUMAN -> "You win$foul! Claiming your coupon…"
+                        EIGHT_BALL_HUMAN -> "You win$foul! Checking for your coupon…"
                         EIGHT_BALL_COMPUTER -> "The computer wins$foul"
                         else -> when {
                             !uiState.started -> "Choose who breaks"

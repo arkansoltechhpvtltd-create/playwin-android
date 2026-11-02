@@ -210,7 +210,7 @@ fun LudoScreen(
                 GameNote(
                     text = when {
                         !uiState.started -> "Choose your colour, then start"
-                        winner == you -> "You win! Claiming your coupon…"
+                        winner == you -> "You win! Checking for your coupon…"
                         winner != null -> "The computer wins this round"
                         uiState.lastTurnForfeited -> "Three 6s in a row - turn passed"
                         uiState.lastTurnTimedOut -> "Previous turn timed out"

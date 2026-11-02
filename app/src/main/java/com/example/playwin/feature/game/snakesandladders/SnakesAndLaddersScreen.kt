@@ -146,7 +146,7 @@ fun SnakesAndLaddersScreen(
             )
             when {
                 !uiState.started -> SnakesAndLaddersNote("Choose your token and who rolls first", NoteTone.PLAIN)
-                winner == SL_HUMAN -> SnakesAndLaddersNote("You win! Claiming your coupon…", NoteTone.WIN)
+                winner == SL_HUMAN -> SnakesAndLaddersNote("You win! Checking for your coupon…", NoteTone.WIN)
                 winner != null -> SnakesAndLaddersNote("The computer wins this round", NoteTone.PLAIN)
                 else -> SnakesAndLaddersNote(
                     text = moveNote(move, move?.let { names[it.player] }.orEmpty(), rollsAgain = move != null && uiState.game.turn == move.player)
