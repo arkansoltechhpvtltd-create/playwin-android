@@ -300,7 +300,7 @@ private fun FinishedContent(
 ) {
     val text = when {
         room.winnerId == null -> "It's a draw!"
-        room.winnerId == state.myId -> "You win! Claiming your coupon…"
+        room.winnerId == state.myId -> "You win! Checking for your coupon…"
         else -> "Opponent wins this round"
     }
     Column(

@@ -12,7 +12,6 @@ import com.example.playwin.core.domain.eightball.Vec2
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
-import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import com.example.playwin.feature.game.FirstTurn
@@ -42,8 +41,7 @@ private const val COMPUTER_MIN_THINK_MILLIS = 700L
 @HiltViewModel
 class EightBallViewModel @Inject constructor(
     private val gameEngineRepository: GameEngineRepository,
-    private val rewardsRepository: RewardsRepository,
-    private val couponsRepository: CouponsRepository
+    private val rewardsRepository: RewardsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(EightBallUiState())
@@ -162,9 +160,8 @@ class EightBallViewModel @Inject constructor(
 
             when {
                 winner == EIGHT_BALL_HUMAN -> {
-                    val coupon = rewardsRepository.claimReward(GameId.EIGHT_BALL)
-                    couponsRepository.addCoupon(coupon)
-                    _uiState.update { it.copy(wonCouponId = coupon.id) }
+                    val couponId = rewardsRepository.claimVsComputerReward(GameId.EIGHT_BALL)
+                    _uiState.update { it.copy(wonCouponId = couponId) }
                 }
                 winner == null -> startTurn()
                 else -> Unit

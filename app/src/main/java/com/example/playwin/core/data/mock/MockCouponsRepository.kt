@@ -65,7 +65,7 @@ class MockCouponsRepository @Inject constructor() : CouponsRepository {
     override fun observeCouponBalance(): Flow<Int> =
         coupons.map { list -> list.count { it.status == CouponStatus.WON } }
 
-    override suspend fun addCoupon(coupon: Coupon) {
+    fun addCoupon(coupon: Coupon) {
         coupons.value = listOf(coupon) + coupons.value
     }
 

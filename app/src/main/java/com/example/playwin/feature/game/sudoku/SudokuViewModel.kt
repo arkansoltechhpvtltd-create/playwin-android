@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
-import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import com.example.playwin.core.domain.sudoku.SudokuDifficulty
@@ -33,8 +32,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SudokuViewModel @Inject constructor(
     private val gameEngineRepository: GameEngineRepository,
-    private val rewardsRepository: RewardsRepository,
-    private val couponsRepository: CouponsRepository
+    private val rewardsRepository: RewardsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SudokuUiState())
@@ -107,9 +105,8 @@ class SudokuViewModel @Inject constructor(
                 GameOutcome.WIN -> {
                     timerJob?.cancel()
                     _uiState.update { it.copy(hasWon = true, isResolving = false, selected = null) }
-                    val coupon = rewardsRepository.claimReward(GameId.SUDOKU)
-                    couponsRepository.addCoupon(coupon)
-                    _uiState.update { it.copy(wonCouponId = coupon.id) }
+                    val couponId = rewardsRepository.claimVsComputerReward(GameId.SUDOKU)
+                    _uiState.update { it.copy(wonCouponId = couponId) }
                 }
                 GameOutcome.LOSE, GameOutcome.DRAW, GameOutcome.IN_PROGRESS ->
                     _uiState.update { it.copy(isResolving = false, isFilledButWrong = true) }

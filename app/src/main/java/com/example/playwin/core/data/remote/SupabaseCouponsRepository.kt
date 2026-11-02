@@ -8,6 +8,7 @@ import com.example.playwin.core.domain.repository.AuthRepository
 import com.example.playwin.core.domain.repository.CouponsRepository
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -23,6 +24,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,22 +34,10 @@ private const val TAG = "SupabaseCoupons"
 private const val TABLE = "coupons"
 
 @Serializable
-private data class CouponInsertRow(
-    val id: String,
-    @SerialName("user_id") val userId: String,
-    val partner: String,
-    val discount: String,
-    val code: String,
-    @SerialName("source_game") val sourceGame: String,
-    val status: String,
-    @SerialName("expires_at") val expiresAt: String
-)
+private data class RedeemCouponParams(@SerialName("p_coupon_id") val couponId: String)
 
 @Serializable
-private data class CouponStatusUpdate(val status: String)
-
-@Serializable
-private data class CouponRow(
+internal data class CouponRow(
     val id: String,
     val partner: String,
     val discount: String,
@@ -71,10 +63,13 @@ private data class CouponRow(
  * not in memory. Guest sessions never touch Supabase: they delegate entirely to
  * [MockCouponsRepository] so guest mode keeps working without an account.
  *
- * Reads and writes fail soft (logged, not thrown) so a flaky connection never
- * crashes the reward loop or the wallet screen; [observeCoupons] falls back to
- * whatever is cached, and a failed write still lands optimistically in the
- * in-session cache so the win screen the player is looking at stays correct.
+ * The app can only read the table. A coupon is created by the server
+ * ([SupabaseRewardsRepository]) and redeemed through the `redeem_coupon` RPC
+ * (see `supabase/migrations/0010_server_issued_coupons.sql`).
+ *
+ * Reads and redeems fail soft (logged, not thrown) so a flaky connection never
+ * crashes the wallet screen; [observeCoupons] falls back to whatever is cached,
+ * and a redeem the server refused leaves the coupon as it was.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
@@ -101,33 +96,9 @@ class SupabaseCouponsRepository @Inject constructor(
     override fun observeCouponBalance(): Flow<Int> =
         observeCoupons().map { coupons -> coupons.count { it.status == CouponStatus.WON } }
 
-    override suspend fun addCoupon(coupon: Coupon) {
-        val user = authRepository.observeCurrentUser().first()
-        if (user == null || user.isGuest) {
-            mockCouponsRepository.addCoupon(coupon)
-            return
-        }
-        try {
-            val row = CouponInsertRow(
-                id = coupon.id,
-                userId = user.id,
-                partner = coupon.partnerName,
-                discount = coupon.discountText,
-                code = coupon.code,
-                sourceGame = coupon.source,
-                status = coupon.status.name.lowercase(),
-                expiresAt = coupon.expiry
-            )
-            supabaseClient.from(TABLE).insert(row)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // Offline or a write error: still show the win locally so the result
-            // screen the player is on is correct. It won't survive a restart
-            // since it never reached the server - the DB stays the source of truth.
-            Log.w(TAG, "Failed to persist coupon ${coupon.id}", e)
-        }
-        remoteCoupons.update { listOf(coupon) + it }
+    /** Puts a coupon the server just issued into the wallet. A retried claim returns the same one. */
+    fun onCouponIssued(coupon: Coupon) {
+        remoteCoupons.update { list -> listOf(coupon) + list.filterNot { it.id == coupon.id } }
     }
 
     override suspend fun redeemCoupon(couponId: String) {
@@ -137,17 +108,17 @@ class SupabaseCouponsRepository @Inject constructor(
             return
         }
         try {
-            supabaseClient.from(TABLE)
-                .update(CouponStatusUpdate(status = CouponStatus.REDEEMED.name.lowercase())) {
-                    filter { eq("id", couponId) }
-                }
+            supabaseClient.postgrest.rpc(
+                "redeem_coupon",
+                Json.encodeToJsonElement(RedeemCouponParams(couponId = couponId)).jsonObject
+            )
+            remoteCoupons.update { list ->
+                list.map { if (it.id == couponId) it.copy(status = CouponStatus.REDEEMED) else it }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Failed to redeem coupon $couponId", e)
-        }
-        remoteCoupons.update { list ->
-            list.map { if (it.id == couponId) it.copy(status = CouponStatus.REDEEMED) else it }
         }
     }
 

@@ -11,7 +11,6 @@ import com.example.playwin.core.domain.ludo.currentColor
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
-import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -38,8 +37,7 @@ private const val COMPUTER_STEP_MILLIS = 700L
 @HiltViewModel
 class LudoViewModel @Inject constructor(
     private val gameEngineRepository: GameEngineRepository,
-    private val rewardsRepository: RewardsRepository,
-    private val couponsRepository: CouponsRepository
+    private val rewardsRepository: RewardsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LudoUiState())
@@ -126,9 +124,8 @@ class LudoViewModel @Inject constructor(
                 GameOutcome.WIN -> {
                     _uiState.update { it.copy(winner = mover, isResolving = false) }
                     if (mover == _uiState.value.humanColor) {
-                        val coupon = rewardsRepository.claimReward(GameId.LUDO)
-                        couponsRepository.addCoupon(coupon)
-                        _uiState.update { it.copy(wonCouponId = coupon.id) }
+                        val couponId = rewardsRepository.claimVsComputerReward(GameId.LUDO)
+                        _uiState.update { it.copy(wonCouponId = couponId) }
                     }
                 }
 

@@ -46,7 +46,7 @@ class CarromSideTest {
         main.close()
     }
 
-    private fun viewModel() = CarromViewModel(MockGameEngineRepository(), MockRewardsRepository(), MockCouponsRepository())
+    private fun viewModel() = CarromViewModel(MockGameEngineRepository(), MockRewardsRepository(MockCouponsRepository()))
 
     @Test
     fun `the chosen colour is the player's from the start, the other the computer's`() {

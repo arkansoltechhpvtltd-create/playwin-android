@@ -1,10 +1,10 @@
 package com.example.playwin.core.data.di
 
 import com.example.playwin.core.data.mock.MockGameEngineRepository
-import com.example.playwin.core.data.mock.MockRewardsRepository
 import com.example.playwin.core.data.remote.SupabaseAuthRepository
 import com.example.playwin.core.data.remote.SupabaseCouponsRepository
 import com.example.playwin.core.data.remote.SupabaseGamesRepository
+import com.example.playwin.core.data.remote.SupabaseRewardsRepository
 import com.example.playwin.core.data.remote.SupabaseRoomRepository
 import com.example.playwin.core.data.remote.SupabaseSettingsRepository
 import com.example.playwin.core.domain.repository.AuthRepository
@@ -23,9 +23,8 @@ import javax.inject.Singleton
 /**
  * Binds each domain repository interface to its implementation. This is the
  * only place that needs to change to swap a mock for a real network-backed
- * repository - [AuthRepository], [CouponsRepository], [SettingsRepository]
- * and [GamesRepository] are already live on Supabase; the rest are still
- * in-memory mocks.
+ * repository - everything is live on Supabase except [GameEngineRepository],
+ * which is still an in-memory mock.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -41,7 +40,7 @@ abstract class DataModule {
 
     @Binds
     @Singleton
-    abstract fun bindRewardsRepository(impl: MockRewardsRepository): RewardsRepository
+    abstract fun bindRewardsRepository(impl: SupabaseRewardsRepository): RewardsRepository
 
     @Binds
     @Singleton

@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
-import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,8 +25,7 @@ import javax.inject.Inject
 @HiltViewModel
 class Twenty48ViewModel @Inject constructor(
     private val gameEngineRepository: GameEngineRepository,
-    private val rewardsRepository: RewardsRepository,
-    private val couponsRepository: CouponsRepository
+    private val rewardsRepository: RewardsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -61,9 +59,8 @@ class Twenty48ViewModel @Inject constructor(
                 GameOutcome.WIN -> {
                     timerJob?.cancel()
                     _uiState.update { it.copy(hasWon = true, isResolving = false) }
-                    val coupon = rewardsRepository.claimReward(GameId.TWENTY_FORTY_EIGHT)
-                    couponsRepository.addCoupon(coupon)
-                    _uiState.update { it.copy(wonCouponId = coupon.id) }
+                    val couponId = rewardsRepository.claimVsComputerReward(GameId.TWENTY_FORTY_EIGHT)
+                    _uiState.update { it.copy(wonCouponId = couponId) }
                 }
 
                 GameOutcome.LOSE -> {

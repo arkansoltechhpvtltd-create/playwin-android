@@ -15,7 +15,6 @@ import com.example.playwin.core.domain.chess.TimeControl
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
-import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -53,8 +52,7 @@ private const val CLOCK_TICK_MILLIS = 100L
 @HiltViewModel
 class ChessViewModel @Inject constructor(
     private val gameEngineRepository: GameEngineRepository,
-    private val rewardsRepository: RewardsRepository,
-    private val couponsRepository: CouponsRepository
+    private val rewardsRepository: RewardsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChessUiState())
@@ -248,9 +246,8 @@ class ChessViewModel @Inject constructor(
                 )
             }
             if (winner == state.humanColor) {
-                val coupon = rewardsRepository.claimReward(GameId.CHESS)
-                couponsRepository.addCoupon(coupon)
-                _uiState.update { it.copy(wonCouponId = coupon.id) }
+                val couponId = rewardsRepository.claimVsComputerReward(GameId.CHESS)
+                _uiState.update { it.copy(wonCouponId = couponId) }
             }
         }
     }
@@ -295,9 +292,8 @@ class ChessViewModel @Inject constructor(
                         it.copy(winner = playerNumber(mover), clock = it.clock.stopped(), isResolving = false)
                     }
                     if (mover == state.humanColor) {
-                        val coupon = rewardsRepository.claimReward(GameId.CHESS)
-                        couponsRepository.addCoupon(coupon)
-                        _uiState.update { it.copy(wonCouponId = coupon.id) }
+                        val couponId = rewardsRepository.claimVsComputerReward(GameId.CHESS)
+                        _uiState.update { it.copy(wonCouponId = couponId) }
                     }
                 }
 

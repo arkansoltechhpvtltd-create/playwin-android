@@ -4,7 +4,6 @@ import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.Room
 import com.example.playwin.core.domain.model.RoomStatus
 import com.example.playwin.core.domain.repository.AuthRepository
-import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import com.example.playwin.core.domain.repository.RoomConnection
 import com.example.playwin.core.domain.repository.RoomRepository
@@ -27,6 +26,8 @@ import javax.inject.Inject
 
 private const val POLL_EVERY_SECONDS = 2
 private const val MAX_CONSECUTIVE_POLL_FAILURES = 3
+private const val CLAIM_ATTEMPTS = 3
+private const val CLAIM_RETRY_MILLIS = 2_000L
 
 /**
  * The game-agnostic half of online play, shared by every game's online
@@ -50,17 +51,15 @@ class OnlineMatchController(
     private val scope: CoroutineScope,
     private val roomRepository: RoomRepository,
     private val authRepository: AuthRepository,
-    private val rewardsRepository: RewardsRepository,
-    private val couponsRepository: CouponsRepository
+    private val rewardsRepository: RewardsRepository
 ) {
     class Factory @Inject constructor(
         private val roomRepository: RoomRepository,
         private val authRepository: AuthRepository,
-        private val rewardsRepository: RewardsRepository,
-        private val couponsRepository: CouponsRepository
+        private val rewardsRepository: RewardsRepository
     ) {
         fun create(gameId: GameId, scope: CoroutineScope) = OnlineMatchController(
-            gameId, scope, roomRepository, authRepository, rewardsRepository, couponsRepository
+            gameId, scope, roomRepository, authRepository, rewardsRepository
         )
     }
 
@@ -260,7 +259,7 @@ class OnlineMatchController(
                 }
                 trackOpponentPresence(conn, updatedRoom, opponentOnline)
                 if (updatedRoom.status == RoomStatus.FINISHED && updatedRoom.winnerId == myId && !alreadyClaimed) {
-                    claimReward()
+                    claimReward(updatedRoom.id)
                 }
             }
         }
@@ -290,9 +289,16 @@ class OnlineMatchController(
         }
     }
 
-    private suspend fun claimReward() {
-        val coupon = rewardsRepository.claimReward(gameId)
-        couponsRepository.addCoupon(coupon)
-        _state.update { it.copy(wonCouponId = coupon.id) }
+    /** Asks the server for this room's coupon. A retry is safe: the server issues one per room. */
+    private suspend fun claimReward(roomId: String) {
+        repeat(CLAIM_ATTEMPTS) { attempt ->
+            val couponId = rewardsRepository.claimRoomReward(roomId).getOrNull()
+            if (couponId != null) {
+                _state.update { it.copy(wonCouponId = couponId) }
+                return
+            }
+            if (attempt < CLAIM_ATTEMPTS - 1) delay(CLAIM_RETRY_MILLIS)
+        }
+        showError("Couldn't claim your coupon - check your connection")
     }
 }

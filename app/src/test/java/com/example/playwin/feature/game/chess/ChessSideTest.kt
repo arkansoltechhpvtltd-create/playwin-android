@@ -41,7 +41,7 @@ class ChessSideTest {
         main.close()
     }
 
-    private fun viewModel() = ChessViewModel(MockGameEngineRepository(), MockRewardsRepository(), MockCouponsRepository())
+    private fun viewModel() = ChessViewModel(MockGameEngineRepository(), MockRewardsRepository(MockCouponsRepository()))
 
     @Test
     fun `playing Black, the computer makes White's first move`() = runBlocking {

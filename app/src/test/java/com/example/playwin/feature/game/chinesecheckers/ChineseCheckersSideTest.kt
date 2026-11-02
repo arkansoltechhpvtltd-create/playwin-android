@@ -42,7 +42,7 @@ class ChineseCheckersSideTest {
         main.close()
     }
 
-    private fun viewModel() = ChineseCheckersViewModel(MockGameEngineRepository(), MockRewardsRepository(), MockCouponsRepository())
+    private fun viewModel() = ChineseCheckersViewModel(MockGameEngineRepository(), MockRewardsRepository(MockCouponsRepository()))
 
     @Test
     fun `playing Ruby, your pegs are the top point's and you still move first`() = runBlocking {

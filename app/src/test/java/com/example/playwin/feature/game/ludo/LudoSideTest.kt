@@ -41,7 +41,7 @@ class LudoSideTest {
         main.close()
     }
 
-    private fun viewModel() = LudoViewModel(MockGameEngineRepository(), MockRewardsRepository(), MockCouponsRepository())
+    private fun viewModel() = LudoViewModel(MockGameEngineRepository(), MockRewardsRepository(MockCouponsRepository()))
 
     @Test
     fun `the chosen colour is the player's, and the computer sits across the board`() = runBlocking {

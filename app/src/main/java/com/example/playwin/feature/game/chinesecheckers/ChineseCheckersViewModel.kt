@@ -11,7 +11,6 @@ import com.example.playwin.core.domain.chinesecheckers.ChineseCheckersRules
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
-import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -44,8 +43,7 @@ private const val WIN_PAUSE_MILLIS = 900L
 @HiltViewModel
 class ChineseCheckersViewModel @Inject constructor(
     private val gameEngineRepository: GameEngineRepository,
-    private val rewardsRepository: RewardsRepository,
-    private val couponsRepository: CouponsRepository
+    private val rewardsRepository: RewardsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChineseCheckersUiState())
@@ -142,9 +140,8 @@ class ChineseCheckersViewModel @Inject constructor(
         _uiState.update { it.copy(winner = winner, isResolving = false) }
         if (winner == _uiState.value.humanPlayer) {
             delay(hopMillis(lastMove) + WIN_PAUSE_MILLIS)
-            val coupon = rewardsRepository.claimReward(GameId.CHINESE_CHECKERS)
-            couponsRepository.addCoupon(coupon)
-            _uiState.update { it.copy(wonCouponId = coupon.id) }
+            val couponId = rewardsRepository.claimVsComputerReward(GameId.CHINESE_CHECKERS)
+            _uiState.update { it.copy(wonCouponId = couponId) }
         }
     }
 

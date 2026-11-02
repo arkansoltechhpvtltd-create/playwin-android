@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
-import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import com.example.playwin.core.domain.rummy.Card
@@ -34,8 +33,7 @@ import javax.inject.Inject
 @HiltViewModel
 class RummyViewModel @Inject constructor(
     private val gameEngineRepository: GameEngineRepository,
-    private val rewardsRepository: RewardsRepository,
-    private val couponsRepository: CouponsRepository
+    private val rewardsRepository: RewardsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(RummyUiState())
@@ -94,9 +92,8 @@ class RummyViewModel @Inject constructor(
             when (outcome) {
                 GameOutcome.WIN -> {
                     _uiState.update { it.copy(hasWon = true, isResolving = false) }
-                    val coupon = rewardsRepository.claimReward(GameId.RUMMY)
-                    couponsRepository.addCoupon(coupon)
-                    _uiState.update { it.copy(wonCouponId = coupon.id) }
+                    val couponId = rewardsRepository.claimVsComputerReward(GameId.RUMMY)
+                    _uiState.update { it.copy(wonCouponId = couponId) }
                 }
 
                 GameOutcome.LOSE, GameOutcome.DRAW, GameOutcome.IN_PROGRESS -> {
@@ -138,9 +135,8 @@ class RummyViewModel @Inject constructor(
             _uiState.update {
                 it.copy(hasWon = true, computerDeclaredHand = turn.declaredHand, isResolving = false, isBotThinking = false)
             }
-            val coupon = rewardsRepository.claimReward(GameId.RUMMY)
-            couponsRepository.addCoupon(coupon)
-            _uiState.update { it.copy(wonCouponId = coupon.id) }
+            val couponId = rewardsRepository.claimVsComputerReward(GameId.RUMMY)
+            _uiState.update { it.copy(wonCouponId = couponId) }
         }
     }
 }

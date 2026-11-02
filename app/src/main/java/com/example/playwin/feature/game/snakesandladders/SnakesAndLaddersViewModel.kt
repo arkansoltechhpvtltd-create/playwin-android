@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.playwin.core.domain.model.GameId
 import com.example.playwin.core.domain.model.GameOutcome
 import com.example.playwin.core.domain.model.GameSnapshot
-import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GameEngineRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import com.example.playwin.core.domain.snakesandladders.SnakesAndLaddersRules
@@ -34,8 +33,7 @@ private const val COMPUTER_PAUSE_MILLIS = 450L
 @HiltViewModel
 class SnakesAndLaddersViewModel @Inject constructor(
     private val gameEngineRepository: GameEngineRepository,
-    private val rewardsRepository: RewardsRepository,
-    private val couponsRepository: CouponsRepository
+    private val rewardsRepository: RewardsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SnakesAndLaddersUiState())
@@ -91,9 +89,8 @@ class SnakesAndLaddersViewModel @Inject constructor(
                 val mover = turn.move.player
                 _uiState.update { it.copy(winner = mover, isBusy = false) }
                 if (mover == SL_HUMAN) {
-                    val coupon = rewardsRepository.claimReward(GameId.SNAKES_AND_LADDERS)
-                    couponsRepository.addCoupon(coupon)
-                    _uiState.update { it.copy(wonCouponId = coupon.id) }
+                    val couponId = rewardsRepository.claimVsComputerReward(GameId.SNAKES_AND_LADDERS)
+                    _uiState.update { it.copy(wonCouponId = couponId) }
                 }
                 return@launch
             }

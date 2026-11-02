@@ -39,7 +39,7 @@ class EightBallSideTest {
         main.close()
     }
 
-    private fun viewModel() = EightBallViewModel(MockGameEngineRepository(), MockRewardsRepository(), MockCouponsRepository())
+    private fun viewModel() = EightBallViewModel(MockGameEngineRepository(), MockRewardsRepository(MockCouponsRepository()))
 
     @Test
     fun `when the computer breaks, it takes the break shot`() = runBlocking {

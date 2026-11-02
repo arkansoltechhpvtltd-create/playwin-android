@@ -30,12 +30,13 @@ fun GameResultRoute(
     viewModel: GameResultViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    GameResultScreen(coupon = uiState.coupon, onBackToGames = onBackToGames)
+    GameResultScreen(coupon = uiState.coupon, hasCoupon = uiState.hasCoupon, onBackToGames = onBackToGames)
 }
 
 @Composable
 fun GameResultScreen(
     coupon: Coupon?,
+    hasCoupon: Boolean,
     onBackToGames: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -55,7 +56,11 @@ fun GameResultScreen(
                 modifier = Modifier.padding(top = PwSpacing.sm)
             )
             Text(
-                text = "Here's your coupon — it's already in your wallet.",
+                text = if (hasCoupon) {
+                    "Here's your coupon — it's already in your wallet."
+                } else {
+                    "This game doesn't award coupons yet."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp, bottom = PwSpacing.lg)
@@ -92,6 +97,7 @@ private fun GameResultScreenPreview() {
                 code = "BREW4821",
                 status = CouponStatus.WON
             ),
+            hasCoupon = true,
             onBackToGames = {}
         )
     }

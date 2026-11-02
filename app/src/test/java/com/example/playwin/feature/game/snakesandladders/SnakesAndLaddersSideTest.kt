@@ -40,7 +40,7 @@ class SnakesAndLaddersSideTest {
         main.close()
     }
 
-    private fun viewModel() = SnakesAndLaddersViewModel(MockGameEngineRepository(), MockRewardsRepository(), MockCouponsRepository())
+    private fun viewModel() = SnakesAndLaddersViewModel(MockGameEngineRepository(), MockRewardsRepository(MockCouponsRepository()))
 
     @Test
     fun `the chosen colour is the player's token, the computer's a different one`() {
