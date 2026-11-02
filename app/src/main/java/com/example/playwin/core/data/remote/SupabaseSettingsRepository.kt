@@ -171,17 +171,26 @@ class SupabaseSettingsRepository @Inject constructor(
         remoteSettings.update { it.copy(dailyLimitMinutes = minutes) }
     }
 
-    override suspend fun setSelfExclusionEnabled(enabled: Boolean) {
-        withRemoteUserOrMock(
-            onGuestOrLoggedOut = { mockSettingsRepository.setSelfExclusionEnabled(enabled) }
-        ) { userId ->
-            supabaseClient.from(TABLE).update(
-                SelfExclusionUpdate(selfExcluded = enabled, updatedAt = nowIso())
+    override suspend fun enableSelfExclusion(): Result<Unit> {
+        val user = authRepository.observeCurrentUser().first()
+        if (user == null || user.isGuest) return mockSettingsRepository.enableSelfExclusion()
+        return try {
+            val rows = supabaseClient.from(TABLE).update(
+                SelfExclusionUpdate(selfExcluded = true, updatedAt = nowIso())
             ) {
-                filter { eq("user_id", userId) }
-            }
+                select()
+                filter { eq("user_id", user.id) }
+            }.decodeList<ProfileRow>()
+            // Updating no rows isn't an error, but nothing was saved.
+            check(rows.isNotEmpty()) { "No profile row for ${user.id}" }
+            remoteSettings.update { it.copy(selfExclusionEnabled = true) }
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to save self-exclusion for ${user.id}", e)
+            Result.failure(e)
         }
-        remoteSettings.update { it.copy(selfExclusionEnabled = enabled) }
     }
 
     /**

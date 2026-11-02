@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.playwin.core.domain.model.Game
 import com.example.playwin.core.domain.repository.CouponsRepository
 import com.example.playwin.core.domain.repository.GamesRepository
+import com.example.playwin.core.domain.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -17,7 +18,8 @@ import javax.inject.Inject
 @HiltViewModel
 class LobbyViewModel @Inject constructor(
     gamesRepository: GamesRepository,
-    couponsRepository: CouponsRepository
+    couponsRepository: CouponsRepository,
+    settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     // Each source starts with a placeholder so neither holds the other up: the
@@ -25,9 +27,15 @@ class LobbyViewModel @Inject constructor(
     // state only until the games themselves arrive.
     val uiState: StateFlow<LobbyUiState> = combine(
         gamesRepository.observeGames().map<List<Game>, List<Game>?> { it }.onStart { emit(null) },
-        couponsRepository.observeCouponBalance().onStart { emit(0) }
-    ) { games, balance ->
-        LobbyUiState(games = games.orEmpty(), couponBalance = balance, isLoading = games == null)
+        couponsRepository.observeCouponBalance().onStart { emit(0) },
+        settingsRepository.observeSettings().map { it.selfExclusionEnabled }.onStart { emit(false) }
+    ) { games, balance, selfExcluded ->
+        LobbyUiState(
+            games = games.orEmpty(),
+            couponBalance = balance,
+            isLoading = games == null,
+            isSelfExcluded = selfExcluded
+        )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),

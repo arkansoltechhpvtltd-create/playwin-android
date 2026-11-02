@@ -32,7 +32,8 @@ class MockSettingsRepository @Inject constructor() : SettingsRepository {
         settings.value = settings.value.copy(dailyLimitMinutes = minutes)
     }
 
-    override suspend fun setSelfExclusionEnabled(enabled: Boolean) {
-        settings.value = settings.value.copy(selfExclusionEnabled = enabled)
+    override suspend fun enableSelfExclusion(): Result<Unit> {
+        settings.value = settings.value.copy(selfExclusionEnabled = true)
+        return Result.success(Unit)
     }
 }

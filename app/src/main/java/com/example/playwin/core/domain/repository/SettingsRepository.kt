@@ -11,5 +11,7 @@ interface SettingsRepository {
     suspend fun setNotificationsEnabled(enabled: Boolean)
     suspend fun setSoundEnabled(enabled: Boolean)
     suspend fun setDailyLimitMinutes(minutes: Int)
-    suspend fun setSelfExclusionEnabled(enabled: Boolean)
+
+    /** One-way: only support can lift it. Fails if it didn't save, so a player is never told they're excluded when they aren't. */
+    suspend fun enableSelfExclusion(): Result<Unit>
 }

@@ -28,12 +28,14 @@ class ProfileViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val nameEditState = MutableStateFlow(NameEditState())
+    private val selfExclusionError = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<ProfileUiState> = combine(
         authRepository.observeCurrentUser(),
         settingsRepository.observeSettings(),
-        nameEditState
-    ) { user, settings, editState ->
+        nameEditState,
+        selfExclusionError
+    ) { user, settings, editState, exclusionError ->
         ProfileUiState(
             displayName = user?.displayName.orEmpty(),
             initials = user?.initials.orEmpty(),
@@ -46,7 +48,8 @@ class ProfileViewModel @Inject constructor(
             notificationsEnabled = settings.notificationsEnabled,
             soundEnabled = settings.soundEnabled,
             dailyLimitMinutes = settings.dailyLimitMinutes,
-            selfExclusionEnabled = settings.selfExclusionEnabled
+            selfExclusionEnabled = settings.selfExclusionEnabled,
+            selfExclusionError = exclusionError
         )
     }.stateIn(
         scope = viewModelScope,
@@ -94,8 +97,13 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setDailyLimitMinutes(minutes) }
     }
 
-    fun onSelfExclusionChange(enabled: Boolean) {
-        viewModelScope.launch { settingsRepository.setSelfExclusionEnabled(enabled) }
+    fun onSelfExclude() {
+        viewModelScope.launch {
+            selfExclusionError.value = null
+            settingsRepository.enableSelfExclusion().onFailure {
+                selfExclusionError.value = "That didn't save, so you aren't excluded yet. Check your connection and try again."
+            }
+        }
     }
 
     fun onLogoutClick() {

@@ -6,6 +6,9 @@ import com.example.playwin.core.domain.model.RoomStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonElement
 
+/** The server refused to matchmake a self-excluded player. Retrying can't help, unlike a network failure. */
+class SelfExcludedException : Exception("You've excluded yourself from playing")
+
 /**
  * Random matchmaking into online-multiplayer rooms. There is deliberately no
  * way to create a room or name an opponent: the server pairs whoever is

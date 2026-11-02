@@ -6,6 +6,7 @@ import com.example.playwin.core.domain.model.Room
 import com.example.playwin.core.domain.model.RoomStatus
 import com.example.playwin.core.domain.repository.RoomConnection
 import com.example.playwin.core.domain.repository.RoomRepository
+import com.example.playwin.core.domain.repository.SelfExcludedException
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.postgrest
@@ -142,7 +143,8 @@ class SupabaseRoomRepository @Inject constructor(
         throw e
     } catch (e: Exception) {
         Log.w(TAG, "matchmake failed", e)
-        Result.failure(RoomException(friendlyError(e)))
+        val selfExcluded = e.message.orEmpty().contains("self-excluded", ignoreCase = true)
+        Result.failure(if (selfExcluded) SelfExcludedException() else RoomException(friendlyError(e)))
     }
 
     override suspend fun cancelMatchmaking(gameId: GameId): Result<Unit> = try {

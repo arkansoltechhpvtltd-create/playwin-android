@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -36,6 +38,7 @@ import com.example.playwin.core.designsystem.component.FeaturedBannerCard
 import com.example.playwin.core.designsystem.component.GameTileCard
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.component.SectionHeader
+import com.example.playwin.core.designsystem.component.SelfExcludedNotice
 import com.example.playwin.core.designsystem.icon.toBadgePainter
 import com.example.playwin.core.designsystem.icon.toAccentColor
 import com.example.playwin.core.designsystem.icon.toImageVector
@@ -105,6 +108,17 @@ fun LobbyScreen(
             item(span = fullSpan) {
                 FeaturedBannerCard(modifier = Modifier.padding(bottom = PwSpacing.lg))
             }
+            if (uiState.isSelfExcluded) {
+                item(span = fullSpan) {
+                    Card(
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        modifier = Modifier.padding(bottom = PwSpacing.lg)
+                    ) {
+                        SelfExcludedNotice(modifier = Modifier.padding(PwSpacing.md))
+                    }
+                }
+            }
             item(span = fullSpan) {
                 SectionHeader(title = "Games")
             }
@@ -119,7 +133,8 @@ fun LobbyScreen(
                         icon = game.icon.toImageVector(),
                         accentColor = game.icon.toAccentColor(),
                         image = game.icon.toBadgePainter(),
-                        onClick = { onGameClick(game.id) },
+                        // The only way into a game, vs Computer or online.
+                        onClick = { if (!uiState.isSelfExcluded) onGameClick(game.id) },
                         modifier = Modifier.animateItem()
                     )
                 }

@@ -113,6 +113,8 @@ App preferences and responsible-gaming controls for the current session.
 - `setNotificationsEnabled(enabled: Boolean)`
 - `setSoundEnabled(enabled: Boolean)`
 - `setDailyLimitMinutes(minutes: Int)`
-- `setSelfExclusionEnabled(enabled: Boolean)` — responsible-gaming settings in particular should be persisted server-side and enforced there too (e.g. reject game rounds once a self-excluded or over-limit player tries to play), not relied on client-side alone.
+- `enableSelfExclusion(): Result<Unit>` — one-way, and fails if it didn't save. `supabase/migrations/0013_self_exclusion.sql` stops a client clearing the flag, and `matchmake()` refuses an excluded player. A player is reinstated only by running `reinstate_self_excluded` in the SQL editor. The lobby blocks every game on the device, so vs-Computer games are stopped by the app alone. The daily limit isn't enforced anywhere yet, so its control stays hidden.
+
+`SUPPORT_EMAIL` in `core/domain/model/SupportContact.kt` is a placeholder and must be replaced before launch.
 
 *(Profile screens are composed from `AuthRepository` + `SettingsRepository` — there's no separate profile repository.)*

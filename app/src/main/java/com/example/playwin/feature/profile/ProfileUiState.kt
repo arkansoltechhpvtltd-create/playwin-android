@@ -14,5 +14,6 @@ data class ProfileUiState(
     val notificationsEnabled: Boolean = true,
     val soundEnabled: Boolean = true,
     val dailyLimitMinutes: Int = 120,
-    val selfExclusionEnabled: Boolean = false
+    val selfExclusionEnabled: Boolean = false,
+    val selfExclusionError: String? = null
 )

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -41,6 +42,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,11 +60,12 @@ import com.example.playwin.core.designsystem.component.PrimaryButton
 import com.example.playwin.core.designsystem.component.PwTextField
 import com.example.playwin.core.designsystem.component.PwTopBar
 import com.example.playwin.core.designsystem.component.SectionHeader
+import com.example.playwin.core.designsystem.component.SelfExcludedNotice
 import com.example.playwin.core.designsystem.theme.PlayWinTheme
 import com.example.playwin.core.designsystem.theme.PwSpacing
 
-/** The Responsible gaming section (daily limit, self-exclusion): off until both are enforced. */
-private const val SHOW_RESPONSIBLE_GAMING = false
+/** The daily limit and playtime in the Responsible gaming section: off until the limit is enforced. */
+private const val SHOW_DAILY_LIMIT = false
 
 @Composable
 fun ProfileRoute(
@@ -79,7 +82,7 @@ fun ProfileRoute(
         onNotificationsChange = viewModel::onNotificationsChange,
         onSoundChange = viewModel::onSoundChange,
         onDailyLimitChange = viewModel::onDailyLimitChange,
-        onSelfExclusionChange = viewModel::onSelfExclusionChange,
+        onSelfExclude = viewModel::onSelfExclude,
         // Logging out flips the shared auth state; the app root reacts by
         // swapping this whole graph out for the login screen.
         onLogoutClick = viewModel::onLogoutClick,
@@ -99,7 +102,7 @@ fun ProfileScreen(
     onNotificationsChange: (Boolean) -> Unit,
     onSoundChange: (Boolean) -> Unit,
     onDailyLimitChange: (Int) -> Unit,
-    onSelfExclusionChange: (Boolean) -> Unit,
+    onSelfExclude: () -> Unit,
     onLogoutClick: () -> Unit,
     onCreateAccountClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -210,21 +213,21 @@ fun ProfileScreen(
                 }
             }
 
-            // Hidden until self-exclusion and the daily limit are actually enforced - a
-            // responsible-gaming control that does nothing is worse than none.
-            if (SHOW_RESPONSIBLE_GAMING) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = PwSpacing.lg)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = PwSpacing.lg)
+            ) {
+                SectionHeader(title = "Responsible gaming")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
-                    SectionHeader(title = "Responsible gaming")
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium,
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        Column(modifier = Modifier.padding(PwSpacing.md)) {
+                    Column(modifier = Modifier.padding(PwSpacing.md)) {
+                        // Hidden until the daily limit is actually enforced - a
+                        // responsible-gaming control that does nothing is worse than none.
+                        if (SHOW_DAILY_LIMIT) {
                             uiState.playtimeTodayMinutes?.let { playtime ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(bottom = PwSpacing.md),
@@ -249,26 +252,14 @@ fun ProfileScreen(
                             DailyLimitDropdown(
                                 selectedMinutes = uiState.dailyLimitMinutes,
                                 onSelect = onDailyLimitChange,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth().padding(bottom = PwSpacing.sm)
                             )
-    
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = PwSpacing.sm),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(text = "Self-exclusion", style = MaterialTheme.typography.bodyLarge)
-                                    Text(
-                                        text = "Temporarily block yourself from playing",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                Switch(checked = uiState.selfExclusionEnabled, onCheckedChange = onSelfExclusionChange)
-                            }
+                        }
+
+                        if (uiState.selfExclusionEnabled) {
+                            SelfExcludedNotice()
+                        } else {
+                            SelfExclusionAction(error = uiState.selfExclusionError, onConfirm = onSelfExclude)
                         }
                     }
                 }
@@ -433,6 +424,58 @@ private fun DailyLimitDropdown(
     }
 }
 
+/** Asks first: one tap here would otherwise lock the account until support lifts it. */
+@Composable
+private fun SelfExclusionAction(
+    error: String?,
+    onConfirm: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var confirming by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier) {
+        Text(text = "Self-exclusion", style = MaterialTheme.typography.bodyLarge)
+        Text(
+            text = "Block this account from all games. Only support can lift this.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = PwSpacing.xs)
+        )
+        error?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = PwSpacing.xs)
+            )
+        }
+        TextButton(onClick = { confirming = true }) {
+            Text(text = "Exclude me", color = MaterialTheme.colorScheme.error)
+        }
+    }
+
+    if (confirming) {
+        AlertDialog(
+            onDismissRequest = { confirming = false },
+            title = { Text("Exclude yourself from all games?") },
+            text = { Text("You won't be able to play any game on this account. You can't undo this yourself: only support can lift it.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirming = false
+                        onConfirm()
+                    }
+                ) {
+                    Text(text = "Exclude me", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirming = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
 @Composable
 private fun SettingSwitchRow(
     icon: ImageVector,
@@ -475,7 +518,7 @@ private fun ProfileScreenPreview() {
             onNotificationsChange = {},
             onSoundChange = {},
             onDailyLimitChange = {},
-            onSelfExclusionChange = {},
+            onSelfExclude = {},
             onLogoutClick = {},
             onCreateAccountClick = {}
         )

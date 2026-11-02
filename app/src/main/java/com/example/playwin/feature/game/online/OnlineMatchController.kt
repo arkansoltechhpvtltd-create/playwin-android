@@ -7,6 +7,7 @@ import com.example.playwin.core.domain.repository.AuthRepository
 import com.example.playwin.core.domain.repository.RewardsRepository
 import com.example.playwin.core.domain.repository.RoomConnection
 import com.example.playwin.core.domain.repository.RoomRepository
+import com.example.playwin.core.domain.repository.SelfExcludedException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -108,7 +109,8 @@ class OnlineMatchController(
                         return@launch
                     }
                     consecutiveFailures = if (result.isFailure) consecutiveFailures + 1 else 0
-                    if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+                    val selfExcluded = result.exceptionOrNull() is SelfExcludedException
+                    if (selfExcluded || consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
                         roomRepository.cancelMatchmaking(gameId)
                         _state.update {
                             it.copy(
